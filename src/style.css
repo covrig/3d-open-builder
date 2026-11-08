@@ -837,10 +837,14 @@ body:not(.panel-closed) #view-corner .panel-open { display: none; }
 @media (hover: none), (pointer: coarse) {
   #view-corner .multi-select { display: inline-flex; }
 }
+/* Phones: icons only, so the corner buttons fit beside the app name. */
+@media (max-width: 600px) {
+  #view-corner button { padding: 7px 9px; }
+  #view-corner button span { display: none; }
+}
 
 /* The side panel can be closed on any screen. Its > button sits at the top
    right of the view, just left of the open panel, where Panel appears once closed. */
-#sidebar { position: relative; }
 body.sidebar-hidden #sidebar { display: none; }
 body.panel-closed #view-corner .panel-close { display: none; }
 #view-corner .panel-close { width: 34px; padding: 6px 0; justify-content: center; }
@@ -848,6 +852,8 @@ body.panel-closed #view-corner .panel-close { display: none; }
 @media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
   /* The drawer covers the right of the view: keep the > just left of it. */
   body.sidebar-open #view-corner { right: calc(min(290px, 86vw) + 8px); z-index: 21; }
+  /* On phones the open drawer leaves little room: the app name makes way for the >. */
+  body.sidebar-open #brand-overlay { visibility: hidden; }
 }
 /* Working… with Cancel, while a geometry calculation runs. */
 #busy {

@@ -619,6 +619,41 @@ async function runChecks(b) {
     return out.join('; ');
   });
 
+  await check('Phone panel: view fills the screen, › reachable', async () => {
+    await page.setViewport({ width: 390, height: 844 });
+    await sleep(400);
+    const closed = await page.evaluate(() => ({
+      view: document.querySelector('#viewport').getBoundingClientRect().width,
+      win: innerWidth,
+    }));
+    if (closed.view < closed.win - 1) throw new Error(`view is ${closed.view} px of ${closed.win} px (empty strip beside it)`);
+    // The corner buttons (Select several shows on touch screens; force it here) stay clear of the app name.
+    const overlap = await page.evaluate(() => {
+      const several = document.querySelector('#view-corner .multi-select');
+      several.style.display = 'inline-flex';
+      const name = document.querySelector('#brand-overlay').getBoundingClientRect();
+      const corner = document.querySelector('#view-corner').getBoundingClientRect();
+      several.style.display = '';
+      return corner.left < name.right && corner.bottom > name.top;
+    });
+    if (overlap) throw new Error('corner buttons cover the app name');
+    await clickSel(page, '#view-corner [data-action="open-panel"]');
+    await sleep(400);
+    const open = await page.evaluate(() => {
+      const r = document.querySelector('#view-corner [data-action="close-panel"]').getBoundingClientRect();
+      const s = document.querySelector('#sidebar').getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { left: r.left, right: r.right, sidebarLeft: s.left, onTop: !!hit?.closest('[data-action="close-panel"]') };
+    });
+    await page.screenshot({ path: `${SHOTS}/${b.name}-phone-panel.png` });
+    if (open.left < 0 || !open.onTop) throw new Error(`› not reachable (x ${open.left.toFixed(0)}, on top: ${open.onTop})`);
+    if (open.right > open.sidebarLeft + 1) throw new Error('› is under the panel');
+    await page.click('#view-corner [data-action="close-panel"]');
+    await sleep(400);
+    if (!(await visible(page, '#view-corner [data-action="open-panel"]'))) throw new Error('Panel button did not come back');
+    return 'full-width view; › left of the open panel, closes it';
+  });
+
   await browser.close();
 
   await check('No-JavaScript message', async () => {
