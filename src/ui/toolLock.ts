@@ -28,7 +28,3 @@ export function stopActiveTool(): boolean {
   c.stop();
   return true;
 }
-
-export function activeTool(): string | null {
-  return current?.name ?? null;
-}

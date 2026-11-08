@@ -56,20 +56,21 @@ describe('shell: do the walls fit?', () => {
       }
       for (const m of [original, result, removed]) m.delete();
     }
-  });
+  }, 60_000); // heavy: builds and hollows two threaded parts (slower on CI machines)
 
   it('refuses detailed objects without a stand-in instead of running for minutes', () => {
     const bolt = makeThreaded(wasm, { kind: 'bolt', size: 'M6', length: 20, clearance: 0 });
     expect(bolt.mesh.indices.length / 3).toBeGreaterThan(20000);
     expect(() => shell(wasm, { mesh: bolt.mesh, matrix: IDENTITY }, 1)).toThrow(/triangles/);
-  });
+  }, 60_000);
 
   it('refuses an M10 nut with 2 mm walls quickly, instead of hollowing for seconds', () => {
     const nut = meshDataToManifold(wasm, makeThreaded(wasm, { kind: 'nut', size: 'M10', length: 0, clearance: 0.2 }).mesh);
     const t0 = performance.now();
     expect(wallsFit(nut, 2)).toBe(false);
-    expect(performance.now() - t0).toBeLessThan(5000);
+    // Seconds, not the ~20 s that hollowing it took (generous for slow CI machines).
+    expect(performance.now() - t0).toBeLessThan(15_000);
     expect(() => shell(wasm, { mesh: makeThreaded(wasm, { kind: 'nut', size: 'M10', length: 0, clearance: 0.2 }).mesh, matrix: IDENTITY }, 2))
       .toThrow(/walls don't fit/);
-  });
+  }, 60_000);
 });

@@ -66,7 +66,7 @@ export class ModifyTools {
     };
   }
 
-  // --- Chamfer / Fillet -------------------------------------------------------
+  // --- Edge bevel / Edge rounding (chamfer / fillet) --------------------------
 
   private edgeTool(kind: 'chamfer' | 'fillet'): void {
     const obj = this.one();
@@ -99,7 +99,7 @@ export class ModifyTools {
     this.edges.start(set, { onChange: () => this.bar.refresh(50) });
   }
 
-  // --- Gusset -----------------------------------------------------------------
+  // --- Brace (gusset) ----------------------------------------------------------
 
   private gusset(): void {
     const obj = this.one();

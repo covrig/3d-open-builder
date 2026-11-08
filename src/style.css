@@ -89,28 +89,12 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  margin-right: 6px;
-}
-.brand svg { color: var(--accent); width: 22px; height: 22px; }
 .group {
   display: flex;
   align-items: center;
   gap: 4px;
   padding-left: 10px;
   border-left: 1px solid var(--border);
-}
-.group.end { margin-left: auto; border-left: 0; }
-.group-label {
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-right: 2px;
 }
 
 /* --- Workspace ---------------------------------------------------------- */
@@ -322,9 +306,6 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
 #sidebar h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--muted); }
 .muted { color: var(--muted); font-size: 12px; }
 
-.row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.row > button { flex: 1 1 auto; justify-content: center; }
-.row-label { color: var(--muted); font-size: 12px; min-width: 48px; }
 
 .items {
   list-style: none;
@@ -349,7 +330,6 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
 .items li.selected { background: var(--accent-soft); border-color: var(--accent); }
 .items li.empty { color: var(--muted); cursor: default; }
 .items .group-tag { margin-left: auto; font-size: 11px; color: var(--muted); }
-.swatch-dot { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(127, 127, 127, 0.4); }
 
 .segmented { display: flex; gap: 4px; }
 .segmented button { flex: 1; justify-content: center; }
@@ -577,8 +557,6 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 /* Smaller text in the sidebar (chips keep their own size). */
 #sidebar button:not(.chip), #sidebar .items li, #sidebar .details, #sidebar .color-input { font-size: 12.5px; }
 .button-grid.tiles > button svg { width: 17px; height: 17px; }
-.chip.clear-chip { display: inline-flex; align-items: center; gap: 4px; }
-.chip.clear-chip svg { width: 13px; height: 13px; }
 
 /* Duplicate / Delete buttons that appear when hovering an object row. */
 .items .row-action {
@@ -715,7 +693,6 @@ dialog footer { gap: 8px; }
 
 .toolbar { gap: 4px; padding: 4px 8px; }
 .toolbar .group { gap: 1px; padding-left: 4px; }
-.toolbar .brand { font-size: 13.5px; margin-right: 2px; }
 .toolbar button {
   flex-direction: column;
   gap: 2px;
@@ -757,7 +734,6 @@ dialog footer { gap: 8px; }
      dissolve so a wide group never jumps to the next row whole and leaves a gap. */
   .toolbar { flex-wrap: wrap; row-gap: 2px; }
   .toolbar .group { display: contents; }
-  .brand span { display: none; }
   /* The closed drawer waits off to the right; clip it so the page never scrolls sideways. */
   .workspace { position: relative; overflow: hidden; }
   #sidebar {

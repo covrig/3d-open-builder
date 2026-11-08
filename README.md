@@ -33,7 +33,7 @@ in `dist/`. Every push to `main` is tested and published to GitHub Pages.
 | `privacy.html` | The privacy statement page. |
 | `src/` | The app's source code (TypeScript): |
 | `src/main.ts` | Starts the app and connects the toolbar and sidebar to the features. |
-| `src/geometry/` | Pure geometry, no user interface: shapes, Merge/Subtract/Intersect, split, chamfer, fillet, shell, threads, text, mesh check and repair. `worker.ts` runs the heavy operations in the background so the page stays responsive. |
+| `src/geometry/` | Pure geometry, no user interface: shapes, Merge/Subtract/Intersect, split, extrude, edge bevel and rounding (chamfer, fillet), brace, shell, threads, text, mesh check and repair. `worker.ts` runs the heavy operations in the background so the page stays responsive. |
 | `src/scene/` | The 3D view: camera, ground grid, rulers, move/rotate/size handles, and the list of objects with undo/redo. |
 | `src/ui/` | Toolbar menus, sidebar panels, tooltips and the tools that take clicks in the view (measuring, picking edges, reference picture). |
 | `src/io/` | Reading and writing 3MF, STL and OBJ files. |
