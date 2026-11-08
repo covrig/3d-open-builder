@@ -553,6 +553,76 @@ async function runChecks(b) {
     return name;
   });
 
+  await check('Measuring shows what a point snapped to', async () => {
+    await reset();
+    await addCube(0, 0, 20);
+    await page.evaluate(() => window.app.viewport.fit(window.app.doc.worldBox(window.app.doc.objects)));
+    await clickSel(page, '[data-measure="distance"]');
+    // Screen spot of a world point (aimed 1 mm inside the top face, so snapping has to pull it in).
+    const spot = (p) => page.evaluate((p) => {
+      const { viewport } = window.app;
+      const s = viewport.project(new viewport.camera.position.constructor(...p));
+      const r = viewport.element.getBoundingClientRect();
+      return { x: r.left + s.x, y: r.top + s.y };
+    }, p);
+    const tagAt = async (p) => {
+      const at = await spot(p);
+      await page.mouse.move(at.x, at.y);
+      await sleep(150);
+      return page.evaluate(() => document.querySelector('.m-snap')?.textContent ?? null);
+    };
+    const corner = await tagAt([19, -19, 40]);
+    const middle = await tagAt([0.6, -19, 40]);
+    const plain = await tagAt([-6, 6, 40]); // middle of the top face: nothing to snap to
+    await page.keyboard.press('Escape');
+    if (corner !== 'Corner') throw new Error(`at a corner: ${corner}`);
+    if (middle !== 'Middle of edge') throw new Error(`at an edge middle: ${middle}`);
+    if (plain !== null) throw new Error(`on a plain face: ${plain}`);
+    // Curved shapes: a cylinder's rim is only "on edge"; a sphere has nothing to snap to.
+    const curved = {};
+    for (const kind of ['cylinder', 'sphere']) {
+      await reset();
+      const box = await page.evaluate((kind) => {
+        document.querySelector(`[data-insert="${kind}"]`).click();
+        const { doc, viewport } = window.app;
+        viewport.fit(doc.worldBox(doc.objects));
+        const b = doc.worldBox(doc.objects);
+        return { min: b.min.toArray(), max: b.max.toArray() };
+      }, kind);
+      const cx = (box.min[0] + box.max[0]) / 2, cy = (box.min[1] + box.max[1]) / 2, r = (box.max[0] - box.min[0]) / 2;
+      await clickSel(page, '[data-measure="distance"]');
+      curved[kind] = kind === 'cylinder'
+        ? await tagAt([cx + (r - 1) * Math.SQRT1_2, cy - (r - 1) * Math.SQRT1_2, box.max[2]])
+        : await tagAt([cx, cy - r * 0.3, box.max[2] - 2]);
+      await page.keyboard.press('Escape');
+    }
+    if (curved.cylinder !== 'On edge') throw new Error(`cylinder rim: ${curved.cylinder}`);
+    if (curved.sphere !== null) throw new Error(`sphere: ${curved.sphere}`);
+    return 'cube: Corner, Middle of edge; cylinder rim: On edge; sphere: none';
+  });
+
+  await check('R repeats the last tool, only once it is finished', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    await select([id]);
+    await page.click('.toolbar [data-modify="pattern"]');
+    if (!(await visible(page, '#feature-bar'))) throw new Error('Pattern did not open');
+    await page.mouse.click(5, 300); // focus the page (empty strip at the left of the view)
+    await page.keyboard.press('r');
+    const refused = await page.$eval('#toast', (e) => (e.hidden ? '' : e.textContent));
+    if (!refused.startsWith('Finish')) throw new Error(`no refusal while open: "${refused}"`);
+    await page.keyboard.press('Escape');
+    if (await visible(page, '#feature-bar')) throw new Error('Esc did not close Pattern');
+    await select([id]);
+    await page.keyboard.press('r');
+    await sleep(200);
+    const title = await page.$eval('#feature-bar .bar-title', (e) => e.textContent);
+    const open = await visible(page, '#feature-bar');
+    await page.keyboard.press('Escape');
+    if (!open || title !== 'Pattern') throw new Error(`R opened "${open ? title : 'nothing'}"`);
+    return 'refused while open; reopened Pattern after Esc';
+  });
+
   await check('Top bar, brand and toolbar layout', async () => {
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));

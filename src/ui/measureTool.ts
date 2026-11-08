@@ -4,6 +4,7 @@ import type { Viewport } from '../scene/viewport';
 import { settings, toUnit, updateUi } from '../settings';
 import { hideHint, showHint } from './hint';
 import { beginTool, endTool } from './toolLock';
+import { edgeFeatures } from '../geometry/edgeMiddles';
 
 const POINTS_NEEDED: Record<MeasureKind, number> = { distance: 2, angle: 3, circle: 3 };
 const HINTS: Record<MeasureKind, string> = {
@@ -11,7 +12,7 @@ const HINTS: Record<MeasureKind, string> = {
   angle: 'Angle: click the start, the corner, then the end. Esc to stop.',
   circle: 'Circle: click three points on the edge of a circle or hole. Esc to stop.',
 };
-/** Colours of the 1st, 2nd and 3rd point, as in PrintView3D. */
+/** Colours of the 1st, 2nd and 3rd point. */
 const POINT_COLORS = ['#4cb8ff', '#7ed321', '#c77dff'];
 const SNAP_PX = 14;
 const EDGE_ANGLE = 25;
@@ -32,14 +33,27 @@ export function circleThrough(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vecto
   return { center, radius: center.distanceTo(a), normal: n.normalize() };
 }
 
-/** Sharp-edge segments of a geometry (local space), computed once per geometry. */
-const edgeCache = new WeakMap<THREE.BufferGeometry, Float32Array>();
-function featureEdges(geometry: THREE.BufferGeometry): Float32Array {
+/** What a measuring point snapped to (shown while hovering, so a point isn't misplaced). */
+export type SnapKind = 'corner' | 'middle' | 'edge';
+const SNAP_NAMES: Record<SnapKind, string> = { corner: 'Corner', middle: 'Middle of edge', edge: 'On edge' };
+
+interface FeatureEdges {
+  /** Sharp-edge segments, 6 numbers (two points) each, local space */
+  segs: Float32Array;
+  /** Real corners and the middles of straight edges, 3 numbers each (see edgeFeatures) */
+  corners: Float32Array;
+  mids: Float32Array;
+}
+
+/** Sharp edges of a geometry, its real corners and the middles of its straight edges, computed once per geometry. */
+const edgeCache = new WeakMap<THREE.BufferGeometry, FeatureEdges>();
+function featureEdges(geometry: THREE.BufferGeometry): FeatureEdges {
   let edges = edgeCache.get(geometry);
   if (!edges) {
     const g = new THREE.EdgesGeometry(geometry, EDGE_ANGLE);
-    edges = g.getAttribute('position').array as Float32Array;
+    const segs = g.getAttribute('position').array as Float32Array;
     g.dispose();
+    edges = { segs, ...edgeFeatures(segs) };
     edgeCache.set(geometry, edges);
   }
   return edges;
@@ -56,6 +70,8 @@ export class MeasureTool {
   private kind: MeasureKind | null = null;
   private pending: MeasurePoint[] = [];
   private hover: MeasurePoint | null = null;
+  /** What the point under the cursor snapped to (null: not snapped) */
+  private hoverSnap: SnapKind | null = null;
   /** Remembered between visits (saved with the other UI choices). */
   private readonly options = settings.ui.measure;
   private readonly svg: SVGSVGElement;
@@ -104,6 +120,7 @@ export class MeasureTool {
     this.kind = kind;
     this.pending = [];
     this.hover = null;
+    this.hoverSnap = null;
     for (const b of document.querySelectorAll<HTMLButtonElement>('[data-measure]')) {
       b.classList.toggle('active', b.dataset.measure === kind);
     }
@@ -124,9 +141,13 @@ export class MeasureTool {
   /** A click in the view while measuring. */
   click(clientX: number, clientY: number): void {
     if (!this.kind) return;
-    const p = this.pickPoint(clientX, clientY);
-    if (!p) return;
+    const picked = this.pickPoint(clientX, clientY);
+    if (!picked) return;
+    const p = picked.point;
     this.pending.push(p);
+    // Placed: the point goes back to its normal look until the mouse moves again.
+    this.hover = null;
+    this.hoverSnap = null;
     if (this.pending.length === POINTS_NEEDED[this.kind]) {
       const w = this.pending.map((q) => this.world(q)!);
       if (this.kind === 'circle' && !circleThrough(w[0], w[1], w[2])) {
@@ -142,7 +163,9 @@ export class MeasureTool {
 
   move(clientX: number, clientY: number): void {
     if (!this.kind) return;
-    this.hover = this.pickPoint(clientX, clientY);
+    const picked = this.pickPoint(clientX, clientY);
+    this.hover = picked?.point ?? null;
+    this.hoverSnap = picked?.snap ?? null;
     this.viewport.invalidate();
   }
 
@@ -155,51 +178,62 @@ export class MeasureTool {
     return obj.mesh.localToWorld(p.local.clone());
   }
 
-  /** Point under the cursor: on an object (snapped to a corner or edge when close), else on the plate. */
-  private pickPoint(clientX: number, clientY: number): MeasurePoint | null {
+  /**
+   * Point under the cursor: on an object (snapped, when close, to a corner,
+   * the middle of a straight edge or an edge, in that order), else on the
+   * plate. Also says what it snapped to.
+   */
+  private pickPoint(clientX: number, clientY: number): { point: MeasurePoint; snap: SnapKind | null } | null {
     const raycaster = this.viewport.rayAt(clientX, clientY);
     const hit = raycaster.intersectObjects(this.viewport.objectRoot.children, false)[0];
     if (!hit) {
       const onPlate = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
-      return onPlate ? { local: onPlate } : null;
+      return onPlate ? { point: { local: onPlate }, snap: null } : null;
     }
     const mesh = hit.object as THREE.Mesh;
     const obj = this.doc.byMesh(mesh);
     const toLocal = (w: THREE.Vector3) => mesh.worldToLocal(w.clone());
-    const result = (w: THREE.Vector3): MeasurePoint => ({ objectId: obj?.id, local: toLocal(w) });
-    if (!this.options.snap || !hit.face) return result(hit.point);
+    const snapped = (local: THREE.Vector3, snap: SnapKind | null) => ({ point: { objectId: obj?.id, local }, snap });
+    if (!this.options.snap || !hit.face) return snapped(toLocal(hit.point), null);
 
     const r = this.viewport.element.getBoundingClientRect();
     const cursor = new THREE.Vector2(clientX - r.left, clientY - r.top);
     const screenDist = (localPoint: THREE.Vector3) =>
       this.viewport.project(localPoint.clone().applyMatrix4(mesh.matrixWorld)).distanceTo(cursor);
+    const localHit = toLocal(hit.point);
+    // Cheap filter for edges and middles: only those near the hit point.
+    const near = (mesh.geometry.boundingSphere?.radius ?? 20) * 0.2;
 
-    // 1. Corners of the triangle under the cursor.
-    const pos = mesh.geometry.getAttribute('position');
+    // 1. Real corners, then 2. middles of straight edges. (Not the points of the
+    // triangles: on a sphere or a cylinder's rim those are only where the
+    // smooth surface was divided up.)
+    const { segs, corners, mids } = featureEdges(mesh.geometry);
     let best: THREE.Vector3 | null = null;
     let bestPx = SNAP_PX;
-    for (const i of [hit.face.a, hit.face.b, hit.face.c]) {
-      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-      const px = screenDist(v);
-      if (px < bestPx) {
-        bestPx = px;
-        best = v;
+    const nearest = (list: Float32Array) => {
+      const v = new THREE.Vector3();
+      for (let i = 0; i < list.length; i += 3) {
+        v.set(list[i], list[i + 1], list[i + 2]);
+        if (v.distanceTo(localHit) > near) continue;
+        const px = screenDist(v);
+        if (px < bestPx) {
+          bestPx = px;
+          best = v.clone();
+        }
       }
-    }
-    if (best) return { objectId: obj?.id, local: best };
+      return best;
+    };
+    if (nearest(corners)) return snapped(best!, 'corner');
+    if (nearest(mids)) return snapped(best!, 'middle');
 
-    // 2. The nearest sharp edge (cube edges, hole rims...), never a flat face's diagonal.
-    const edges = featureEdges(mesh.geometry);
+    // 3. The nearest sharp edge (cube edges, hole rims...), never a flat face's diagonal.
     const localRay = raycaster.ray.clone().applyMatrix4(mesh.matrixWorld.clone().invert());
-    const localHit = toLocal(hit.point);
-    const near = (mesh.geometry.boundingSphere?.radius ?? 20) * 0.2;
     const a = new THREE.Vector3(), b = new THREE.Vector3(), onSeg = new THREE.Vector3();
     const seg = new THREE.Line3();
-    for (let i = 0; i < edges.length; i += 6) {
-      a.set(edges[i], edges[i + 1], edges[i + 2]);
-      b.set(edges[i + 3], edges[i + 4], edges[i + 5]);
+    for (let i = 0; i < segs.length; i += 6) {
+      a.set(segs[i], segs[i + 1], segs[i + 2]);
+      b.set(segs[i + 3], segs[i + 4], segs[i + 5]);
       seg.set(a, b);
-      // Cheap filter: only edges near the hit point.
       if (seg.closestPointToPoint(localHit, true, onSeg).distanceTo(localHit) > near) continue;
       localRay.distanceSqToSegment(a, b, undefined, onSeg);
       const px = screenDist(onSeg);
@@ -208,7 +242,7 @@ export class MeasureTool {
         best = onSeg.clone();
       }
     }
-    return best ? { objectId: obj?.id, local: best } : result(hit.point);
+    return best ? snapped(best, 'edge') : snapped(localHit, null);
   }
 
   // --- Drawing ------------------------------------------------------------
@@ -284,7 +318,11 @@ export class MeasureTool {
           }
           svg.push(`<path d="M${ring.map((p) => `${p.x},${p.y}`).join('L')}"/>`);
           line(pts[0], c.center);
-          label(c.center, `Ø ${num(c.radius * 2)} ${unit}  ·  R ${num(c.radius)} ${unit}`);
+          // The radius is exactly half the diameter shown (both rounded the same way would
+          // disagree, e.g. Ø 10.01 with R 5.01): up to one more decimal.
+          const d = Math.round(toUnit(c.radius * 2) * 100) / 100;
+          const half = (d / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+          label(c.center, `Ø ${num(c.radius * 2)} ${unit}  ·  R ${half} ${unit}`);
         }
       }
       pts.forEach(dot);
@@ -304,7 +342,15 @@ export class MeasureTool {
         const h = this.world(this.hover);
         if (h) {
           const p = P(h);
-          svg.push(`<circle class="hover" cx="${p.x}" cy="${p.y}" r="8"/>`);
+          // A snapped point lights up and says what it caught, so a point that only
+          // looks right from this angle isn't placed by mistake.
+          if (this.hoverSnap) {
+            svg.push(`<circle class="hover snapped" cx="${p.x}" cy="${p.y}" r="9"/>`);
+            svg.push(`<circle class="snap-dot" cx="${p.x}" cy="${p.y}" r="4.5"/>`);
+            html.push(`<div class="m-snap" style="left:${p.x}px;top:${p.y}px">${SNAP_NAMES[this.hoverSnap]}</div>`);
+          } else {
+            svg.push(`<circle class="hover" cx="${p.x}" cy="${p.y}" r="8"/>`);
+          }
         }
       }
     }

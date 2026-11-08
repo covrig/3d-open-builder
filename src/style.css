@@ -868,3 +868,17 @@ body.panel-closed #view-corner .panel-close { display: none; }
   pointer-events: auto;
 }
 #busy button { padding: 4px 12px; }
+/* Measuring: a point under the cursor that snapped to a corner, edge middle or edge. */
+svg.measure circle.hover.snapped { stroke: #ffb224; stroke-width: 2.5; opacity: 1; fill: rgba(255, 178, 36, 0.18); }
+svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
+.m-snap {
+  position: absolute;
+  transform: translate(14px, -150%);
+  background: #ffb224;
+  color: #1d2733;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}

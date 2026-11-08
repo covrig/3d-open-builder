@@ -20,6 +20,11 @@ export function endTool(name: string): void {
   if (current?.name === name) current = null;
 }
 
+/** Is a tool open right now (a feature bar, Split, measuring…)? */
+export function isToolOpen(): boolean {
+  return current !== null;
+}
+
 /** Close whatever tool is open. Returns false if none was. */
 export function stopActiveTool(): boolean {
   if (!current) return false;

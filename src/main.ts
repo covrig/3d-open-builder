@@ -39,7 +39,7 @@ import { setupMenus } from './ui/menu';
 import { setupSettingsDialog } from './ui/settingsDialog';
 import { SplitTool } from './ui/splitTool';
 import { setupTooltips } from './ui/tooltip';
-import { stopActiveTool } from './ui/toolLock';
+import { isToolOpen, stopActiveTool } from './ui/toolLock';
 import { TransformBar } from './ui/transformBar';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -544,6 +544,23 @@ const updateHistory = () => {
 doc.addEventListener('history', updateHistory);
 updateHistory();
 
+// --- Repeat the last tool (R) ------------------------------------------------
+
+/** Buttons whose tool can be run again with R (e.g. a second brace): edit, combine, add and mirror tools. */
+const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-mirror], [data-action="split"], [data-action="extrude-down"]';
+let lastTool: HTMLElement | null = null;
+document.addEventListener('click', (e) => {
+  const el = (e.target as HTMLElement).closest<HTMLElement>(REPEATABLE);
+  if (el && e.isTrusted) lastTool = el;
+}, true);
+
+/** Run the last tool again, but only once the previous operation is finished. */
+function repeatLastTool(): void {
+  if (!lastTool) return toast('Nothing to repeat yet: use a tool first');
+  if (isToolOpen() || busy) return toast('Finish the current tool first (Apply, or Esc to cancel)');
+  lastTool.click();
+}
+
 // --- Keyboard -------------------------------------------------------------
 
 /**
@@ -587,6 +604,7 @@ document.addEventListener('keydown', (e) => {
   if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) return run(actions.delete);
   if (!ctrl && !e.altKey && key === 'f') return run(fitView);
   if (!ctrl && !e.altKey && key === 'h') return run(homeView);
+  if (!ctrl && !e.altKey && key === 'r') return run(repeatLastTool);
   // Arrow keys: an active tool (text, threaded hole) may use them to nudge;
   // otherwise they move the selection.
   if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {

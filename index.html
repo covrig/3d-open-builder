@@ -77,11 +77,11 @@
       </div>
 
       <div class="group" aria-label="Edit">
-        <button data-action="split" class="wide-only" data-tip-title="Split" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
         <button data-action="duplicate" data-tip-title="Duplicate (Ctrl+D)" data-tip="Make a copy of the selection, placed a little to the side."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
+        <button data-action="split" class="wide-only" data-tip-title="Split" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
+        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
-        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-menu="mirror-menu" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z."><i data-lucide="flip-horizontal-2"></i><span>Mirror<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="mirror-menu" class="menu compact" role="menu" hidden>
           <button data-mirror="0" role="menuitem">Mirror X</button>
@@ -91,9 +91,9 @@
         <button data-menu="modify-menu" data-tip-title="More" data-tip="Edge bevel, edge rounding, shell and brace."><i data-lucide="pencil-ruler"></i><span>More<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
+          <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
           <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
           <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
-          <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
           <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Edge bevel</button>
           <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Edge rounding</button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
@@ -143,6 +143,7 @@
             <dt>Arrow keys</dt><dd>Move selection (Shift: ×10)</dd>
             <dt>Page Up / Down</dt><dd>Move selection up / down</dd>
             <dt>H</dt><dd>Home view</dd>
+            <dt>R</dt><dd>Repeat the last tool</dd>
             <dt>F</dt><dd>Fit view</dd>
             <dt>Left drag</dt><dd>Turn the view</dd>
             <dt>Right drag</dt><dd>Pan</dd>
