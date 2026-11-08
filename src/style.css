@@ -337,6 +337,8 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Room for the hover buttons, so a row keeps its height when they appear. */
+  min-height: 34px;
   font-size: 13px;
   padding: 5px 8px;
   border-radius: 5px;
@@ -729,8 +731,6 @@ dialog footer { gap: 8px; }
 .toolbar button span { display: inline-flex; align-items: center; gap: 1px; }
 .toolbar button svg { width: 18px; height: 18px; }
 .toolbar .caret { width: 11px !important; height: 11px !important; margin-left: 1px; }
-.sidebar-toggle { display: none !important; }
-.toolbar .sidebar-toggle svg { color: #f08a24 !important; }
 .menu-heading {
   padding: 8px 10px 4px;
   font-size: 11px;
@@ -758,9 +758,6 @@ dialog footer { gap: 8px; }
   .toolbar { flex-wrap: wrap; row-gap: 2px; }
   .toolbar .group { display: contents; }
   .brand span { display: none; }
-  .sidebar-toggle { display: inline-flex !important; }
-  /* The Panel button sits at the right end of its row. */
-  .toolbar .sidebar-toggle { margin-left: auto; }
   /* The closed drawer waits off to the right; clip it so the page never scrolls sideways. */
   .workspace { position: relative; overflow: hidden; }
   #sidebar {
@@ -797,7 +794,6 @@ dialog footer { gap: 8px; }
   .toolbar .add-button svg:not(.caret) { width: 18px; height: 18px; }
   .toolbar .wide-only { display: none !important; }
   .toolbar .menu > .narrow-only { display: flex; }
-  .toolbar .sidebar-toggle { flex: none; }
 }
 
 /* Menu items inside the toolbar: icon left of the text, as in any menu
@@ -840,3 +836,53 @@ dialog footer { gap: 8px; }
 #viewport.panning canvas { cursor: move; }
 #viewport.zooming-in canvas { cursor: zoom-in; }
 #viewport.zooming-out canvas { cursor: zoom-out; }
+/* Fix sits right after More, without a divider. */
+.toolbar .group.joined { border-left: 0; padding-left: 0; }
+
+/* Top right of the view: Select several (touch screens) and Panel (while the panel is closed). */
+#view-corner {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  gap: 6px;
+  z-index: 3;
+}
+#view-corner button {
+  background: var(--overlay);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+#view-corner button.active { background: color-mix(in srgb, var(--accent) 25%, var(--overlay)); border-color: var(--accent); }
+body:not(.panel-closed) #view-corner .panel-open { display: none; }
+#view-corner .multi-select { display: none; }
+@media (hover: none), (pointer: coarse) {
+  #view-corner .multi-select { display: inline-flex; }
+}
+
+/* The side panel can be closed on any screen. Its > button sits at the top
+   right of the view, just left of the open panel, where Panel appears once closed. */
+#sidebar { position: relative; }
+body.sidebar-hidden #sidebar { display: none; }
+body.panel-closed #view-corner .panel-close { display: none; }
+#view-corner .panel-close { width: 34px; padding: 6px 0; justify-content: center; }
+#view-corner .panel-close svg { width: 18px; height: 18px; }
+@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
+  /* The drawer covers the right of the view: keep the > just left of it. */
+  body.sidebar-open #view-corner { right: calc(min(290px, 86vw) + 8px); z-index: 21; }
+}
+/* Working… with Cancel, while a geometry calculation runs. */
+#busy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 14px;
+  background: var(--overlay);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+  border-radius: 6px;
+  pointer-events: auto;
+}
+#busy button { padding: 4px 12px; }

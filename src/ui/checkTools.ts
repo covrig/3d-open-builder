@@ -3,7 +3,6 @@ import type { CheckResult } from '../geometry/meshTools';
 import { runOp } from '../geometry/workerClient';
 import type { SceneDocument, SceneObject } from '../scene/document';
 import { settings, updateUi } from '../settings';
-import { hideHint, showHint } from './hint';
 
 const STATUS_ICON = { pass: '✓', warn: '!', fail: '✕' } as const;
 const NOTHING = 'Nothing needed repairing';
@@ -171,15 +170,12 @@ export class CheckTools {
   private async orientBest(): Promise<void> {
     if (this.doc.selection.length !== 1) return this.toast('Select one object');
     const obj = this.doc.selection[0];
-    showHint('busy', 'Working…');
     try {
       const r = await runOp('check', { item: this.doc.placed(obj), minWall: settings.ui.minWall });
       if (!r.suggestedDown) return this.toast('It is already in the best orientation');
       this.orient(obj, r.suggestedDown);
     } catch (err) {
       this.toast(err instanceof Error ? err.message : String(err));
-    } finally {
-      hideHint('busy');
     }
   }
 

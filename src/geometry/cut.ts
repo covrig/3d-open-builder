@@ -1,5 +1,5 @@
 import type { Manifold, ManifoldToplevel, Vec3 } from 'manifold-3d';
-import { bakeMesh, manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
+import { manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
 import { recenter } from './meshOps';
 
 export interface Piece {
@@ -38,40 +38,33 @@ export function splitByPlane(
 }
 
 /**
- * Extend an object straight down to the plate (z = floor), filling the space
- * under every downward-facing surface, like a solid support.
- *
- * Each downward-facing triangle sweeps a prism down to the floor (the hull of
- * the triangle and its shadow); the union of the object with all prisms is
- * exactly the object's downward sweep.
+ * Extrude down with a plane at `height`: the object above the plane stays as
+ * it is; below it, the object is replaced by its cross-section at the plane,
+ * pushed straight down to the plate (z = floor). One slice, one extrusion and
+ * one join, so it is quick whatever the object (threads included).
  */
-export function extrudeDown(wasm: ManifoldToplevel, item: PlacedMesh, floor = 0): Piece | null {
-  const world = bakeMesh(item);
-  const p = world.positions;
-  const idx = world.indices;
-  const parts: Manifold[] = [meshDataToManifold(wasm, world)];
+export function extrudeToPlane(wasm: ManifoldToplevel, item: PlacedMesh, height: number, floor = 0): Piece {
+  if (!(height > floor)) throw new Error('Put the plane above the plate');
+  const solid = meshDataToManifold(wasm, item.mesh, item.matrix);
+  const owned: { delete(): void }[] = [solid];
+  const keep = <T extends { delete(): void }>(m: T): T => {
+    owned.push(m);
+    return m;
+  };
   try {
-    for (let t = 0; t < idx.length; t += 3) {
-      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-      // z of the triangle normal (no need to normalise for the sign)
-      const nz = (p[b] - p[a]) * (p[c + 1] - p[a + 1]) - (p[b + 1] - p[a + 1]) * (p[c] - p[a]);
-      if (nz >= -1e-9) continue; // not facing down
-      const tri: Vec3[] = [a, b, c].map((i) => [p[i], p[i + 1], p[i + 2]] as Vec3);
-      if (tri.every((v) => v[2] <= floor + 1e-4)) continue; // already on the plate
-      const shadow = tri.map((v) => [v[0], v[1], floor] as Vec3);
-      parts.push(wasm.Manifold.hull([...tri, ...shadow]));
-    }
-    const merged = wasm.Manifold.union(parts);
-    const trimmed = merged.trimByPlane([0, 0, 1], floor);
-    merged.delete();
-    try {
-      const status = trimmed.status();
-      if (status !== 'NoError') throw new Error(`Extrude failed (${status})`);
-      return toPiece(trimmed);
-    } finally {
-      trimmed.delete();
-    }
+    const section = keep(solid.slice(height));
+    if (section.isEmpty() || section.area() <= 1e-9) throw new Error('Move the plane so it cuts through the object');
+    const top = keep(solid.trimByPlane([0, 0, 1], height));
+    // The column reaches a hair (1 µm) into the part above, so the two fuse into
+    // one solid instead of only touching at the plane.
+    const column = keep(keep(section.extrude(height - floor + 0.001)).translate([0, 0, floor]));
+    const result = keep(top.isEmpty() ? column : top.add(column));
+    const status = result.status();
+    if (status !== 'NoError') throw new Error(`Extrude failed (${status})`);
+    const piece = toPiece(result);
+    if (!piece) throw new Error('Nothing is left to extrude');
+    return piece;
   } finally {
-    for (const m of parts) m.delete();
+    for (const m of owned) m.delete();
   }
 }

@@ -147,7 +147,7 @@ export class ModifyTools {
         { key: 'thickness', label: 'Wall', type: 'number', value: 2, min: 0.2, step: 0.2, unit: 'mm', tip: 'Thickness of the walls that remain.' },
       ],
       ...this.pieceSpec(obj),
-      compute: (v) => runOp('shell', { item: this.doc.placed(obj), thickness: Number(v.thickness) }),
+      compute: (v) => runOp('shell', { item: this.doc.placed(obj), thickness: Number(v.thickness), thread: obj.thread }),
     });
   }
 

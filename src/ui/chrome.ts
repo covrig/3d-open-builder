@@ -84,6 +84,48 @@ export function setupViewToggles(doc: SceneDocument, viewport: Viewport): void {
   });
 }
 
+/** Same condition as the stylesheet's: the side panel is a drawer over the view. */
+const DRAWER = window.matchMedia('(max-width: 900px), (orientation: portrait) and (max-width: 1100px)');
+
+/**
+ * The side panel opens from the Panel button at the top right of the view and
+ * closes with the > button in the same spot (just left of the open panel). On wide screens it sits beside the view and
+ * starts open; on narrow ones it slides over the view and starts closed.
+ */
+export function setupPanelToggle(): void {
+  const body = document.body;
+  const isOpen = () => (DRAWER.matches ? body.classList.contains('sidebar-open') : !body.classList.contains('sidebar-hidden'));
+  const sync = () => body.classList.toggle('panel-closed', !isOpen());
+  const setOpen = (open: boolean) => {
+    if (DRAWER.matches) body.classList.toggle('sidebar-open', open);
+    else body.classList.toggle('sidebar-hidden', !open);
+    sync();
+  };
+  document.querySelector('[data-action="open-panel"]')!.addEventListener('click', () => setOpen(true));
+  document.querySelector('[data-action="close-panel"]')!.addEventListener('click', () => setOpen(false));
+  // Switching between drawer and side-by-side layouts starts that layout's default (open beside, closed as a drawer).
+  DRAWER.addEventListener('change', () => {
+    body.classList.remove('sidebar-open', 'sidebar-hidden');
+    sync();
+  });
+  sync();
+}
+
+/**
+ * "Select several": on touch screens there is no Ctrl key, so this switch
+ * makes every tap add or remove an object, in the view and in the list.
+ */
+export const multiSelect = { on: false };
+
+export function setupMultiSelect(): void {
+  const button = document.querySelector<HTMLButtonElement>('[data-action="multi-select"]')!;
+  button.addEventListener('click', () => {
+    multiSelect.on = !multiSelect.on;
+    button.classList.toggle('active', multiSelect.on);
+    button.setAttribute('aria-pressed', String(multiSelect.on));
+  });
+}
+
 /** Privacy statement in a box over the app (the separate privacy page stays for links). */
 export function setupPrivacy(): void {
   const dialog = document.querySelector<HTMLDialogElement>('#privacy-dialog')!;

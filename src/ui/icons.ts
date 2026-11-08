@@ -10,7 +10,7 @@ import {
   AlignHorizontalJustifyStart, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd,
   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround, LayoutDashboard, Crosshair, MoveHorizontal,
-  House, RefreshCw, ChevronUp,
+  House, RefreshCw, ChevronUp, X, ListChecks, PanelRightOpen, ChevronRight,
   createElement, createIcons, type IconNode,
 } from 'lucide';
 
@@ -27,7 +27,7 @@ const ICONS: Record<string, IconNode> = {
   AlignHorizontalJustifyStart, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd,
   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround, LayoutDashboard, Crosshair, MoveHorizontal,
-  House, RefreshCw, ChevronUp,
+  House, RefreshCw, ChevronUp, X, ListChecks, PanelRightOpen, ChevronRight,
 };
 
 /** A fresh SVG element for an icon (for elements created in code). */

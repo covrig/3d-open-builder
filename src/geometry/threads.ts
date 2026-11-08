@@ -85,6 +85,58 @@ function hexPrism(wasm: ManifoldToplevel, af: number, height: number): Manifold 
 }
 
 /**
+ * What a bolt, nut or rod was made from, kept on the object so tools can use
+ * a plain stand-in for it. `origin` is the point of the built shape that sits
+ * at the object's own origin (makeThreaded centres its result there).
+ */
+export interface ThreadInfo {
+  kind: Exclude<ThreadKind, 'tap'>;
+  size: ThreadSize;
+  length: number;
+  clearance: number;
+  origin: [number, number, number];
+}
+
+/**
+ * A plain solid lying entirely inside the threaded part: external threads
+ * become a smooth cylinder at the thread root, internal threads (nuts) a
+ * smooth hole at the thread's largest radius. Anything kept a wall's
+ * thickness inside this stand-in is also that far inside the real part, so
+ * Shell can hollow from it in a fraction of the time. Object coordinates.
+ */
+export function threadStandIn(wasm: ManifoldToplevel, info: ThreadInfo): Manifold {
+  const t = ISO_THREADS[info.size];
+  const root = t.d / 2 - 0.625 * 0.8660254 * t.P;
+  const segs = 64;
+  const owned: Manifold[] = [];
+  const keep = <M extends Manifold>(m: M) => (owned.push(m), m);
+  try {
+    let shape: Manifold;
+    switch (info.kind) {
+      case 'rod':
+        shape = keep(wasm.Manifold.cylinder(info.length, root, root, segs));
+        break;
+      case 'bolt': {
+        const head = keep(hexPrism(wasm, t.af, t.k));
+        const shaft = keep(keep(wasm.Manifold.cylinder(info.length + 0.1, root, root, segs)).translate([0, 0, t.k - 0.1]));
+        shape = keep(head.add(shaft));
+        break;
+      }
+      case 'nut': {
+        // The nut's thread reaches out to d/2 + clearance; a plain hole that wide stays inside the material.
+        const hole = keep(keep(wasm.Manifold.cylinder(t.m + 2, t.d / 2 + info.clearance, t.d / 2 + info.clearance, segs)).translate([0, 0, -1]));
+        shape = keep(keep(hexPrism(wasm, t.af, t.m)).subtract(hole));
+        break;
+      }
+    }
+    const [x, y, z] = info.origin;
+    return shape.translate([-x, -y, -z]);
+  } finally {
+    for (const m of owned) m.delete();
+  }
+}
+
+/**
  * Bolts, nuts, threaded rods and thread cutters (subtract a cutter from a
  * part to make a tapped hole). Internal threads get `clearance` (mm) all
  * round so a printed or bought bolt actually fits.

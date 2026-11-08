@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { MeshData } from '../geometry/meshData';
+import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
 
 /**
@@ -25,6 +26,8 @@ export interface SceneObject {
   defaultColor: string;
   /** Objects sharing a group id are selected and moved together. */
   groupId?: number;
+  /** Set on bolts, nuts and rods from Add object; dropped when the shape changes. */
+  thread?: ThreadInfo;
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 }
 
@@ -36,6 +39,7 @@ export interface ObjectState {
   color: string;
   defaultColor?: string;
   groupId?: number;
+  thread?: ThreadInfo;
   position: [number, number, number];
   quaternion: [number, number, number, number];
   scale: [number, number, number];
@@ -212,6 +216,7 @@ export class SceneDocument extends EventTarget {
       color: state.color,
       defaultColor: state.defaultColor ?? state.color,
       groupId: state.groupId,
+      thread: state.thread,
       mesh,
     };
     if (state.groupId !== undefined) this.nextGroupId = Math.max(this.nextGroupId, state.groupId + 1);
@@ -245,6 +250,8 @@ export class SceneDocument extends EventTarget {
   /** Replace an object's geometry (e.g. after mirroring). */
   setData(obj: SceneObject, data: MeshData): void {
     obj.data = data;
+    // A changed shape is no longer the plain threaded part it was made as.
+    obj.thread = undefined;
     obj.mesh.geometry.dispose();
     obj.mesh.geometry = buildGeometry(data);
     // Rebuild edge lines for the new shape.
@@ -279,6 +286,7 @@ export class SceneDocument extends EventTarget {
       color: obj.color,
       defaultColor: obj.defaultColor,
       groupId: obj.groupId,
+      thread: obj.thread,
       position: m.position.toArray() as [number, number, number],
       quaternion: m.quaternion.toArray() as [number, number, number, number],
       scale: m.scale.toArray() as [number, number, number],

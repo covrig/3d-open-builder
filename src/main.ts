@@ -3,7 +3,7 @@ import './style.css';
 import type { BooleanOp } from './geometry/booleans';
 import type { RoleOp } from './geometry/booleans';
 import { loadManifold } from './geometry/loadManifold';
-import { runOp } from './geometry/workerClient';
+import { cancelAll, onBusyChange, runOp } from './geometry/workerClient';
 import { Autosave, clearAutosave, fromSaved, loadAutosave, type SavedScene } from './app/autosave';
 import { installErrorHandlers, watchGraphicsContext } from './app/errors';
 import { bakeMesh, meshDataToManifold, type MeshData } from './geometry/meshData';
@@ -13,7 +13,7 @@ import { createPrimitive, PRIMITIVE_NAMES, type PrimitiveKind } from './geometry
 import { IMPORT_EXTENSIONS, importFile } from './io/importFile';
 import { exportStl } from './io/stl';
 import { export3mf } from './io/threemf';
-import { SceneDocument, setEdgeColor, type ObjectState, type SceneObject } from './scene/document';
+import { OBJECT_COLORS, SceneDocument, setEdgeColor, type ObjectState, type SceneObject } from './scene/document';
 import { Gizmo } from './scene/gizmo';
 import { Ruler } from './scene/ruler';
 import { Viewport } from './scene/viewport';
@@ -21,8 +21,9 @@ import { MM_PER_UNIT, settings, settingsEvents, toUnit, watchTheme } from './set
 import { loadClipboard, saveClipboard } from './ui/clipboardStore';
 import { ColorPopover } from './ui/colorPopover';
 import { CombineTool } from './ui/combineTool';
+import { ExtrudeTool } from './ui/extrudeTool';
 import { renderIcons } from './ui/icons';
-import { setupAbout, setupPanelOrder, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
+import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
 import { restrictNumberInputs } from './ui/numberInputs';
 import { setupArrange } from './ui/arrange';
 import { hideHint, showHint, watchTopBars } from './ui/hint';
@@ -82,7 +83,8 @@ setupPrivacy();
 setupShortcutsPanel();
 watchTopBars();
 setupArrange(doc, (msg) => toast(msg));
-on('[data-action="toggle-sidebar"]', () => document.body.classList.toggle('sidebar-open'));
+setupPanelToggle();
+setupMultiSelect();
 const ruler = new Ruler();
 viewport.scene.add(ruler.group);
 watchTheme((dark) => {
@@ -123,7 +125,6 @@ let busy = false;
 async function heavy<T>(objs: SceneObject[], compute: () => Promise<T>, apply: (result: T) => void): Promise<void> {
   if (busy) return toast('Still working on the previous operation…');
   busy = true;
-  showHint('busy', 'Working…');
   try {
     const result = await compute();
     if (!objs.every((o) => doc.objects.includes(o))) return toast('The objects changed while computing; nothing was applied');
@@ -132,17 +133,9 @@ async function heavy<T>(objs: SceneObject[], compute: () => Promise<T>, apply: (
     toast(errorText(err));
   } finally {
     busy = false;
-    hideHint('busy');
   }
 }
 
-/** Give an object new world-space geometry (centred), clearing its rotation and scale. */
-function replaceGeometry(obj: SceneObject, piece: { mesh: MeshData; center: [number, number, number] }): void {
-  doc.setData(obj, piece.mesh);
-  obj.mesh.position.set(...piece.center);
-  obj.mesh.quaternion.identity();
-  obj.mesh.scale.set(1, 1, 1);
-}
 
 const splitTool = new SplitTool(viewport, doc, gizmo, heavy, toast);
 new CheckTools(doc, toast);
@@ -230,18 +223,8 @@ on('[data-action="split"]', () => {
   else splitTool.start();
 });
 
-on('[data-action="extrude-down"]', () => {
-  const objs = [...doc.selection];
-  if (objs.length === 0) return toast('Select an object first');
-  void heavy(objs, () => Promise.all(objs.map((o) => runOp('extrudeDown', { item: doc.placed(o) }))), (pieces) => {
-    if (pieces.every((p) => p === null)) return toast('Nothing to fill: the object already sits on the plate');
-    doc.checkpoint();
-    pieces.forEach((piece, i) => {
-      if (piece) replaceGeometry(objs[i], piece);
-    });
-    doc.emit('transform');
-  });
-});
+// Extrude down: a level plane, and below it the shape at the plane down to the plate.
+new ExtrudeTool(viewport, doc, featureBar, toast);
 for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
   btn.addEventListener('click', () =>
     withSelection((objs) => {
@@ -261,6 +244,21 @@ for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
       }
     }),
   );
+}
+
+// --- Working… and Cancel -------------------------------------------------------
+
+// Shown while the geometry worker is busy for more than a moment (quick
+// previews don't flash it). Cancel stops the calculation; nothing changes.
+{
+  const el = $('#busy');
+  let timer: number | undefined;
+  onBusyChange((working) => {
+    clearTimeout(timer);
+    if (working) timer = window.setTimeout(() => (el.hidden = false), 400);
+    else el.hidden = true;
+  });
+  el.querySelector('[data-action="cancel-op"]')!.addEventListener('click', () => cancelAll());
 }
 
 // --- Clipboard ------------------------------------------------------------
@@ -437,10 +435,22 @@ installErrorHandlers({
 });
 watchGraphicsContext(viewport.renderer.domElement);
 
-/** On start, offer to continue with the autosaved scene. */
+/** A fresh start (nothing kept in this browser) gets a torus in the middle of the plate, in a random colour. */
+function addStarter(): void {
+  const color = OBJECT_COLORS[Math.floor(Math.random() * OBJECT_COLORS.length)];
+  const obj = doc.add(PRIMITIVE_NAMES.torus, createPrimitive(wasm, 'torus'), color);
+  drop(obj);
+  doc.emit('transform');
+  // Not something to warn about losing when starting a new drawing, nor to
+  // offer to restore next time unless it gets changed.
+  unexported = false;
+  autosave.markClean();
+}
+
+/** On start, offer to continue with the autosaved scene, or start with a torus when there is none. */
 async function offerRestore(): Promise<void> {
   const saved = await loadAutosave();
-  if (!saved || saved.objects.length === 0) return;
+  if (!saved || saved.objects.length === 0) return addStarter();
   autosave.suspend(true);
   const dialog = $<HTMLDialogElement>('#restore-dialog');
   const n = saved.objects.length;
@@ -612,7 +622,7 @@ canvas.addEventListener('pointerup', (e) => {
   const obj = hit ? doc.byMesh(hit) : undefined;
   if (colors.pickingFor) return colors.finishPick(obj);
 
-  const additive = e.ctrlKey || e.shiftKey || e.metaKey;
+  const additive = e.ctrlKey || e.shiftKey || e.metaKey || multiSelect.on;
   if (obj) doc.select(obj, additive);
   else if (!additive) doc.setSelection([]);
 });

@@ -45,6 +45,23 @@ export function runOp<K extends OpName>(op: K, args: OpArgs<K>): Promise<OpResul
   });
 }
 
+/** Message of the error that operations stopped by cancelAll() fail with. */
+export const CANCELLED = 'Stopped. Nothing was changed.';
+
+/**
+ * Stop whatever is running. A worker busy inside a geometry operation can't
+ * read messages until it finishes, so it is shut down; the next operation
+ * starts a fresh one (loading the geometry engine again takes a moment).
+ */
+export function cancelAll(): void {
+  if (pending.size === 0) return;
+  worker?.terminate();
+  worker = undefined;
+  for (const p of pending.values()) p.reject(new Error(CANCELLED));
+  pending.clear();
+  notify();
+}
+
 /** Called with true while any operation is running, false when all are done. */
 export function onBusyChange(listener: (busy: boolean) => void): void {
   listeners.add(listener);

@@ -123,6 +123,11 @@ export class Autosave {
     this.dirty = true;
   }
 
+  /** Forget changes so far (e.g. the starter object), so they aren't saved on their own. */
+  markClean(): void {
+    this.dirty = false;
+  }
+
   /** Pause saving (e.g. while the restore question is open). */
   suspend(value: boolean): void {
     this.suspended = value;

@@ -3,6 +3,7 @@ import type { Piece } from './cut';
 import { edgeFrame, type EdgeSegment, type V3 } from './edges';
 import { manifoldToMeshData, meshDataToManifold, type PlacedMesh } from './meshData';
 import { recenter } from './meshOps';
+import { threadStandIn, type ThreadInfo } from './threads';
 
 const add = (a: V3, b: V3, s = 1): V3 => [a[0] + b[0] * s, a[1] + b[1] * s, a[2] + b[2] * s];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -356,18 +357,99 @@ export function textOnFace(
   });
 }
 
+const fmtMm = (v: number) => `${Math.round(v * 100) / 100} mm`;
+
+/** Directions to look around a point: the 6 axes and the 8 cube corners. */
+const LOOK: Vec3[] = [
+  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+  ...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x / Math.sqrt(3), y / Math.sqrt(3), z / Math.sqrt(3)] as Vec3))),
+];
+
+/**
+ * Is there room for a hollow with walls `t` thick: a point inside that is
+ * more than `t` from the surface? Rays go inward from sampled faces; the
+ * middle of each chord at least 2t long is where room is likeliest, and from
+ * there the surface is looked for in 14 directions. Looking in only some
+ * directions can overestimate the room (then the hollowing simply runs, and
+ * still reports an empty result if nothing fits), so a refusal means none of
+ * up to a few thousand likeliest spots has room.
+ */
+export function wallsFit(m: Manifold, t: number): boolean {
+  const box = m.boundingBox();
+  const size = [0, 1, 2].map((k) => box.max[k] - box.min[k]);
+  if (Math.min(...size) <= 2 * t) return false;
+  const reach = Math.hypot(...size) + 1;
+  const g = m.getMesh();
+  const p = g.vertProperties, idx = g.triVerts, np = g.numProp;
+  const triCount = idx.length / 3;
+  /** Distance from `from` to the first surface hit going to `to` (past `skip`), or null. */
+  const firstHit = (from: Vec3, to: Vec3, skip = 0): number | null => {
+    for (const h of m.rayCast(from, to)) {
+      const d = Math.hypot(h.position[0] - from[0], h.position[1] - from[1], h.position[2] - from[2]);
+      if (d > skip) return d;
+    }
+    return null;
+  };
+  const room = (c: Vec3): boolean => {
+    for (const d of LOOK) {
+      const hit = firstHit(c, [c[0] + d[0] * reach, c[1] + d[1] * reach, c[2] + d[2] * reach]);
+      if (hit === null || hit <= t) return false;
+    }
+    return true;
+  };
+  for (const samples of [400, 4000]) {
+    const step = Math.max(1, Math.floor(triCount / samples));
+    for (let i = 0; i < triCount; i += step) {
+      const [a, b, c] = [idx[i * 3] * np, idx[i * 3 + 1] * np, idx[i * 3 + 2] * np];
+      const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+      const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const len = Math.hypot(nx, ny, nz);
+      if (len === 0) continue;
+      nx /= len; ny /= len; nz /= len;
+      const cx = (p[a] + p[b] + p[c]) / 3, cy = (p[a + 1] + p[b + 1] + p[c + 1]) / 3, cz = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
+      const start: Vec3 = [cx - nx * 1e-3, cy - ny * 1e-3, cz - nz * 1e-3];
+      const chord = firstHit(start, [cx - nx * reach, cy - ny * reach, cz - nz * reach], 1e-3);
+      if (chord === null || chord < 2 * t) continue;
+      const half = chord / 2;
+      if (room([start[0] - nx * half, start[1] - ny * half, start[2] - nz * half])) return true;
+    }
+    if (step === 1) break;
+  }
+  return false;
+}
+
+/**
+ * Shrinking the surface by a ball takes time in proportion to its triangles
+ * (about 20 s for 10,000). Above this many, Shell refuses rather than run for
+ * minutes, unless the object is a bolt, nut or rod with a plain stand-in.
+ */
+export const SHELL_MAX_TRIANGLES = 20_000;
+
 /**
  * Hollow the object, keeping walls `thickness` thick. The inside surface is
  * the object shrunk by a sphere of that radius (an exact inward offset).
+ * For a bolt, nut or rod (`thread` given), the inside comes from a plain
+ * stand-in without the thread (see threadStandIn): just as safe for the wall
+ * thickness, and far quicker. The outside keeps every detail either way.
  */
-export function shell(wasm: ManifoldToplevel, item: PlacedMesh, thickness: number): Piece {
+export function shell(wasm: ManifoldToplevel, item: PlacedMesh, thickness: number, thread?: ThreadInfo): Piece {
   if (!(thickness > 0)) throw new Error('The wall thickness must be more than 0');
   const { Manifold } = wasm;
   return withCleanup((keep) => {
     const solid = keep(meshDataToManifold(wasm, item.mesh, item.matrix));
+    const inside = thread ? keep(keep(threadStandIn(wasm, thread)).transform(Array.from(item.matrix) as Mat4)) : solid;
+    if (!thread && solid.numTri() > SHELL_MAX_TRIANGLES) {
+      throw new Error(`This object has ${solid.numTri().toLocaleString()} triangles; hollowing it would take minutes. Shell works on up to ${SHELL_MAX_TRIANGLES.toLocaleString()}.`);
+    }
+    // Quick answer before the slow part: if no point inside is more than one
+    // wall thickness from the surface, there is no room for a hollow at all.
+    if (!wallsFit(inside, thickness)) {
+      throw new Error(`The walls don't fit: no part of this object is thicker than ${fmtMm(2 * thickness)} (two walls of ${fmtMm(thickness)}), so nothing would be hollowed. Use thinner walls.`);
+    }
     // A modest sphere keeps this fast; corners inside come out slightly faceted.
     const ball = keep(Manifold.sphere(thickness, 16));
-    const inner = keep(solid.minkowskiDifference(ball));
+    const inner = keep(inside.minkowskiDifference(ball));
     if (inner.isEmpty()) throw new Error('The walls are thicker than the object; use a smaller thickness');
     return toPiece(keep(solid.subtract(inner)));
   });

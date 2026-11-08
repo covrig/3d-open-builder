@@ -160,6 +160,8 @@ export class PartsTools {
       apply: (p, v) => {
         this.doc.checkpoint();
         const obj = this.doc.add(`${threadLabel(v.size as ThreadSize)} ${KIND_NAMES[kind]}`, p.mesh);
+        // Remember how it was made, so Shell can hollow it from a plain stand-in.
+        obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: Number(v.clearance ?? 0), origin: p.center };
         obj.mesh.position.set(...place(p));
         this.doc.setSelection([obj]);
       },

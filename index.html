@@ -81,7 +81,7 @@
         <button data-action="duplicate" data-tip-title="Duplicate (Ctrl+D)" data-tip="Make a copy of the selection, placed a little to the side."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
         <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
-        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-tip="Fill the space under the selected object straight down to the plate, like a solid support."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
+        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-menu="mirror-menu" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z."><i data-lucide="flip-horizontal-2"></i><span>Mirror<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="mirror-menu" class="menu compact" role="menu" hidden>
           <button data-mirror="0" role="menuitem">Mirror X</button>
@@ -101,7 +101,7 @@
         </div>
       </div>
 
-      <div class="group" aria-label="Fix">
+      <div class="group joined" aria-label="Fix">
         <button data-menu="check-menu" data-tip-title="Fix" data-tip="Check for problems that would spoil a print, repair them, or turn the object to print with the least support."><i data-lucide="shield-check"></i><span>Fix<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="check-menu" class="menu compact" role="menu" hidden>
           <button data-action="check" role="menuitem"><i data-lucide="shield-check"></i>Check and repair</button>
@@ -109,9 +109,6 @@
         </div>
       </div>
 
-      <div class="group end">
-        <button data-action="toggle-sidebar" class="sidebar-toggle" data-tip-title="Panel" data-tip="Show or hide the side panel (view, measure, objects)."><i data-lucide="panel-right"></i><span>Panel</span></button>
-      </div>
     </header>
 
     <main class="workspace">
@@ -123,9 +120,15 @@
           </div>
         </noscript>
         <div id="loading">Loading geometry engine…</div>
+        <div id="view-corner">
+          <button data-action="multi-select" class="multi-select" aria-pressed="false" data-tip-title="Select several" data-tip="While on, each tap on an object (or its row in the list) adds it to the selection or takes it out, like Ctrl+click."><i data-lucide="list-checks"></i><span>Select several</span></button>
+          <button data-action="open-panel" class="panel-open" data-tip-title="Panel" data-tip="Show the side panel (view, arrange, measure, objects)."><i data-lucide="panel-right-open"></i><span>Panel</span></button>
+          <button data-action="close-panel" class="panel-close" aria-label="Hide the side panel" data-tip-title="Hide panel" data-tip="Close the side panel for more room. The Panel button brings it back."><i data-lucide="chevron-right"></i></button>
+        </div>
         <div id="brand-overlay" aria-hidden="true"><i data-lucide="box"></i><span>3D Open Builder</span></div>
         <div id="messages">
           <div id="op-hint" role="status" hidden></div>
+          <div id="busy" role="status" hidden><span>Working…</span><button type="button" data-action="cancel-op" data-tip-title="Cancel" data-tip="Stop this calculation. Nothing in the drawing changes.">Cancel</button></div>
           <div id="toast" role="status" hidden></div>
         </div>
         <div id="shortcuts-panel" hidden>

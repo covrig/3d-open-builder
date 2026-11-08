@@ -104,6 +104,19 @@ async function runChecks(b) {
     return webgl ? 'WebGL ok' : 'no WebGL';
   });
 
+  await check('Fresh start shows a torus', async () => {
+    const r = await page.evaluate(() => {
+      const objs = window.app.doc.objects;
+      const box = objs.length ? window.app.doc.worldBox(objs) : null;
+      return { names: objs.map((o) => o.name), minZ: box?.min.z, cx: box ? (box.min.x + box.max.x) / 2 : null };
+    });
+    if (r.names.length !== 1 || !r.names[0].startsWith('Torus')) throw new Error(`objects: ${JSON.stringify(r.names)}`);
+    if (Math.abs(r.minZ) > 0.2 || Math.abs(r.cx) > 0.2) throw new Error(`not centred on the plate (x ${r.cx}, bottom ${r.minZ})`);
+    // The remaining checks start from an empty plate.
+    await page.evaluate(() => window.app.doc.clear());
+    return 'one torus, centred, on the plate';
+  });
+
   await check('Add object from menu', async () => {
     await clickSel(page, '[data-menu="add-menu"]');
     await clickSel(page, '[data-insert="cube"]');
@@ -277,6 +290,8 @@ async function runChecks(b) {
     await select([top]);
     await page.evaluate(() => (window.meshBefore = window.app.doc.objects.at(-1).data));
     await page.click('[data-action="extrude-down"]');
+    // The plane starts just above the bottom; Apply once the preview is ready.
+    await applyFeature(page);
     await page.waitForFunction(() => window.app.doc.objects.at(-1).data !== window.meshBefore, { timeout: 15000 });
     const box = await boxOf(top);
     if (!near(box.min[2], 0)) throw new Error(`bottom at ${box.min[2].toFixed(2)}`);
@@ -435,6 +450,107 @@ async function runChecks(b) {
     const moveMs = (Date.now() - t1) / 20;
     await page.mouse.up();
     return `turned; ${ms.toFixed(1)} ms per mouse move (moving: ${moveMs.toFixed(1)} ms)`;
+  });
+
+  await check('Panel closes and opens from the view corner', async () => {
+    await clickSel(page, '#view-corner [data-action="close-panel"]');
+    await sleep(300);
+    if (await visible(page, '#sidebar')) throw new Error('panel still shown after >');
+    if (!(await visible(page, '#view-corner [data-action="open-panel"]'))) throw new Error('Panel button not shown');
+    await clickSel(page, '#view-corner [data-action="open-panel"]');
+    await sleep(300);
+    if (!(await visible(page, '#sidebar'))) throw new Error('panel did not come back');
+    if (await visible(page, '#view-corner [data-action="open-panel"]')) throw new Error('Panel button still shown while open');
+    return 'closed with >, reopened with Panel';
+  });
+
+  await check('Home view (H) returns to the start angle', async () => {
+    const dir = () => page.evaluate(() => {
+      const { camera, orbit } = window.app.viewport;
+      const d = camera.position.clone().sub(orbit.target).normalize();
+      return d.toArray();
+    });
+    await page.evaluate(() => {
+      const { camera, orbit } = window.app.viewport;
+      camera.position.set(300, 50, 40);
+      orbit.update();
+    });
+    await page.mouse.click(300, 400); // focus the page, not a field
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('h');
+    await sleep(200);
+    const d = await dir();
+    const want = [-170, -260, 190];
+    const len = Math.hypot(...want);
+    const dot = d.reduce((s, v, i) => s + v * (want[i] / len), 0);
+    if (dot < 0.999) throw new Error(`camera direction ${d.map((v) => v.toFixed(2))}`);
+    return 'start angle restored';
+  });
+
+  await check('Number fields refuse letters', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    await select([id]);
+    await page.click('[data-mode="translate"]');
+    const input = '#transform-bar .field.x input';
+    // Start from an empty field (triple-click doesn't select text in number fields everywhere).
+    await page.$eval(input, (e) => { e.value = ''; e.focus(); });
+    await page.keyboard.type('1a2e.5b');
+    const v = await page.$eval(input, (e) => e.value);
+    await page.keyboard.press('Escape');
+    if (v !== '12.5') throw new Error(`field shows "${v}"`);
+    return 'typed 1a2e.5b, got 12.5';
+  });
+
+  await check('Check and Repair box with log and undo', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    await select([id]);
+    await clickSel(page, '[data-menu="check-menu"]');
+    await clickSel(page, '#check-menu [data-action="check"]');
+    await page.waitForFunction(() => document.querySelectorAll('#check-results .check-list li').length > 0, { timeout: 15000 });
+    await page.click('#check-repair');
+    await page.waitForFunction(() => document.querySelectorAll('#repair-log li').length > 0 && !document.querySelector('#check-repair').disabled, { timeout: 15000 });
+    const log = await page.$$eval('#repair-log li', (els) => els.map((e) => e.textContent));
+    await page.click('#check-dialog button[value="close"]');
+    if (await visible(page, '#check-dialog')) throw new Error('box did not close');
+    return `log: ${log.join(' | ')}`;
+  });
+
+  await check('Privacy opens as a box', async () => {
+    await clickSel(page, '[data-menu="file-menu"]');
+    await clickSel(page, '#file-menu [data-action="privacy"]');
+    if (!(await visible(page, '#privacy-dialog'))) throw new Error('privacy box not shown');
+    await page.click('#privacy-dialog button[type="submit"]');
+    if (await visible(page, '#privacy-dialog')) throw new Error('privacy box did not close');
+  });
+
+  await check('Side panel order from Settings', async () => {
+    const order = () => page.$$eval('#sidebar > [data-panel]', (els) => els.map((e) => e.dataset.panel));
+    const before = await order();
+    await clickSel(page, '[data-menu="file-menu"]');
+    await clickSel(page, '#file-menu [data-action="settings"]');
+    // Move the second section up, check, then move it back down.
+    await clickSel(page, '#panel-order li:nth-child(2) .up');
+    const moved = await order();
+    await clickSel(page, '#panel-order li:nth-child(1) .down');
+    await page.click('[data-action="close-settings"]');
+    if (moved[0] !== before[1] || moved[1] !== before[0]) throw new Error(`order ${moved.join(',')} from ${before.join(',')}`);
+    const back = await order();
+    if (back.join() !== before.join()) throw new Error(`not restored: ${back.join(',')}`);
+    return `${before[1]} moved above ${before[0]} and back`;
+  });
+
+  await check('Combined objects get a new name', async () => {
+    await reset();
+    const a = await addCube(0, 0, 20);
+    const bId = await addCube(20, 0, 20);
+    await select([a, bId]);
+    await page.click('[data-boolean="union"]');
+    await page.waitForFunction(() => window.app.doc.objects.length === 1, { timeout: 15000 });
+    const name = await page.evaluate(() => window.app.doc.objects[0].name);
+    if (!/^Object \d+$/.test(name)) throw new Error(`merged object is called "${name}"`);
+    return name;
   });
 
   await check('Top bar, brand and toolbar layout', async () => {

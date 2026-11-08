@@ -1,10 +1,14 @@
-<img src="public/icon.svg" width="64" alt="" />
+<img src="docs/3dopenbuilder.png" alt="3D Open Builder: a torus on the build plate with the toolbar, move handles and side panel" />
 
 # 3D Open Builder
 
-A free, open-source 3D model builder that runs entirely in your
-browser. Your files never leave your
-computer.
+A free, open-source 3D model builder for 3D printing that runs entirely in your browser. Your files never leave your computer.
+
+- **Shapes and threads:** basic shapes, plus bolts, nuts, threaded rods and threaded holes in metric and imperial sizes.
+- **Combine and edit:** merge, subtract, intersect, split, mirror, pattern, extrude down to the plate, shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces).
+- **Place precisely:** move, rotate and size handles with snapping, align and distribute, lay flat, measuring tools, and a reference picture to trace over.
+- **Print-ready:** print check with automatic repair, best print orientation, and export to 3MF (with colours) or STL. Imports 3MF, STL and OBJ.
+- **Safe to use:** 100 undo steps, autosave, and works on desktop, tablet and phone.
 
 **Use it:** https://covrig.github.io/3d-open-builder/
 
@@ -35,6 +39,7 @@ in `dist/`. Every push to `main` is tested and published to GitHub Pages.
 | `src/io/` | Reading and writing 3MF, STL and OBJ files. |
 | `src/app/` | Autosave, restore and error recovery. |
 | `src/style.css` | The look of the app, in light and dark colours. |
+| `docs/` | The screenshot at the top of this page. |
 | `public/` | Files served as they are: the app icon, fonts for text on faces, and the licence texts of the libraries used. |
 | `tests/` | Unit tests for the geometry, file formats and saving. |
 | `vendor/` | The libraries the app uses, stored in this repository so nothing is fetched from other sites — see `vendor/README.md`. They are: **three** (3D drawing), **manifold-3d** (solid geometry engine), **fflate** (zip, for 3MF files), **lucide** (icons) and **opentype.js** (reading fonts). |

@@ -174,6 +174,19 @@ export class FeatureBar {
     return label;
   }
 
+  /** Change a field from outside (e.g. dragging a handle in the view) and recompute the preview soon (delay null: don't). */
+  setValue(key: string, value: number | string | boolean, delay: number | null = 120): void {
+    if (!this.spec) return;
+    this.values[key] = value;
+    const input = this.el.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${key}"] input, [data-key="${key}"] select`);
+    if (input && document.activeElement !== input) {
+      if (input instanceof HTMLInputElement && input.type === 'checkbox') input.checked = Boolean(value);
+      else input.value = String(value);
+    }
+    // null: only show the value (the preview already uses it).
+    if (delay !== null) this.refresh(delay);
+  }
+
   /** Close if an object the tool works on was deleted or got a new shape. */
   private checkTargets(): void {
     if (!this.spec || this.watched.length === 0) return;

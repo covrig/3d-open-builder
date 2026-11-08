@@ -1,5 +1,6 @@
 import type { SceneDocument, SceneObject } from '../scene/document';
 import type { ColorPopover } from './colorPopover';
+import { multiSelect } from './chrome';
 import { icon } from './icons';
 
 export interface RowActions {
@@ -121,7 +122,7 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
           rowButton('copy-plus', 'Duplicate', `Make a copy of ${obj.name}.`, () => actions.duplicate(obj)),
           rowButton('trash-2', 'Delete', `Remove ${obj.name}.`, () => actions.remove(obj)),
         );
-        li.addEventListener('click', (e) => doc.select(obj, e.ctrlKey || e.shiftKey || e.metaKey));
+        li.addEventListener('click', (e) => doc.select(obj, e.ctrlKey || e.shiftKey || e.metaKey || multiSelect.on));
         rows.set(obj, li);
         return li;
       }),
