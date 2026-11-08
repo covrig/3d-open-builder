@@ -89,10 +89,25 @@ export function edgeTreatment(
       // On curves, overlap the neighbouring piece slightly so no slivers remain;
       // at corners and ends stop exactly at the end point.
       const overlap = Math.min(f.length * 0.08, size * 0.5) + 1e-3;
-      const extA = s.convex && continues(i, s.a) ? overlap : 0;
-      const extB = s.convex && continues(i, s.b) ? overlap : 0;
+      // At a corner, an outside edge's tool runs on past the end: whatever it
+      // reaches there lies beyond this edge's chamfer within the two faces, so
+      // the cut ends on the neighbouring face itself (exact at any corner angle;
+      // ending square to the edge only fits where that face is at 90°).
+      const corner = leg * 3 + size;
+      const extA = !s.convex ? 0 : continues(i, s.a) ? overlap : corner;
+      const extB = !s.convex ? 0 : continues(i, s.b) ? overlap : corner;
       const a = add(s.a, f.u, -extA), b = add(s.b, f.u, extB);
-      const pts: Vec3[] = [a, add(a, f.t1, leg), add(a, f.t2, leg), b, add(b, f.t1, leg), add(b, f.t2, leg)];
+      // The tool's sides would lie exactly in the two faces and its ridge on the
+      // edge; such touching surfaces can leave paper-thin plates standing. Push
+      // the sides a hair out of the solid (into it, for a filled inside corner):
+      // the ridge moves off the edge, and the two far corners slide along the
+      // chamfer line past the faces, so the chamfer surface itself stays exact.
+      const m = (s.convex ? 1 : -1) * EPS_OFFSET;
+      const ridge = (p: V3) => add(p, add(s.n1, s.n2), m);
+      const across = norm([f.t1[0] - f.t2[0], f.t1[1] - f.t2[1], f.t1[2] - f.t2[2]]);
+      const onFace1 = (p: V3) => add(add(p, f.t1, leg), across, EPS_OFFSET * 4);
+      const onFace2 = (p: V3) => add(add(p, f.t2, leg), across, -EPS_OFFSET * 4);
+      const pts: Vec3[] = [ridge(a), onFace1(a), onFace2(a), ridge(b), onFace1(b), onFace2(b)];
       let tool = keep(Manifold.hull(pts));
       prisms[i] = pts;
       if (kind === 'fillet') {
@@ -209,6 +224,9 @@ function dropSlivers(
   const kept = sized.filter((p, i) => i < before || p.v > total * 0.01).map((p) => p.m);
   return keep(wasm.Manifold.compose(kept));
 }
+
+/** How far (mm) edge tools reach past the faces they cut along */
+const EPS_OFFSET = 0.002;
 
 const dot3 = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 

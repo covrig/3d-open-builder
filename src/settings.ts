@@ -59,6 +59,8 @@ function load(): Settings {
     // Storage blocked (private window etc.) or unreadable: use the defaults.
   }
   if (!UNITS.includes(s.unit)) s.unit = 'mm'; // older versions offered µm, ft and m
+  // Measuring always starts with snapping on (turning it off lasts for this visit only).
+  s.ui.measure.snap = true;
   return s;
 }
 

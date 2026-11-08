@@ -13,7 +13,7 @@ type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) =
 const AXES: Record<string, V3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 /**
- * The Modify menu: chamfer, fillet, shell, gusset and pattern. Each opens
+ * The More menu (chamfer, fillet, shell, gusset) and the Pattern button. Each opens
  * the feature bar with its settings and a live preview.
  */
 export class ModifyTools {

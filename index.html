@@ -20,7 +20,7 @@
         <button data-menu="file-menu" data-tip-title="Menu" data-tip="New drawing, import 3D objects, export 3MF or STL, settings, shortcuts, privacy and libraries."><i data-lucide="menu"></i><span>Menu</span></button>
         <div id="file-menu" class="menu" role="menu" hidden>
           <button data-action="new" role="menuitem"><i data-lucide="file-plus"></i>New drawing</button>
-          <button data-action="open" role="menuitem"><i data-lucide="folder-open"></i>Import 3D object… <small>3MF, STL, OBJ</small> <kbd>Ctrl+O</kbd></button>
+          <button data-action="open" role="menuitem"><i data-lucide="folder-open"></i>Import 3D object… <small>3MF, STL, OBJ</small></button>
           <button data-action="reference" role="menuitem"><i data-lucide="image"></i>Reference picture… <small>a drawing or photo to build on</small></button>
           <hr />
           <button data-action="export-3mf" role="menuitem"><i data-lucide="save"></i>Export 3MF <small>all objects and colours</small></button>
@@ -76,32 +76,30 @@
       <div class="group" aria-label="Edit">
         <button data-action="split" data-tip-title="Split" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
         <button data-action="duplicate" data-tip-title="Duplicate (Ctrl+D)" data-tip="Make a copy of the selection, placed a little to the side."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
+        <button data-modify="pattern" data-tip-title="Pattern" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
+        <button data-modify="text" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
         <button data-action="extrude-down" data-tip-title="Extrude down" data-tip="Fill the space under the selected object straight down to the plate, like a solid support."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-menu="mirror-menu" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z."><i data-lucide="flip-horizontal-2"></i><span>Mirror<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="mirror-menu" class="menu" role="menu" hidden>
-          <button data-mirror="0" role="menuitem">Mirror X <small>left ↔ right</small></button>
-          <button data-mirror="1" role="menuitem">Mirror Y <small>front ↔ back</small></button>
-          <button data-mirror="2" role="menuitem">Mirror Z <small>upside down</small></button>
+          <button data-mirror="0" role="menuitem">Mirror X</button>
+          <button data-mirror="1" role="menuitem">Mirror Y</button>
+          <button data-mirror="2" role="menuitem">Mirror Z</button>
         </div>
-        <button data-menu="modify-menu" data-tip-title="Modify" data-tip="Chamfer, fillet, shell, gusset, pattern and text on a face."><i data-lucide="pencil-ruler"></i><span>Modify<i data-lucide="chevron-down" class="caret"></i></span></button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Chamfer, fillet, shell and gusset."><i data-lucide="pencil-ruler"></i><span>More<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="modify-menu" class="menu" role="menu" hidden>
-          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Chamfer <small>bevel edges</small></button>
-          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Fillet <small>round edges and inside corners</small></button>
-          <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell <small>hollow with set wall thickness</small></button>
-          <hr />
-          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Gusset <small>brace an inside corner</small></button>
-          <button data-modify="pattern" role="menuitem"><i data-lucide="layout-grid"></i>Pattern <small>repeat in a row or circle</small></button>
-          <hr />
-          <button data-modify="text" role="menuitem"><i data-lucide="type"></i>Text on a face <small>emboss or deboss</small></button>
+          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Chamfer</button>
+          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Fillet</button>
+          <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
+          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Gusset</button>
         </div>
       </div>
 
       <div class="group" aria-label="Check">
         <button data-menu="check-menu" data-tip-title="Check and repair" data-tip="Find problems that would spoil a print and fix what can be fixed automatically."><i data-lucide="shield-check"></i><span>Check<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="check-menu" class="menu" role="menu" hidden>
-          <button data-action="check" role="menuitem"><i data-lucide="shield-check"></i>Check for printing… <small>holes, normals, walls, overlaps</small></button>
-          <button data-action="repair" role="menuitem"><i data-lucide="wrench"></i>Repair <small>fix what can be fixed</small></button>
-          <button data-action="orient" role="menuitem"><i data-lucide="rotate-3d"></i>Best print orientation <small>fewest overhangs</small></button>
+          <button data-action="check" role="menuitem"><i data-lucide="shield-check"></i>Check for printing</button>
+          <button data-action="repair" role="menuitem"><i data-lucide="wrench"></i>Repair</button>
+          <button data-action="orient" role="menuitem"><i data-lucide="rotate-3d"></i>Best print orientation</button>
         </div>
       </div>
 
@@ -137,7 +135,6 @@
             <dt>Arrow keys</dt><dd>Move selection (Shift: ×10)</dd>
             <dt>Page Up / Down</dt><dd>Move selection up / down</dd>
             <dt>F</dt><dd>Fit view</dd>
-            <dt>Ctrl+O</dt><dd>Import 3D object</dd>
             <dt>Left drag</dt><dd>Turn the view</dd>
             <dt>Right drag</dt><dd>Pan</dd>
             <dt>Wheel</dt><dd>Zoom</dd>
@@ -215,7 +212,7 @@
         <section class="needs-selection">
           <header><h2>Arrange</h2></header>
           <div class="button-grid cols-3 tiles">
-            <button data-action="drop" data-tip-title="Drop to plate" data-tip="Move the object straight down until it rests on the plate."><i data-lucide="arrow-down-to-line"></i><span>Drop</span></button>
+            <button data-action="drop" data-tip-title="Place on plate" data-tip="Move the selected objects straight up or down until their lowest point rests on the plate."><i data-lucide="align-end-horizontal"></i><span>On plate</span></button>
             <button data-action="lay-flat" data-tip-title="Lay flat" data-tip="Turn the object onto its largest flat side and rest it on the plate."><i data-lucide="panel-bottom"></i><span>Lay flat</span></button>
             <button data-action="center" data-tip-title="Center on plate" data-tip="Move the selection to the middle of the plate, keeping its height."><i data-lucide="locate-fixed"></i><span>Center</span></button>
             <button data-menu="align-menu" data-tip-title="Align" data-tip="Line up two or more objects by their left, right, front, back, top or bottom, or their centres."><i data-lucide="align-horizontal-justify-start"></i><span>Align</span></button>

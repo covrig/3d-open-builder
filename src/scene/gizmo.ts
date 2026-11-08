@@ -19,9 +19,12 @@ const NEAR = 20; // mm: only objects within this distance count for face snappin
 /**
  * Where each rotation ring carries its arrow, as a step of the 72 around it
  * (ring a runs through e1 = axis a+1 at step 0 and e2 = axis a+2 at step 18):
- * X ring at +Z, Y ring at +X, Z ring at -Y.
+ * X ring on top (+Z); the Y ring at +X or -X and the Z ring at +Y or -Y,
+ * whichever side faces the camera, so no arrow hides behind the object.
  */
-const RING_ARROW_STEP = [18, 18, 54];
+const RING_ARROW_STEPS: [number, number][] = [[18, 18], [18, 54], [18, 54]];
+/** Which world axis decides the side for each ring (X ring: none) */
+const RING_SIDE_AXIS = [-1, 0, 1];
 
 /** Double-headed arrow along +x, centred on the origin. */
 function doubleArrow(length: number): string {
@@ -53,6 +56,8 @@ interface Handle {
   spin?: number;
   /** Rotate: the ring is seen roughly face-on */
   faceOn?: boolean;
+  /** Rotate: where on the ring the arrow sits (step of 72) */
+  step?: number;
 }
 
 interface DragState {
@@ -262,7 +267,11 @@ export class Gizmo {
         h.hit!.setAttribute('d', `M${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('L')}Z`);
         // Arrow spots fixed on the rings (X ring on top, Y ring at +X, Z ring at
         // the front), so they turn with the view instead of jumping around it.
-        const best = RING_ARROW_STEP[a];
+        // Keep the side while dragging; otherwise the side nearer the camera.
+        const sideAxis = RING_SIDE_AXIS[a];
+        const near = sideAxis < 0 || cam.getComponent(sideAxis) >= center.getComponent(sideAxis);
+        const best = this.drag && h.step !== undefined ? h.step : RING_ARROW_STEPS[a][near ? 0 : 1];
+        h.step = best;
         // Screen direction of a positive turn at the arrow, and pixels per radian.
         const tangent = pts[(best + 1) % 72].clone().sub(pts[(best + 71) % 72]);
         const len = tangent.length();

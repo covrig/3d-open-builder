@@ -564,7 +564,6 @@ document.addEventListener('keydown', (e) => {
   if (ctrl && key === 'v') return run(actions.paste);
   if (ctrl && key === 'd') return run(actions.duplicate);
   if (ctrl && key === 'a') return run(() => doc.setSelection(doc.objects));
-  if (ctrl && key === 'o') return run(openDialog);
   if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) return run(actions.delete);
   if (!ctrl && !e.altKey && key === 'f') return run(fitView);
   // Arrow keys: an active tool (text, threaded hole) may use them to nudge;

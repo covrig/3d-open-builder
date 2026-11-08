@@ -133,6 +133,26 @@ describe('chamfer and fillet', () => {
     }
   });
 
+  it('fully chamfers and fillets slanted shapes without plates, dents or loose parts', () => {
+    // A chamfered or filleted convex shape stays convex: its hull is no bigger than itself.
+    for (const kind of ['wedge', 'hexagon', 'pyramid'] as const) {
+      const mesh = createPrimitive(wasm, kind);
+      for (const k of ['chamfer', 'fillet'] as const) {
+        for (const size of [2, 5]) {
+          const out = edgeTreatment(wasm, { mesh, matrix: IDENTITY }, findEdges(mesh).segments, k, size);
+          const m = meshDataToManifold(wasm, out.mesh);
+          const hull = m.hull();
+          const dent = hull.volume() - m.volume();
+          const pieces = m.decompose().length;
+          m.delete();
+          hull.delete();
+          expect(dent, `${kind} ${k} ${size}`).toBeLessThan(1);
+          expect(pieces, `${kind} ${k} ${size}`).toBe(1);
+        }
+      }
+    }
+  });
+
   it('adds material in an inside corner', () => {
     const l = lBlock();
     const inner = findEdges(l).segments.filter((s) => !s.convex);

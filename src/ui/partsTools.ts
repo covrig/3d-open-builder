@@ -77,7 +77,7 @@ class FacePlacement {
 }
 
 /**
- * Threaded parts (Add object menu) and text on a face (Modify menu). A
+ * Threaded parts (Add object menu) and text on a face (Text button). A
  * threaded hole is placed by clicking a face and is cut into that object on
  * Apply, so no separate cutter object is ever left behind.
  */
@@ -96,7 +96,7 @@ export class PartsTools {
         else this.part(kind);
       });
     }
-    document.querySelector('[data-modify="text"]')!.addEventListener('click', () => this.text());
+    for (const b of document.querySelectorAll('[data-modify="text"]')) b.addEventListener('click', () => this.text());
   }
 
   /** Clicks on any object's face place `p`; arrow keys nudge it. */

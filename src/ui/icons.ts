@@ -1,5 +1,5 @@
 import {
-  Angle, ArrowDownFromLine, ArrowDownToLine, Axis3d, Box, ChevronDown, CircleDashed, CircleDot, Layers,
+  AlignEndHorizontal, Angle, ArrowDownFromLine, ArrowDownToLine, Axis3d, Box, ChevronDown, CircleDashed, CircleDot, Layers,
   CircleQuestionMark, ClipboardPaste, Circle, Cone, Copy, CopyPlus, Cylinder, Dome, Download, Eraser,
   File, FilePlus, FlipHorizontal2, Focus, FolderOpen, Ghost, Globe, Grid3x3, Group, Hexagon, LocateFixed,
   Lock, LockOpen, Move, PanelBottom, Pipette, Plus, Pyramid, Redo2, RotateCcw, RotateCw, Ruler, Save,
@@ -15,7 +15,7 @@ import {
 
 // Only the icons we use are imported, so the bundle stays small.
 const ICONS: Record<string, IconNode> = {
-  Angle, ArrowDownFromLine, ArrowDownToLine, Axis3d, Box, ChevronDown, CircleDashed, CircleDot, Layers,
+  AlignEndHorizontal, Angle, ArrowDownFromLine, ArrowDownToLine, Axis3d, Box, ChevronDown, CircleDashed, CircleDot, Layers,
   CircleQuestionMark, ClipboardPaste, Circle, Cone, Copy, CopyPlus, Cylinder, Dome, Download, Eraser,
   File, FilePlus, FlipHorizontal2, Focus, FolderOpen, Ghost, Globe, Grid3x3, Group, Hexagon, LocateFixed,
   Lock, LockOpen, Move, PanelBottom, Pipette, Plus, Pyramid, Redo2, RotateCcw, RotateCw, Ruler, Save,

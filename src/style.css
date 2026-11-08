@@ -722,6 +722,7 @@ dialog footer { gap: 8px; }
 .toolbar button svg { width: 18px; height: 18px; }
 .toolbar .caret { width: 11px !important; height: 11px !important; margin-left: 1px; }
 .sidebar-toggle { display: none !important; }
+.toolbar .sidebar-toggle svg { color: #f08a24 !important; }
 .menu-heading {
   padding: 8px 10px 4px;
   font-size: 11px;
@@ -744,12 +745,13 @@ dialog footer { gap: 8px; }
    side panel becomes a drawer over the view that the Panel button opens.
    Wide landscape screens keep the normal layout. */
 @media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
-  .toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  /* Buttons that don't fit go on a second row. */
+  .toolbar { flex-wrap: wrap; row-gap: 2px; }
   .toolbar .group { flex: none; }
   .brand span { display: none; }
   .sidebar-toggle { display: inline-flex !important; }
   /* Keep the Panel button in sight at the right end while the toolbar scrolls. */
-  .toolbar .group.end { position: sticky; right: 0; margin-left: auto; background: var(--panel); padding-left: 6px; }
+  .toolbar .group.end { margin-left: auto; }
   /* The closed drawer waits off to the right; clip it so the page never scrolls sideways. */
   .workspace { position: relative; overflow: hidden; }
   #sidebar {
