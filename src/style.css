@@ -311,7 +311,8 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 220px;
+  /* About 12 rows (34 px each) before the list scrolls. */
+  max-height: 424px;
   overflow-y: auto;
 }
 .items li {
@@ -581,7 +582,7 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
   .button-grid.tiles > button span { display: none; }
   #sidebar { gap: 8px; padding: 8px; }
   #sidebar section, #sidebar details.panel { padding: 8px; gap: 6px; }
-  .items { max-height: 160px; }
+  .items { max-height: 364px; } /* about 10 rows */
 }
 
 /* --- Round 7 ------------------------------------------------------------- */
@@ -882,3 +883,12 @@ svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
   border-radius: 4px;
   white-space: nowrap;
 }
+/* Export: file name box */
+.export-name { flex-direction: column; gap: 6px !important; }
+.export-field { display: flex; align-items: center; gap: 6px; width: 100%; }
+.export-field input {
+  flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border-strong); border-radius: 6px; padding: 7px 9px;
+}
+.export-field input:focus { outline: none; border-color: var(--accent); }
+#export-note { margin: 0; }

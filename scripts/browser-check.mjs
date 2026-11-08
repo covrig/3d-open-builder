@@ -623,6 +623,59 @@ async function runChecks(b) {
     return 'refused while open; reopened Pattern after Esc';
   });
 
+  await check('Export asks for a file name', async () => {
+    await reset();
+    const nameShown = async () => {
+      await clickSel(page, '[data-menu="file-menu"]');
+      await clickSel(page, '#file-menu [data-action="export-3mf"]');
+      await page.waitForSelector('#export-dialog[open]', { timeout: 5000 });
+      const v = await page.$eval('#export-name', (e) => e.value);
+      await page.click('#export-dialog button[value="cancel"]');
+      return v;
+    };
+    await addCube(0, 0, 20);
+    const fresh = await nameShown();
+    // Import a small STL called bracket.stl: the proposal becomes bracket_open_builder.
+    await page.evaluate(async () => {
+      const stl = 'solid t\nfacet normal 0 0 -1\nouter loop\nvertex 0 0 0\nvertex 0 10 0\nvertex 10 0 0\nendloop\nendfacet\n'
+        + 'facet normal 0 -1 0\nouter loop\nvertex 0 0 0\nvertex 10 0 0\nvertex 0 0 10\nendloop\nendfacet\n'
+        + 'facet normal -1 0 0\nouter loop\nvertex 0 0 0\nvertex 0 0 10\nvertex 0 10 0\nendloop\nendfacet\n'
+        + 'facet normal 1 1 1\nouter loop\nvertex 10 0 0\nvertex 0 10 0\nvertex 0 0 10\nendloop\nendfacet\nendsolid t\n';
+      await window.app.openFiles([new File([stl], 'bracket.stl')]);
+    });
+    const imported = await nameShown();
+    if (fresh !== 'open_builder') throw new Error(`fresh drawing proposes "${fresh}"`);
+    if (imported !== 'bracket_open_builder') throw new Error(`after importing bracket.stl: "${imported}"`);
+    return `${fresh}; after import: ${imported}`;
+  });
+
+  await check('Single-key tool shortcuts', async () => {
+    await reset();
+    await page.mouse.click(5, 300);
+    const count = () => page.evaluate(() => window.app.doc.objects.length);
+    await page.keyboard.press('1');
+    await page.keyboard.press('2');
+    await page.keyboard.press('3');
+    const names = await page.evaluate(() => window.app.doc.objects.map((o) => o.name.replace(/ \d+$/, '')));
+    if (names.join() !== 'Cube,Cylinder,Sphere') throw new Error(`1, 2, 3 added: ${names.join(', ')}`);
+    await page.keyboard.press('d');
+    if ((await count()) !== 4) throw new Error('D did not duplicate');
+    const titles = {};
+    for (const [key, want] of [['b', 'Edge bevel'], ['o', 'Edge rounding'], ['p', 'Pattern'], ['e', 'Extrude down']]) {
+      await page.evaluate(() => window.app.doc.setSelection([window.app.doc.objects[0]]));
+      await page.keyboard.press(key);
+      await sleep(150);
+      titles[key] = await page.$eval('#feature-bar', (e) => (e.hidden ? '' : e.querySelector('.bar-title').textContent));
+      await page.keyboard.press('Escape');
+      if (titles[key] !== want) throw new Error(`${key.toUpperCase()} opened "${titles[key]}"`);
+    }
+    await page.keyboard.press('s');
+    const split = await visible(page, '#split-bar');
+    await page.keyboard.press('Escape');
+    if (!split) throw new Error('S did not open Split');
+    return '1 2 3 D B O P E S all work';
+  });
+
   await check('Top bar, brand and toolbar layout', async () => {
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));

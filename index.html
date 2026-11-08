@@ -36,11 +36,11 @@
 
       <div class="group">
         <button data-menu="add-menu" class="add-button" data-tip-title="Add object" data-tip="Add a shape or a threaded part."><i data-lucide="plus"></i><span>Add object<i data-lucide="chevron-down" class="caret"></i></span></button>
-        <div id="add-menu" class="menu" role="menu" hidden>
+        <div id="add-menu" class="menu compact" role="menu" hidden>
           <div class="menu-heading">Shapes</div>
-          <button data-insert="cube" role="menuitem"><i data-lucide="box"></i>Cube</button>
-          <button data-insert="cylinder" role="menuitem"><i data-lucide="cylinder"></i>Cylinder</button>
-          <button data-insert="sphere" role="menuitem"><i data-lucide="circle"></i>Sphere</button>
+          <button data-insert="cube" role="menuitem"><i data-lucide="box"></i>Cube<kbd>1</kbd></button>
+          <button data-insert="cylinder" role="menuitem"><i data-lucide="cylinder"></i>Cylinder<kbd>2</kbd></button>
+          <button data-insert="sphere" role="menuitem"><i data-lucide="circle"></i>Sphere<kbd>3</kbd></button>
           <button data-insert="cone" role="menuitem"><i data-lucide="cone"></i>Cone</button>
           <button data-insert="pyramid" role="menuitem"><i data-lucide="pyramid"></i>Pyramid</button>
           <button data-insert="wedge" role="menuitem"><i data-lucide="triangle-right"></i>Wedge</button>
@@ -71,16 +71,16 @@
       <div class="row-break" aria-hidden="true"></div>
 
       <div class="group" aria-label="Combine">
-        <button data-boolean="union" data-tip-title="Merge" data-tip="Join the selected objects into one object. Objects that don't touch become one object made of separate pieces."><i data-lucide="squares-unite"></i><span>Merge</span></button>
-        <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-tip="Cut objects out of others in two steps: click the objects to cut into, then the cutters. One cutter can go through several objects."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
-        <button data-boolean="intersection" data-tip-title="Intersect" data-tip="Keep only the parts of objects inside other shapes, in two steps: click the objects to trim, then the shapes."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
+        <button data-boolean="union" data-tip-title="Merge (M)" data-tip="Join the selected objects into one object. Objects that don't touch become one object made of separate pieces."><i data-lucide="squares-unite"></i><span>Merge</span></button>
+        <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract (N)" data-tip="Cut objects out of others in two steps: click the objects to cut into, then the cutters. One cutter can go through several objects."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
+        <button data-boolean="intersection" data-tip-title="Intersect (I)" data-tip="Keep only the parts of objects inside other shapes, in two steps: click the objects to trim, then the shapes."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
       </div>
 
       <div class="group" aria-label="Edit">
-        <button data-action="duplicate" data-tip-title="Duplicate (Ctrl+D)" data-tip="Make a copy of the selection, placed a little to the side."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
-        <button data-action="split" class="wide-only" data-tip-title="Split" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
-        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
-        <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
+        <button data-action="duplicate" data-tip-title="Duplicate (D)" data-tip="Make a copy of the selection, placed a little to the side."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
+        <button data-action="split" class="wide-only" data-tip-title="Split (S)" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
+        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down (E)" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
+        <button data-modify="pattern" class="wide-only" data-tip-title="Pattern (P)" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
         <button data-menu="mirror-menu" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z."><i data-lucide="flip-horizontal-2"></i><span>Mirror<i data-lucide="chevron-down" class="caret"></i></span></button>
         <div id="mirror-menu" class="menu compact" role="menu" hidden>
@@ -94,8 +94,8 @@
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
           <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
           <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
-          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Edge bevel</button>
-          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Edge rounding</button>
+          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Edge bevel<kbd>B</kbd></button>
+          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Edge rounding<kbd>O</kbd></button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
           <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Brace</button>
         </div>
@@ -136,7 +136,11 @@
           <dl>
             <dt>Ctrl+Z / Ctrl+Y</dt><dd>Undo / redo</dd>
             <dt>Ctrl+C / X / V</dt><dd>Copy / cut / paste</dd>
-            <dt>Ctrl+D</dt><dd>Duplicate</dd>
+            <dt>D or Ctrl+D</dt><dd>Duplicate</dd>
+            <dt>1 / 2 / 3</dt><dd>Add cube / cylinder / sphere</dd>
+            <dt>M / N / I</dt><dd>Merge / subtract / intersect</dd>
+            <dt>S / E / P</dt><dd>Split / extrude / pattern</dd>
+            <dt>B / O</dt><dd>Edge bevel / edge rounding</dd>
             <dt>Del</dt><dd>Delete</dd>
             <dt>Ctrl+A</dt><dd>Select all</dd>
             <dt>Esc</dt><dd>Select none / leave tool</dd>
@@ -385,6 +389,21 @@
           The source code is open: <a href="https://github.com/covrig/3d-open-builder" target="_blank" rel="noopener">github.com/covrig/3d-open-builder</a>.
         </p>
         <footer><button type="submit" class="primary">Close</button></footer>
+      </form>
+    </dialog>
+
+    <dialog id="export-dialog">
+      <form method="dialog">
+        <header><h2 id="export-title">Export</h2></header>
+        <label class="export-name">
+          <span class="muted">File name</span>
+          <span class="export-field"><input type="text" id="export-name" spellcheck="false" autocomplete="off" /><span id="export-ext" class="muted"></span></span>
+        </label>
+        <p id="export-note" class="muted"></p>
+        <footer>
+          <button type="submit" value="cancel">Cancel</button>
+          <button type="submit" value="export" class="primary">Export</button>
+        </footer>
       </form>
     </dialog>
 

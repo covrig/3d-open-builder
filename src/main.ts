@@ -377,10 +377,58 @@ function download(data: BlobPart, filename: string, type: string): void {
 let unexported = false;
 for (const type of ['change', 'transform'] as const) doc.addEventListener(type, () => (unexported = true));
 
-function exportThreeMf(): void {
+/** The file name used for the last export in this visit; proposed again next time. */
+let lastExportName: string | null = null;
+const EXPORT_SUFFIX = '_open_builder';
+
+/** Proposed name: the last one used, else the imported file's name plus _open_builder, else open_builder. */
+function defaultExportName(): string {
+  if (lastExportName) return lastExportName;
+  if (sceneName === 'scene') return 'open_builder';
+  return sceneName.endsWith(EXPORT_SUFFIX) ? sceneName : sceneName + EXPORT_SUFFIX;
+}
+
+/** Ask for the file name in a small box; null if cancelled. */
+async function askExportName(ext: '3mf' | 'stl'): Promise<string | null> {
+  const dialog = $<HTMLDialogElement>('#export-dialog');
+  const input = $<HTMLInputElement>('#export-name');
+  $('#export-title').textContent = ext === '3mf' ? 'Export 3MF' : 'Export STL';
+  $('#export-ext').textContent = `.${ext}`;
+  $('#export-note').textContent = ext === '3mf'
+    ? 'All objects, each with its own colour. Opens in most slicers.'
+    : 'All objects as one mesh, without colours.';
+  input.value = defaultExportName();
+  dialog.returnValue = '';
+  dialog.showModal();
+  input.focus();
+  input.select();
+  await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
+  if (dialog.returnValue !== 'export') return null;
+  // No folders or characters that file systems refuse; a typed extension is dropped.
+  const name = input.value.trim().replace(/\.(3mf|stl)$/i, '').replace(/[\\/:*?"<>|]+/g, '_').trim();
+  return name || defaultExportName();
+}
+{
+  const dialog = $<HTMLDialogElement>('#export-dialog');
+  // Enter in the name field exports (the form's first button is Cancel).
+  $('#export-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      dialog.close('export');
+    }
+  });
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close('cancel');
+  });
+}
+
+async function exportThreeMf(): Promise<void> {
   if (doc.objects.length === 0) return toast('The scene is empty');
+  const name = await askExportName('3mf');
+  if (!name) return;
   const bytes = export3mf(doc.objects.map((o) => doc.placed(o)));
-  download(bytes as Uint8Array<ArrayBuffer>, `${sceneName}.3mf`, 'model/3mf');
+  download(bytes as Uint8Array<ArrayBuffer>, `${name}.3mf`, 'model/3mf');
+  lastExportName = name;
   unexported = false;
 }
 
@@ -392,14 +440,18 @@ on('[data-action="new"]', () => {
   doc.clear();
   reference.restore(null);
   sceneName = 'scene';
+  lastExportName = null;
   unexported = false;
   void clearAutosave();
   viewport.fit();
 });
-on('[data-action="export-3mf"]', exportThreeMf);
-on('[data-action="export-stl"]', () => {
+on('[data-action="export-3mf"]', () => void exportThreeMf());
+on('[data-action="export-stl"]', async () => {
   if (doc.objects.length === 0) return toast('The scene is empty');
-  download(exportStl(doc.objects.map((o) => doc.placed(o))), `${sceneName}.stl`, 'model/stl');
+  const name = await askExportName('stl');
+  if (!name) return;
+  download(exportStl(doc.objects.map((o) => doc.placed(o))), `${name}.stl`, 'model/stl');
+  lastExportName = name;
   unexported = false;
 });
 
@@ -420,6 +472,7 @@ async function restoreSaved(saved: SavedScene): Promise<void> {
   measure.setKind(null);
   doc.loadState(fromSaved(saved));
   sceneName = saved.name;
+  lastExportName = null;
   restoreExtras(saved.extras ?? {});
   viewport.fit(doc.worldBox(doc.objects));
 }
@@ -503,6 +556,7 @@ async function openFiles(all: File[]): Promise<void> {
       added.push(obj);
     }
     sceneName = file.name.replace(/\.[^.]+$/, '');
+    lastExportName = null;
   }
   if (added.length) {
     doc.setSelection(added);
@@ -553,6 +607,22 @@ document.addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>(REPEATABLE);
   if (el && e.isTrusted) lastTool = el;
 }, true);
+
+/** Single-key shortcuts: key → the button it presses (first match, the toolbar one when there are two). */
+const TOOL_KEYS: Record<string, string> = {
+  '1': '[data-insert="cube"]',
+  '2': '[data-insert="cylinder"]',
+  '3': '[data-insert="sphere"]',
+  d: '[data-action="duplicate"]',
+  s: '[data-action="split"]',
+  m: '[data-boolean="union"]',
+  n: '[data-boolean="difference"]',
+  i: '[data-boolean="intersection"]',
+  e: '[data-action="extrude-down"]',
+  p: '[data-modify="pattern"]',
+  b: '[data-modify="chamfer"]',
+  o: '[data-modify="fillet"]',
+};
 
 /** Run the last tool again, but only once the previous operation is finished. */
 function repeatLastTool(): void {
@@ -605,6 +675,15 @@ document.addEventListener('keydown', (e) => {
   if (!ctrl && !e.altKey && key === 'f') return run(fitView);
   if (!ctrl && !e.altKey && key === 'h') return run(homeView);
   if (!ctrl && !e.altKey && key === 'r') return run(repeatLastTool);
+  // Single keys for the common tools: the same as clicking their button (and R repeats them).
+  const button = !ctrl && !e.altKey && !e.shiftKey ? TOOL_KEYS[key] : undefined;
+  if (button) {
+    return run(() => {
+      const el = $(button);
+      if (el.matches(REPEATABLE)) lastTool = el;
+      el.click();
+    });
+  }
   // Arrow keys: an active tool (text, threaded hole) may use them to nudge;
   // otherwise they move the selection.
   if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {
