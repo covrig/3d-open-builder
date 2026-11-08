@@ -8,12 +8,6 @@ export default defineConfig({
   build: {
     // Top-level await is used to load the Manifold WASM module before the UI starts.
     target: 'es2022',
-    rollupOptions: {
-      input: {
-        main: 'index.html',
-        privacy: 'privacy.html',
-      },
-    },
   },
   // The geometry worker is an ES module (it imports the Manifold WASM loader).
   worker: {
