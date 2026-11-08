@@ -161,23 +161,6 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
 }
 #op-hint { border-color: var(--accent); }
 
-#selection-chip {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--overlay);
-  border: 1.5px solid var(--select);
-  font-size: 13px;
-  z-index: 2;
-  pointer-events: none;
-}
-#selection-chip .swatch-dot { width: 12px; height: 12px; }
-
 #drop-hint {
   position: absolute;
   inset: 12px;
@@ -476,6 +459,8 @@ dialog footer { display: flex; justify-content: flex-end; }
 .menu small { color: var(--muted); font-size: 12px; }
 .menu kbd { margin-left: auto; color: var(--muted); font: inherit; font-size: 12px; }
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; width: auto; }
+/* Short item lists (Mirror, More, Fix) are only as wide as their longest item. */
+.menu.compact { min-width: 0; }
 
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { filter: brightness(1.1); background: var(--accent); }
@@ -687,7 +672,30 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 #check-dialog { width: min(560px, 94vw); }
 .inline-field { display: flex; align-items: center; gap: 8px; }
 .inline-field input { width: 70px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
-#check-results { max-height: 55vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.panel-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.panel-order li { display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
+.panel-order li span { flex: 1; }
+.panel-order button { padding: 3px 6px; background: transparent; }
+.panel-order button svg { width: 16px; height: 16px; }
+.privacy-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.45; }
+#privacy-dialog p { margin: 0; line-height: 1.45; }
+#privacy-dialog { width: min(520px, 94vw); }
+#check-results { max-height: 40vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.check-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.check-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.repair-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--panel-2); }
+.repair-row { display: flex; gap: 16px; align-items: center; }
+.repair-row p { margin: 4px 0 0; line-height: 1.4; }
+.repair-row > button { flex: none; justify-content: center; min-width: 104px; padding: 8px 14px; }
+.repair-box > #repair-undo { align-self: flex-start; }
+.repair-log {
+  margin: 0; padding: 6px 8px 6px 26px; max-height: 140px; overflow: auto; font-size: 12.5px;
+  background: var(--bg); border-radius: 6px; display: flex; flex-direction: column; gap: 3px;
+}
+.repair-log li.done::marker { color: #30a46c; }
+.repair-log li.none { color: var(--muted); }
+.repair-log li.error { color: #e5484d; }
+@media (max-width: 520px) { .repair-row { flex-direction: column; } }
 .check-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .check-list li { display: flex; gap: 10px; align-items: flex-start; }
 .check-icon { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; }
@@ -745,13 +753,14 @@ dialog footer { gap: 8px; }
    side panel becomes a drawer over the view that the Panel button opens.
    Wide landscape screens keep the normal layout. */
 @media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
-  /* Buttons that don't fit go on a second row. */
+  /* Buttons that don't fit go on the next row, one button at a time: the groups
+     dissolve so a wide group never jumps to the next row whole and leaves a gap. */
   .toolbar { flex-wrap: wrap; row-gap: 2px; }
-  .toolbar .group { flex: none; }
+  .toolbar .group { display: contents; }
   .brand span { display: none; }
   .sidebar-toggle { display: inline-flex !important; }
-  /* Keep the Panel button in sight at the right end while the toolbar scrolls. */
-  .toolbar .group.end { margin-left: auto; }
+  /* The Panel button sits at the right end of its row. */
+  .toolbar .sidebar-toggle { margin-left: auto; }
   /* The closed drawer waits off to the right; clip it so the page never scrolls sideways. */
   .workspace { position: relative; overflow: hidden; }
   #sidebar {
@@ -771,6 +780,24 @@ dialog footer { gap: 8px; }
 }
 @media (max-width: 760px) {
   .top-bar { flex-wrap: wrap; }
+}
+
+/* Split, Pattern, Text and Extrude move into the More menu on phones. */
+.toolbar .row-break, .menu > .narrow-only { display: none; }
+
+/* Phones: Menu, Add object, Undo, Redo, Copy, Cut and Paste always share the
+   first row (smaller labels and padding make them fit); the other buttons
+   follow on the second row, and only what doesn't fit goes to a third.
+   Wider screens, portrait windows included, keep the normal toolbar. */
+@media (max-width: 600px) {
+  .toolbar { gap: 0; padding: 3px 4px; }
+  .toolbar .row-break { display: block; flex-basis: 100%; height: 0; }
+  .toolbar button:not(.menu > *) { flex: 1 1 auto; min-width: 0; padding: 3px 3px; font-size: 10.5px; gap: 1px; }
+  .toolbar button:not(.menu > *) svg:not(.caret) { width: 17px; height: 17px; }
+  .toolbar .add-button svg:not(.caret) { width: 18px; height: 18px; }
+  .toolbar .wide-only { display: none !important; }
+  .toolbar .menu > .narrow-only { display: flex; }
+  .toolbar .sidebar-toggle { flex: none; }
 }
 
 /* Menu items inside the toolbar: icon left of the text, as in any menu
@@ -801,7 +828,6 @@ dialog footer { gap: 8px; }
   z-index: 1;
 }
 #brand-overlay svg { width: 22px; height: 22px; color: var(--accent); }
-#selection-chip { top: 42px; }
 
 /* Messages, hints and the tool bars at the top share one width, text centred. */
 #messages { width: min(760px, calc(100% - 24px)); max-width: none; }

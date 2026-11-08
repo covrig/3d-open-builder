@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { settings } from '../settings';
-import type { SceneDocument, SceneObject } from './document';
+import type { SceneDocument } from './document';
 import type { Viewport } from './viewport';
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
@@ -17,14 +17,24 @@ const SIZE_SNAP = 1; // mm
 const FACE_SNAP = 2; // mm: faces closer than this to another face line up
 const NEAR = 20; // mm: only objects within this distance count for face snapping
 /**
- * Where each rotation ring carries its arrow, as a step of the 72 around it
- * (ring a runs through e1 = axis a+1 at step 0 and e2 = axis a+2 at step 18):
- * X ring on top (+Z); the Y ring at +X or -X and the Z ring at +Y or -Y,
- * whichever side faces the camera, so no arrow hides behind the object.
+ * Spots for a rotation ring's arrow, as steps of the 72 around it: the four
+ * points at 45° between the axes. (The axis points, steps 0, 18, 36 and 54,
+ * are where two rings cross.)
  */
-const RING_ARROW_STEPS: [number, number][] = [[18, 18], [18, 54], [18, 54]];
-/** Which world axis decides the side for each ring (X ring: none) */
-const RING_SIDE_AXIS = [-1, 0, 1];
+const RING_DIAGONALS = [9, 27, 45, 63];
+
+/** Screen distance from a point to a closed polyline. */
+function distanceToLoop(p: THREE.Vector2, loop: THREE.Vector2[]): number {
+  let best = Infinity;
+  for (let i = 0; i < loop.length; i++) {
+    const a = loop[i], b = loop[(i + 1) % loop.length];
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)) : 0;
+    best = Math.min(best, Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t)));
+  }
+  return best;
+}
 
 /** Double-headed arrow along +x, centred on the origin. */
 function doubleArrow(length: number): string {
@@ -60,13 +70,20 @@ interface Handle {
   step?: number;
 }
 
+/** Something a tool lets the handles move and turn (see Gizmo.setProxy). */
+export interface GizmoProxy {
+  object: THREE.Object3D;
+  /** Called after each change the handles make */
+  changed: () => void;
+}
+
 interface DragState {
   handle: Handle;
   pointerId: number;
   start: THREE.Vector2;
   lastAngle: number;
   angle: number;
-  targets: SceneObject[];
+  targets: THREE.Object3D[];
   positions: THREE.Vector3[];
   quaternions: THREE.Quaternion[];
   scales: THREE.Vector3[];
@@ -126,13 +143,49 @@ export class Gizmo {
 
   private readonly rings = new THREE.Group();
 
+  /**
+   * A tool can hand the handles something of its own to move and turn instead
+   * of the selection (the threaded hole while it is being placed). Size is not
+   * offered for it. Listeners hear when a proxy comes or goes.
+   */
+  private proxy: GizmoProxy | null = null;
+  readonly proxyListeners = new Set<(proxy: GizmoProxy | null) => void>();
+
+  setProxy(proxy: GizmoProxy | null): void {
+    this.proxy = proxy;
+    for (const l of this.proxyListeners) l(proxy);
+    this.build();
+    this.viewport.invalidate();
+  }
+
+  get hasProxy(): boolean {
+    return this.proxy !== null;
+  }
+
+  private targetMeshes(): THREE.Object3D[] {
+    return this.proxy ? [this.proxy.object] : this.doc.selection.map((o) => o.mesh);
+  }
+
+  private targetBox(): THREE.Box3 {
+    return this.proxy ? new THREE.Box3().setFromObject(this.proxy.object) : this.doc.worldBox(this.doc.selection);
+  }
+
+  private changed(): void {
+    if (this.proxy) {
+      this.proxy.changed();
+      this.viewport.invalidate();
+    } else {
+      this.doc.emit('transform');
+    }
+  }
+
   /** Put the 3D rings around the selection (before each frame is drawn). */
   private placeRings(): void {
-    const targets = this.doc.selection;
+    const targets = this.targetMeshes();
     this.rings.visible = this.mode === 'rotate' && this.enabled && targets.length > 0;
     if (!this.rings.visible) return;
     const turning = this.drag?.handle.kind === 'rotate';
-    const box = turning ? this.drag!.box : this.doc.worldBox(targets);
+    const box = turning ? this.drag!.box : this.targetBox();
     const center = turning ? this.drag!.center : box.getCenter(new THREE.Vector3());
     this.rings.position.copy(center);
     this.rings.scale.setScalar(Math.max(box.getBoundingSphere(new THREE.Sphere()).radius * 1.08, 8));
@@ -204,7 +257,7 @@ export class Gizmo {
   // --- Per-frame layout ---------------------------------------------------
 
   private update(): void {
-    const targets = this.doc.selection;
+    const targets = this.targetMeshes();
     const visible = this.enabled && targets.length > 0;
     this.svg.style.display = visible ? '' : 'none';
     if (!visible) return;
@@ -212,7 +265,7 @@ export class Gizmo {
     // While turning, the rings stay put (the turn is about the start centre),
     // which also saves measuring the turning object every frame.
     const turning = this.drag?.handle.kind === 'rotate';
-    const box = turning ? this.drag!.box : this.doc.worldBox(targets);
+    const box = turning ? this.drag!.box : this.targetBox();
     const center = turning ? this.drag!.center : box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const cam = this.viewport.camera.position;
@@ -255,23 +308,43 @@ export class Gizmo {
       }
     } else if (this.mode === 'rotate') {
       const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius * 1.08, 8);
-      for (const h of this.handles) {
+      const toCam = cam.clone().sub(center);
+      const ringPoint = (a: number, i: number) => {
+        const t = (i / 72) * Math.PI * 2;
+        return center.clone().addScaledVector(AXES[(a + 1) % 3], radius * Math.cos(t)).addScaledVector(AXES[(a + 2) % 3], radius * Math.sin(t));
+      };
+      const rings = this.handles.map((h) => Array.from({ length: 72 }, (_, i) => project(ringPoint(h.axis, i))));
+      const placed: THREE.Vector2[] = [];
+      this.handles.forEach((h, k) => {
         const a = h.axis;
-        const e1 = AXES[(a + 1) % 3], e2 = AXES[(a + 2) % 3];
-        const pts: THREE.Vector2[] = [];
-        for (let i = 0; i < 72; i++) {
-          const t = (i / 72) * Math.PI * 2;
-          pts.push(project(center.clone().addScaledVector(e1, radius * Math.cos(t)).addScaledVector(e2, radius * Math.sin(t))));
-        }
+        const pts = rings[k];
         // The ring itself is drawn in 3D (hidden behind objects); this path only catches the mouse.
         h.hit!.setAttribute('d', `M${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('L')}Z`);
-        // Arrow spots fixed on the rings (X ring on top, Y ring at +X, Z ring at
-        // the front), so they turn with the view instead of jumping around it.
-        // Keep the side while dragging; otherwise the side nearer the camera.
-        const sideAxis = RING_SIDE_AXIS[a];
-        const near = sideAxis < 0 || cam.getComponent(sideAxis) >= center.getComponent(sideAxis);
-        const best = this.drag && h.step !== undefined ? h.step : RING_ARROW_STEPS[a][near ? 0 : 1];
+        // Every axis point of a ring is also on another ring, so an arrow there
+        // could grab the wrong ring. Arrows sit halfway between, on one of the
+        // four 45° spots: one on the camera side of the object (never hidden behind
+        // it) that is farthest on screen from the other rings and arrows. A spot
+        // is kept while it stays nearly as good, and always while dragging.
+        const others = rings.filter((_, j) => j !== k);
+        const score = (i: number) => {
+          if (ringPoint(a, i).sub(center).dot(toCam) < 0) return -1;
+          let d = Infinity;
+          for (const ring of others) d = Math.min(d, distanceToLoop(pts[i], ring));
+          for (const p of placed) d = Math.min(d, pts[i].distanceTo(p));
+          return d;
+        };
+        let best = h.step ?? RING_DIAGONALS[0];
+        if (!this.drag || h.step === undefined) {
+          const current = h.step !== undefined && RING_DIAGONALS.includes(h.step) ? score(h.step) : -Infinity;
+          let top = -Infinity;
+          for (const i of RING_DIAGONALS) {
+            const s = score(i);
+            if (s > top) [top, best] = [s, i];
+          }
+          if (h.step !== undefined && current >= 0 && current >= top * 0.8) best = h.step;
+        }
         h.step = best;
+        placed.push(pts[best]);
         // Screen direction of a positive turn at the arrow, and pixels per radian.
         const tangent = pts[(best + 1) % 72].clone().sub(pts[(best + 71) % 72]);
         const len = tangent.length();
@@ -289,7 +362,7 @@ export class Gizmo {
           faceOn,
           spin: rel.x * u.y - rel.y * u.x >= 0 ? 1 : -1,
         });
-      }
+      });
     } else {
       // Screen rectangle around the projected box.
       const corners: THREE.Vector2[] = [];
@@ -327,8 +400,8 @@ export class Gizmo {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const targets = [...this.doc.selection];
-    const box = this.doc.worldBox(targets);
+    const targets = this.targetMeshes();
+    const box = this.targetBox();
     const center = box.getCenter(new THREE.Vector3());
     const start = this.local(e);
     const screenCenter = handle.kind === 'corner'
@@ -345,13 +418,13 @@ export class Gizmo {
       lastAngle: angle,
       angle: 0,
       targets,
-      positions: targets.map((o) => o.mesh.position.clone()),
-      quaternions: targets.map((o) => o.mesh.quaternion.clone()),
-      scales: targets.map((o) => o.mesh.scale.clone()),
+      positions: targets.map((o) => o.position.clone()),
+      quaternions: targets.map((o) => o.quaternion.clone()),
+      scales: targets.map((o) => o.scale.clone()),
       box,
       center,
       screenCenter,
-      others: this.doc.objects.filter((o) => !targets.includes(o)).map((o) => this.doc.worldBox([o])),
+      others: this.doc.objects.filter((o) => !targets.includes(o.mesh)).map((o) => this.doc.worldBox([o])),
       u: handle.u.clone(),
       pxPerMm: handle.pxPerMm,
       checkpointed: false,
@@ -366,7 +439,7 @@ export class Gizmo {
       el.removeEventListener('pointercancel', up);
       this.svg.classList.remove('dragging');
       this.drag = undefined;
-      this.doc.emit('transform');
+      this.changed();
     };
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
@@ -378,7 +451,8 @@ export class Gizmo {
     if (!d.checkpointed) {
       if (p.distanceTo(d.start) < 2) return;
       // Nothing has moved yet, so this saves the pre-drag state for undo.
-      this.doc.checkpoint();
+      // (A tool's own handle, like a threaded hole being placed, isn't part of the drawing.)
+      if (!this.proxy) this.doc.checkpoint();
       d.checkpointed = true;
     }
     const along = p.clone().sub(d.start).dot(d.u) / d.pxPerMm; // mm, in the handle's direction
@@ -397,7 +471,7 @@ export class Gizmo {
         this.applyUniformScale(d, p);
         break;
     }
-    this.doc.emit('transform');
+    this.changed();
   }
 
   private applyMove(d: DragState, a: number, delta: number): void {
@@ -427,7 +501,7 @@ export class Gizmo {
     }
     if (settings.collision) delta = this.limitByCollision(d, a, delta);
     d.targets.forEach((o, i) => {
-      o.mesh.position.copy(d.positions[i]).addScaledVector(AXES[a], delta);
+      o.position.copy(d.positions[i]).addScaledVector(AXES[a], delta);
     });
   }
 
@@ -476,8 +550,8 @@ export class Gizmo {
     }
     const q = new THREE.Quaternion().setFromAxisAngle(axis, rad);
     d.targets.forEach((o, i) => {
-      o.mesh.quaternion.copy(q).multiply(d.quaternions[i]);
-      o.mesh.position.copy(d.positions[i]).sub(d.center).applyQuaternion(q).add(d.center);
+      o.quaternion.copy(q).multiply(d.quaternions[i]);
+      o.position.copy(d.positions[i]).sub(d.center).applyQuaternion(q).add(d.center);
     });
   }
 
@@ -493,19 +567,19 @@ export class Gizmo {
       // Same factor everywhere; the dragged side's opposite face and the bottom stay put.
       const pivot = new THREE.Vector3(d.center.x, d.center.y, d.box.min.z).setComponent(a, anchor);
       d.targets.forEach((o, i) => {
-        o.mesh.position.copy(d.positions[i]).sub(pivot).multiplyScalar(f).add(pivot);
-        o.mesh.scale.copy(d.scales[i]).multiplyScalar(f);
+        o.position.copy(d.positions[i]).sub(pivot).multiplyScalar(f).add(pivot);
+        o.scale.copy(d.scales[i]).multiplyScalar(f);
       });
       return;
     }
     d.targets.forEach((o, i) => {
       const pos = d.positions[i].clone();
       pos.setComponent(a, anchor + (pos.getComponent(a) - anchor) * f);
-      o.mesh.position.copy(pos);
+      o.position.copy(pos);
       // Stretch the object's own axis that lines up best with the world axis.
       const rot = new THREE.Matrix4().makeRotationFromQuaternion(d.quaternions[i]).elements;
       const k = [0, 1, 2].reduce((best, c) => (Math.abs(rot[c * 4 + a]) > Math.abs(rot[best * 4 + a]) ? c : best), 0);
-      o.mesh.scale.copy(d.scales[i]).setComponent(k, d.scales[i].getComponent(k) * f);
+      o.scale.copy(d.scales[i]).setComponent(k, d.scales[i].getComponent(k) * f);
     });
   }
 
@@ -516,8 +590,8 @@ export class Gizmo {
     const f = Math.max(p.distanceTo(d.screenCenter) / startDist, 0.01);
     const anchor = new THREE.Vector3(d.center.x, d.center.y, d.box.min.z);
     d.targets.forEach((o, i) => {
-      o.mesh.position.copy(d.positions[i]).sub(anchor).multiplyScalar(f).add(anchor);
-      o.mesh.scale.copy(d.scales[i]).multiplyScalar(f);
+      o.position.copy(d.positions[i]).sub(anchor).multiplyScalar(f).add(anchor);
+      o.scale.copy(d.scales[i]).multiplyScalar(f);
     });
   }
 }

@@ -478,6 +478,31 @@ async function runChecks(b) {
     return 'sidebar right of view, toolbar above';
   });
 
+  await check('Phone toolbar: first row fixed, no gaps', async () => {
+    const out = [];
+    for (const width of [360, 412]) {
+      await page.setViewport({ width, height: 800 });
+      await sleep(300);
+      const r = await page.evaluate(() => {
+        const top = (s) => Math.round(document.querySelector(`.toolbar ${s}`).getBoundingClientRect().top);
+        const first = ['[data-menu="file-menu"]', '[data-menu="add-menu"]', '[data-action="undo"]', '[data-action="redo"]',
+          '[data-action="copy"]', '[data-action="cut"]', '[data-action="paste"]'].map(top);
+        const merge = top('[data-boolean="union"]');
+        const toolbarSplit = getComputedStyle(document.querySelector('.toolbar > .group [data-action="split"]')).display;
+        const rows = new Set([...document.querySelectorAll('.toolbar button:not(.menu > *)')]
+          .filter((e) => e.offsetParent).map((e) => Math.round(e.getBoundingClientRect().top))).size;
+        return { first, merge, toolbarSplit, rows, scroll: document.documentElement.scrollWidth > innerWidth };
+      });
+      if (new Set(r.first).size !== 1) throw new Error(`${width}px: first-row buttons at ${r.first.join(', ')}`);
+      if (r.merge <= r.first[0]) throw new Error(`${width}px: Merge is on the first row`);
+      if (r.toolbarSplit !== 'none') throw new Error(`${width}px: Split still on the toolbar`);
+      if (r.scroll) throw new Error(`${width}px: page scrolls sideways`);
+      out.push(`${width}px ${r.rows} rows`);
+    }
+    await page.screenshot({ path: `${SHOTS}/${b.name}-phone.png` });
+    return out.join('; ');
+  });
+
   await browser.close();
 
   await check('No-JavaScript message', async () => {

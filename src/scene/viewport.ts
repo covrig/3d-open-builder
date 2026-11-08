@@ -12,6 +12,12 @@ import { makeLabel } from './labels';
 // camera or light is created.
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
+/** The camera the page starts with; Home returns to this angle. */
+const HOME_POSITION = new THREE.Vector3(-170, -260, 210);
+const HOME_TARGET = new THREE.Vector3(0, 0, 20);
+/** The middle of the plate, shown when there is nothing else to look at. */
+const HOME_AREA = new THREE.Box3(new THREE.Vector3(-60, -60, 0), new THREE.Vector3(60, 60, 20));
+
 export interface Palette extends GroundColors {
   dark: boolean;
   background: number;
@@ -80,11 +86,11 @@ export class Viewport extends EventTarget {
     this.scene.add(this.objectRoot);
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 1, 20000);
-    this.camera.position.set(-170, -260, 210);
+    this.camera.position.copy(HOME_POSITION);
 
     // No damping: the view stops the moment the mouse is released.
     this.orbit = new OrbitControls(this.camera, this.renderer.domElement);
-    this.orbit.target.set(0, 0, 20);
+    this.orbit.target.copy(HOME_TARGET);
     this.orbit.update();
     this.orbit.addEventListener('change', () => this.invalidate());
     // The controls set an inline "cursor: auto" on the canvas, which would beat
@@ -318,14 +324,35 @@ export class Viewport extends EventTarget {
 
   /** Point the camera at a box (or the area around the origin) without changing the viewing angle. */
   fit(box?: THREE.Box3): void {
-    const target = box && !box.isEmpty()
-      ? box
-      : new THREE.Box3(new THREE.Vector3(-60, -60, 0), new THREE.Vector3(60, 60, 20));
-    const sphere = target.getBoundingSphere(new THREE.Sphere());
+    const target = box && !box.isEmpty() ? box : HOME_AREA;
+    const dir = this.camera.position.clone().sub(this.orbit.target).normalize();
+    this.look(target, dir, 0);
+  }
+
+  /**
+   * Back to the view the page starts with: the same viewing angle, zoomed out
+   * just enough to show the middle of the plate and every object in `box`.
+   */
+  home(box?: THREE.Box3): void {
+    const area = HOME_AREA.clone();
+    if (box && !box.isEmpty()) area.union(box);
+    const dir = HOME_POSITION.clone().sub(HOME_TARGET).normalize();
+    if (!box || box.isEmpty()) {
+      this.orbit.target.copy(HOME_TARGET);
+      this.camera.position.copy(HOME_POSITION);
+      this.orbit.update();
+      this.invalidate();
+      return;
+    }
+    this.look(area, dir, HOME_POSITION.distanceTo(HOME_TARGET));
+  }
+
+  /** Aim along `dir` at the box's middle, far enough back to see all of it (and at least `minDistance`). */
+  private look(box: THREE.Box3, dir: THREE.Vector3, minDistance: number): void {
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
     // Leave room around the object (and for the rulers and the transform bar).
-    const distance = (Math.max(sphere.radius, 10) / Math.sin(fov / 2)) * 1.9;
-    const dir = this.camera.position.clone().sub(this.orbit.target).normalize();
+    const distance = Math.max(minDistance, (Math.max(sphere.radius, 10) / Math.sin(fov / 2)) * 1.9);
     this.orbit.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(dir, distance);
     this.orbit.update();

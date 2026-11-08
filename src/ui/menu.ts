@@ -20,9 +20,10 @@ export function setupMenus(): void {
       close();
       if (wasOpen) return;
       const r = button.getBoundingClientRect();
-      menu.style.left = `${Math.min(r.left, window.innerWidth - 260)}px`;
       menu.style.top = `${r.bottom + 4}px`;
       menu.hidden = false;
+      // Keep the whole menu on screen, using its real width.
+      menu.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - menu.offsetWidth - 4))}px`;
       button.classList.add('active');
       open = { button, menu };
     });

@@ -10,7 +10,18 @@ export interface UiState {
   shortcuts: boolean;
   /** Thinnest wall (mm) the print check accepts */
   minWall: number;
+  /** Order of the side panel sections (ids from PANELS) */
+  panelOrder: PanelId[];
 }
+
+export const PANELS = [
+  ['view', 'View'],
+  ['arrange', 'Arrange'],
+  ['measure', 'Measure'],
+  ['objects', 'Objects'],
+  ['details', 'Details'],
+] as const;
+export type PanelId = (typeof PANELS)[number][0];
 
 export interface Settings {
   unit: Unit;
@@ -36,6 +47,7 @@ const DEFAULTS: Settings = {
     keepProportions: true,
     shortcuts: false,
     minWall: 0.8,
+    panelOrder: PANELS.map(([id]) => id),
   },
 };
 const KEY = '3d-open-builder.settings';
@@ -59,6 +71,10 @@ function load(): Settings {
     // Storage blocked (private window etc.) or unreadable: use the defaults.
   }
   if (!UNITS.includes(s.unit)) s.unit = 'mm'; // older versions offered µm, ft and m
+  // Keep a saved panel order only for sections that still exist, and add new ones at the end.
+  const known = PANELS.map(([id]) => id) as PanelId[];
+  const saved = Array.isArray(s.ui.panelOrder) ? s.ui.panelOrder.filter((id) => known.includes(id)) : [];
+  s.ui.panelOrder = [...new Set([...saved, ...known])];
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
   s.ui.measure.snap = true;
   return s;

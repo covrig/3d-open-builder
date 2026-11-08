@@ -178,7 +178,8 @@ export class SceneDocument extends EventTarget {
     return this.objects.filter((o) => objs.includes(o) || (o.groupId !== undefined && groups.has(o.groupId)));
   }
 
-  private uniqueName(base: string): string {
+  /** A new name like "Object 3", numbered per base name. */
+  uniqueName(base: string): string {
     const n = (this.nameCounters.get(base) ?? 0) + 1;
     this.nameCounters.set(base, n);
     return `${base} ${n}`;

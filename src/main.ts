@@ -22,7 +22,8 @@ import { loadClipboard, saveClipboard } from './ui/clipboardStore';
 import { ColorPopover } from './ui/colorPopover';
 import { CombineTool } from './ui/combineTool';
 import { renderIcons } from './ui/icons';
-import { setupAbout, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
+import { setupAbout, setupPanelOrder, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
+import { restrictNumberInputs } from './ui/numberInputs';
 import { setupArrange } from './ui/arrange';
 import { hideHint, showHint, watchTopBars } from './ui/hint';
 import { setupItemsPanel } from './ui/itemsPanel';
@@ -42,11 +43,16 @@ import { TransformBar } from './ui/transformBar';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const $$ = <T extends HTMLElement = HTMLElement>(sel: string) => [...document.querySelectorAll<T>(sel)];
-const on = (sel: string, handler: () => void) => $(sel).addEventListener('click', handler);
+// Some actions have two buttons (toolbar, and the More menu on portrait screens).
+const on = (sel: string, handler: () => void) => {
+  for (const el of $$(sel)) el.addEventListener('click', handler);
+};
 
 renderIcons();
 setupTooltips();
 setupMenus();
+restrictNumberInputs();
+setupPanelOrder();
 const wasm = await loadManifold();
 
 /** Show why the app can't start, in place of the loading message, and stop here. */
@@ -72,6 +78,7 @@ const gizmo = new Gizmo(viewport, doc);
 new TransformBar($('#transform-bar'), gizmo, doc);
 setupSettingsDialog($('[data-action="settings"]'));
 setupAbout();
+setupPrivacy();
 setupShortcutsPanel();
 watchTopBars();
 setupArrange(doc, (msg) => toast(msg));
@@ -138,10 +145,10 @@ function replaceGeometry(obj: SceneObject, piece: { mesh: MeshData; center: [num
 }
 
 const splitTool = new SplitTool(viewport, doc, gizmo, heavy, toast);
-new CheckTools(doc, heavy, toast);
+new CheckTools(doc, toast);
 const featureBar = new FeatureBar(viewport, gizmo, doc, toast);
 new ModifyTools(viewport, doc, featureBar, heavy, toast);
-new PartsTools(viewport, doc, featureBar, heavy, toast);
+new PartsTools(viewport, doc, gizmo, featureBar, heavy, toast);
 const measure = new MeasureTool(viewport, doc, toast);
 const colors = new ColorPopover(doc, (picking) => {
   $('#viewport').classList.toggle('picking', picking);
@@ -205,7 +212,7 @@ for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
       doc.checkpoint();
       const color = selected[0].color;
       doc.remove(selected);
-      const obj = doc.add('Merged', result.mesh, color);
+      const obj = doc.add('Object', result.mesh, color);
       const pieces = countPieces(result.mesh);
       if (pieces > 1) toast(`The objects don't touch, so the merged object is made of ${pieces} separate pieces.`);
       obj.mesh.position.set(...result.center);
@@ -346,6 +353,9 @@ function fitView(): void {
   viewport.fit(doc.worldBox(doc.selection.length ? doc.selection : doc.objects));
 }
 on('[data-action="fit"]', fitView);
+/** The starting view, zoomed out to show every object. */
+const homeView = () => viewport.home(doc.objects.length ? doc.worldBox(doc.objects) : undefined);
+on('[data-action="home"]', homeView);
 
 /** Aim the shadow map at the objects so their shadows stay sharp wherever they are. */
 function updateShadows(): void {
@@ -566,6 +576,7 @@ document.addEventListener('keydown', (e) => {
   if (ctrl && key === 'a') return run(() => doc.setSelection(doc.objects));
   if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) return run(actions.delete);
   if (!ctrl && !e.altKey && key === 'f') return run(fitView);
+  if (!ctrl && !e.altKey && key === 'h') return run(homeView);
   // Arrow keys: an active tool (text, threaded hole) may use them to nudge;
   // otherwise they move the selection.
   if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {
@@ -608,16 +619,9 @@ canvas.addEventListener('pointerup', (e) => {
 
 // --- Selection feedback ---------------------------------------------------
 
-const chip = $('#selection-chip');
+// The outline in the view; the object list in the side panel names the selection.
 function updateSelectionFeedback(): void {
   viewport.setOutlined(doc.selection.map((o) => o.mesh));
-  const sel = doc.selection;
-  chip.hidden = sel.length === 0;
-  if (sel.length === 0) return;
-  const dot = document.createElement('span');
-  dot.className = 'swatch-dot';
-  dot.style.background = sel[0].color;
-  chip.replaceChildren(dot, sel.length === 1 ? `${sel[0].name} selected` : `${sel.length} objects selected`);
 }
 
 // --- Details --------------------------------------------------------------

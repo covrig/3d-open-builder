@@ -4,6 +4,7 @@ import { parse } from 'opentype.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { textOnFace } from '../src/geometry/features';
 import { meshDataToManifold, type MeshData } from '../src/geometry/meshData';
+import { countPieces } from '../src/geometry/meshCheck';
 import { bounds } from '../src/geometry/meshOps';
 import { createPrimitive } from '../src/geometry/primitives';
 import { textOutlines } from '../src/geometry/text';
@@ -78,5 +79,24 @@ describe('text on a face', () => {
     expect(down).toBeLessThan(64000);
     // The same letters are added and removed: the differences match.
     expect(up - 64000).toBeCloseTo(64000 - down, 0);
+  });
+
+  it('follows a round surface: letters on a sphere touch it all along', () => {
+    const polys = textOutlines(font, 'Text', 8);
+    const sphere = createPrimitive(wasm, 'sphere');
+    const top = bounds(sphere).max[2];
+    const frame: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, top, 1];
+    const area = new wasm.CrossSection(polys, 'NonZero');
+    const letterArea = area.area();
+    area.delete();
+    const base = volume(sphere);
+    for (const mode of ['emboss', 'deboss'] as const) {
+      const r = textOnFace(wasm, { mesh: sphere, matrix: IDENTITY }, { polygons: polys, depth: 1, mode, frame }).mesh;
+      // One solid: no letter floats free of the ball.
+      expect(countPieces(r)).toBe(1);
+      // A layer 1 mm thick under every letter, measured along the face direction.
+      expect(Math.abs(volume(r) - base)).toBeGreaterThan(letterArea * 0.9);
+      expect(Math.abs(volume(r) - base)).toBeLessThan(letterArea * 1.1);
+    }
   });
 });

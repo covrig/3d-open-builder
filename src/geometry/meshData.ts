@@ -33,7 +33,20 @@ export function manifoldToMeshData(m: Manifold): MeshData {
       positions[i * 3 + 2] = mesh.vertProperties[i * numProp + 2];
     }
   }
-  return { positions, indices: mesh.triVerts.slice() };
+  // getMesh() splits vertices along the seams between the solids a result was
+  // made from, and lists which copies belong together; join them again so the
+  // mesh stays one closed, watertight surface.
+  const indices = mesh.triVerts.slice();
+  const from = mesh.mergeFromVert, to = mesh.mergeToVert;
+  if (from && to && from.length) {
+    const map = new Map<number, number>();
+    for (let i = 0; i < from.length; i++) map.set(from[i], to[i]);
+    for (let i = 0; i < indices.length; i++) {
+      const j = map.get(indices[i]);
+      if (j !== undefined) indices[i] = j;
+    }
+  }
+  return { positions, indices };
 }
 
 /**

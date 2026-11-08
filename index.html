@@ -29,20 +29,9 @@
           <button data-action="settings" role="menuitem"><i data-lucide="settings"></i>Settings</button>
           <button data-action="shortcuts" role="menuitem"><i data-lucide="keyboard"></i>Keyboard shortcuts <small>show on the view</small></button>
           <hr />
-          <a href="privacy.html" target="_blank" rel="noopener" role="menuitem"><i data-lucide="shield"></i>Privacy</a>
+          <button data-action="privacy" role="menuitem"><i data-lucide="shield"></i>Privacy</button>
           <button data-action="about" role="menuitem"><i data-lucide="info"></i>About and libraries</button>
         </div>
-      </div>
-
-      <div class="group">
-        <button data-action="undo" data-tip-title="Undo (Ctrl+Z)" data-tip="Take back the last change."><i data-lucide="undo-2"></i><span>Undo</span></button>
-        <button data-action="redo" data-tip-title="Redo (Ctrl+Y)" data-tip="Bring back a change you undid."><i data-lucide="redo-2"></i><span>Redo</span></button>
-      </div>
-
-      <div class="group">
-        <button data-action="copy" data-tip-title="Copy (Ctrl+C)" data-tip="Copy the selection. It stays available after closing the page."><i data-lucide="copy"></i><span>Copy</span></button>
-        <button data-action="cut" data-tip-title="Cut (Ctrl+X)" data-tip="Remove the selection and keep it for pasting."><i data-lucide="scissors"></i><span>Cut</span></button>
-        <button data-action="paste" data-tip-title="Paste (Ctrl+V)" data-tip="Add the copied objects to the drawing."><i data-lucide="clipboard-paste"></i><span>Paste</span></button>
       </div>
 
       <div class="group">
@@ -67,6 +56,20 @@
         </div>
       </div>
 
+      <div class="group">
+        <button data-action="undo" data-tip-title="Undo (Ctrl+Z)" data-tip="Take back the last change."><i data-lucide="undo-2"></i><span>Undo</span></button>
+        <button data-action="redo" data-tip-title="Redo (Ctrl+Y)" data-tip="Bring back a change you undid."><i data-lucide="redo-2"></i><span>Redo</span></button>
+      </div>
+
+      <div class="group">
+        <button data-action="copy" data-tip-title="Copy (Ctrl+C)" data-tip="Copy the selection. It stays available after closing the page."><i data-lucide="copy"></i><span>Copy</span></button>
+        <button data-action="cut" data-tip-title="Cut (Ctrl+X)" data-tip="Remove the selection and keep it for pasting."><i data-lucide="scissors"></i><span>Cut</span></button>
+        <button data-action="paste" data-tip-title="Paste (Ctrl+V)" data-tip="Add the copied objects to the drawing."><i data-lucide="clipboard-paste"></i><span>Paste</span></button>
+      </div>
+
+      <!-- Portrait screens: everything after this starts on the second row. -->
+      <div class="row-break" aria-hidden="true"></div>
+
       <div class="group" aria-label="Combine">
         <button data-boolean="union" data-tip-title="Merge" data-tip="Join the selected objects into one object. Objects that don't touch become one object made of separate pieces."><i data-lucide="squares-unite"></i><span>Merge</span></button>
         <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-tip="Cut objects out of others in two steps: click the objects to cut into, then the cutters. One cutter can go through several objects."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
@@ -74,31 +77,34 @@
       </div>
 
       <div class="group" aria-label="Edit">
-        <button data-action="split" data-tip-title="Split" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
+        <button data-action="split" class="wide-only" data-tip-title="Split" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
         <button data-action="duplicate" data-tip-title="Duplicate (Ctrl+D)" data-tip="Make a copy of the selection, placed a little to the side."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
-        <button data-modify="pattern" data-tip-title="Pattern" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
-        <button data-modify="text" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
-        <button data-action="extrude-down" data-tip-title="Extrude down" data-tip="Fill the space under the selected object straight down to the plate, like a solid support."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
+        <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
+        <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
+        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-tip="Fill the space under the selected object straight down to the plate, like a solid support."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-menu="mirror-menu" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z."><i data-lucide="flip-horizontal-2"></i><span>Mirror<i data-lucide="chevron-down" class="caret"></i></span></button>
-        <div id="mirror-menu" class="menu" role="menu" hidden>
+        <div id="mirror-menu" class="menu compact" role="menu" hidden>
           <button data-mirror="0" role="menuitem">Mirror X</button>
           <button data-mirror="1" role="menuitem">Mirror Y</button>
           <button data-mirror="2" role="menuitem">Mirror Z</button>
         </div>
-        <button data-menu="modify-menu" data-tip-title="More" data-tip="Chamfer, fillet, shell and gusset."><i data-lucide="pencil-ruler"></i><span>More<i data-lucide="chevron-down" class="caret"></i></span></button>
-        <div id="modify-menu" class="menu" role="menu" hidden>
-          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Chamfer</button>
-          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Fillet</button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Edge bevel, edge rounding, shell and brace."><i data-lucide="pencil-ruler"></i><span>More<i data-lucide="chevron-down" class="caret"></i></span></button>
+        <div id="modify-menu" class="menu compact" role="menu" hidden>
+          <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
+          <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
+          <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
+          <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
+          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Edge bevel</button>
+          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Edge rounding</button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
-          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Gusset</button>
+          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Brace</button>
         </div>
       </div>
 
-      <div class="group" aria-label="Check">
-        <button data-menu="check-menu" data-tip-title="Check and repair" data-tip="Find problems that would spoil a print and fix what can be fixed automatically."><i data-lucide="shield-check"></i><span>Check<i data-lucide="chevron-down" class="caret"></i></span></button>
-        <div id="check-menu" class="menu" role="menu" hidden>
-          <button data-action="check" role="menuitem"><i data-lucide="shield-check"></i>Check for printing</button>
-          <button data-action="repair" role="menuitem"><i data-lucide="wrench"></i>Repair</button>
+      <div class="group" aria-label="Fix">
+        <button data-menu="check-menu" data-tip-title="Fix" data-tip="Check for problems that would spoil a print, repair them, or turn the object to print with the least support."><i data-lucide="shield-check"></i><span>Fix<i data-lucide="chevron-down" class="caret"></i></span></button>
+        <div id="check-menu" class="menu compact" role="menu" hidden>
+          <button data-action="check" role="menuitem"><i data-lucide="shield-check"></i>Check and repair</button>
           <button data-action="orient" role="menuitem"><i data-lucide="rotate-3d"></i>Best print orientation</button>
         </div>
       </div>
@@ -118,7 +124,6 @@
         </noscript>
         <div id="loading">Loading geometry engine…</div>
         <div id="brand-overlay" aria-hidden="true"><i data-lucide="box"></i><span>3D Open Builder</span></div>
-        <div id="selection-chip" hidden></div>
         <div id="messages">
           <div id="op-hint" role="status" hidden></div>
           <div id="toast" role="status" hidden></div>
@@ -134,6 +139,7 @@
             <dt>Esc</dt><dd>Select none / leave tool</dd>
             <dt>Arrow keys</dt><dd>Move selection (Shift: ×10)</dd>
             <dt>Page Up / Down</dt><dd>Move selection up / down</dd>
+            <dt>H</dt><dd>Home view</dd>
             <dt>F</dt><dd>Fit view</dd>
             <dt>Left drag</dt><dd>Turn the view</dd>
             <dt>Right drag</dt><dd>Pan</dd>
@@ -197,19 +203,19 @@
       </div>
 
       <aside id="sidebar">
-        <section>
+        <section data-panel="view">
           <header><h2>View</h2></header>
           <div class="button-grid cols-3 tiles">
             <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
             <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
             <button data-view="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge of every object."><i data-lucide="square-dashed"></i><span>Edges</span></button>
+            <button data-action="home" data-tip-title="Home view (H)" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
             <button data-action="fit" data-tip-title="Fit view (F)" data-tip="Zoom to the selection, or to everything when nothing is selected."><i data-lucide="focus"></i><span>Fit</span></button>
-            <button data-view="grid" class="active" data-tip-title="Plate" data-tip="Show or hide the build plate."><i data-lucide="grid-3x3"></i><span>Plate</span></button>
             <button data-view="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate."><i data-lucide="sun"></i><span>Shadows</span></button>
           </div>
         </section>
 
-        <section class="needs-selection">
+        <section class="needs-selection" data-panel="arrange">
           <header><h2>Arrange</h2></header>
           <div class="button-grid cols-3 tiles">
             <button data-action="drop" data-tip-title="Place on plate" data-tip="Move the selected objects straight up or down until their lowest point rests on the plate."><i data-lucide="align-end-horizontal"></i><span>On plate</span></button>
@@ -257,7 +263,7 @@
           </div>
         </section>
 
-        <section id="measure-panel">
+        <section id="measure-panel" data-panel="measure">
           <header><h2>Measure</h2></header>
           <div class="button-grid cols-3 tiles">
             <button data-measure="distance" data-tip-title="Distance" data-tip="Click two points to measure the distance between them. Click again or press Esc to stop."><i data-lucide="ruler"></i><span>Distance</span></button>
@@ -274,7 +280,7 @@
           </div>
         </section>
 
-        <section>
+        <section data-panel="objects">
           <header><h2>Objects</h2><span id="object-count" class="muted"></span></header>
           <div class="button-grid cols-3">
             <button data-action="select-all" data-tip-title="Select all (Ctrl+A)" data-tip="Select every object.">All</button>
@@ -288,7 +294,7 @@
           <ul class="items"></ul>
         </section>
 
-        <details class="panel" open>
+        <details class="panel" data-panel="details" open>
           <summary><h2>Details</h2><span id="details-scope" class="muted"></span></summary>
           <dl class="details">
             <dt>Size</dt><dd id="detail-size">–</dd>
@@ -330,6 +336,14 @@
           <label><input type="checkbox" name="snapping" /> Snapping: move in 1 mm steps, turn in 5° steps, line faces up with the plate and other objects</label>
           <label><input type="checkbox" name="collision" /> Collision: a dragged object stops when it touches another one</label>
         </fieldset>
+        <fieldset>
+          <legend>View</legend>
+          <label><input type="checkbox" name="plate" /> Show the build plate</label>
+        </fieldset>
+        <fieldset>
+          <legend>Side panel order</legend>
+          <ol id="panel-order" class="panel-order"></ol>
+        </fieldset>
         <footer><button type="button" data-action="close-settings">Close</button></footer>
       </form>
     </dialog>
@@ -351,6 +365,25 @@
       </form>
     </dialog>
 
+    <dialog id="privacy-dialog">
+      <form method="dialog">
+        <header><h2>Privacy</h2></header>
+        <p>3D Open Builder runs entirely in your web browser.</p>
+        <ul class="privacy-list">
+          <li><strong>Your files stay on your computer.</strong> Files you open are read by your browser and are never uploaded anywhere. Exporting creates the file on your computer.</li>
+          <li><strong>No tracking.</strong> There are no analytics, cookies, ads or accounts.</li>
+          <li><strong>Your work and settings stay in your browser.</strong> The autosaved drawing, the copied objects and your choices (units, colours, snapping, panel order) are kept in this browser's storage so they are there next time. Clearing your browser data removes them.</li>
+        </ul>
+        <p class="muted">
+          The site is hosted on GitHub Pages. Like any web host, GitHub may log basic request
+          information such as your IP address when your browser downloads the page; see
+          <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">GitHub's privacy statement</a>.
+          The source code is open: <a href="https://github.com/covrig/3d-open-builder" target="_blank" rel="noopener">github.com/covrig/3d-open-builder</a>.
+        </p>
+        <footer><button type="submit" class="primary">Close</button></footer>
+      </form>
+    </dialog>
+
     <dialog id="restore-dialog">
       <form method="dialog">
         <header><h2 id="restore-title">Continue where you left off?</h2></header>
@@ -364,16 +397,33 @@
 
     <dialog id="check-dialog">
       <form method="dialog">
-        <header><h2>Print check</h2></header>
-        <label class="inline-field" data-tip-title="Minimum wall" data-tip="Walls thinner than this are reported. Use about twice your nozzle width (0.8 mm for a 0.4 mm nozzle).">
-          Minimum wall <input type="number" id="check-min-wall" min="0.1" step="0.1" /> mm
-          <button type="button" data-action="check-again">Check again</button>
-        </label>
+        <header class="check-head"><h2>Check and Repair</h2><span id="check-scope" class="muted"></span></header>
+        <div class="check-controls">
+          <label class="inline-field" data-tip-title="Minimum wall" data-tip="Walls thinner than this are reported. Use about twice your nozzle width (0.8 mm for a 0.4 mm nozzle).">
+            Minimum wall <input type="number" id="check-min-wall" min="0.1" step="0.1" /> mm
+          </label>
+          <button type="button" data-action="check-again"><i data-lucide="refresh-cw"></i>Check again</button>
+        </div>
         <div id="check-results"></div>
+        <section class="repair-box">
+          <div class="repair-row">
+            <div>
+              <strong>Repair</strong>
+              <p class="muted">
+                Fixes the mesh problems a slicer trips over: removes broken and duplicate triangles,
+                turns inside-out faces to point outward, closes holes in the surface and merges parts
+                that overlap, so each object becomes one closed solid. Walls, overhangs and size are
+                not changed. Undo takes the repair back.
+              </p>
+            </div>
+            <button type="button" id="check-repair" class="primary"><i data-lucide="wrench"></i>Repair</button>
+          </div>
+          <ol id="repair-log" class="repair-log" hidden></ol>
+          <button type="button" id="repair-undo" hidden><i data-lucide="undo-2"></i>Undo repair</button>
+        </section>
         <footer>
+          <button type="button" id="check-orient" hidden>Turn to best orientation</button>
           <button type="submit" value="close">Close</button>
-          <button type="submit" value="orient" id="check-orient" hidden>Turn to best orientation</button>
-          <button type="submit" value="repair" id="check-repair" class="primary" hidden>Repair</button>
         </footer>
       </form>
     </dialog>

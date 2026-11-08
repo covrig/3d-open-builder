@@ -5,63 +5,86 @@ import type { SceneDocument, SceneObject } from '../scene/document';
 import { settings, updateUi } from '../settings';
 import { hideHint, showHint } from './hint';
 
-type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
-
 const STATUS_ICON = { pass: '✓', warn: '!', fail: '✕' } as const;
+const NOTHING = 'Nothing needed repairing';
 
-/** The Check menu: print check report, automatic repair and best print orientation. */
+/**
+ * The Fix menu: the Check and Repair box (print check report, automatic repair
+ * with its log, undo of the repair) and best print orientation.
+ */
 export class CheckTools {
   private readonly dialog = document.querySelector<HTMLDialogElement>('#check-dialog')!;
+  private readonly results = this.dialog.querySelector<HTMLElement>('#check-results')!;
+  private readonly repairButton = this.dialog.querySelector<HTMLButtonElement>('#check-repair')!;
+  private readonly log = this.dialog.querySelector<HTMLOListElement>('#repair-log')!;
+  private readonly undoButton = this.dialog.querySelector<HTMLButtonElement>('#repair-undo')!;
+  private readonly orientButton = this.dialog.querySelector<HTMLButtonElement>('#check-orient')!;
+  /** The objects the box was opened for */
+  private objs: SceneObject[] = [];
   private checked: { obj: SceneObject; result: CheckResult }[] = [];
+  private working = false;
 
   constructor(
     private readonly doc: SceneDocument,
-    private readonly heavy: Heavy,
     private readonly toast: (msg: string) => void,
   ) {
-    document.querySelector('[data-action="check"]')!.addEventListener('click', () => void this.check());
-    document.querySelector('[data-action="repair"]')!.addEventListener('click', () => this.repair([...this.doc.selection]));
+    document.querySelector('[data-action="check"]')!.addEventListener('click', () => void this.open());
     document.querySelector('[data-action="orient"]')!.addEventListener('click', () => void this.orientBest());
 
     const minWall = this.dialog.querySelector<HTMLInputElement>('#check-min-wall')!;
     minWall.value = String(settings.ui.minWall);
     minWall.addEventListener('change', () => {
       const v = Math.max(0.1, Number(minWall.value) || 0.8);
+      minWall.value = String(v);
       updateUi((ui) => (ui.minWall = v));
+      void this.runChecks();
     });
     this.dialog.querySelector('[data-action="check-again"]')!.addEventListener('click', () => void this.runChecks());
-    this.dialog.addEventListener('close', () => {
-      if (this.dialog.returnValue === 'repair') {
-        this.repair(this.checked.filter((c) => c.result.items.some((i) => i.fixable && i.status !== 'pass')).map((c) => c.obj));
-      }
-      if (this.dialog.returnValue === 'orient') {
-        const c = this.checked[0];
-        if (c?.result.suggestedDown) this.orient(c.obj, c.result.suggestedDown);
-      }
+    this.repairButton.addEventListener('click', () => void this.repair());
+    this.undoButton.addEventListener('click', () => void this.undoRepair());
+    this.orientButton.addEventListener('click', () => {
+      const c = this.checked[0];
+      this.dialog.close();
+      if (c?.result.suggestedDown) this.orient(c.obj, c.result.suggestedDown);
+    });
+    // Clicking the dimmed backdrop closes the box.
+    this.dialog.addEventListener('click', (e) => {
+      if (e.target === this.dialog && !this.working) this.dialog.close();
     });
   }
 
-  private async check(): Promise<void> {
+  private async open(): Promise<void> {
     if (this.doc.selection.length === 0) return this.toast('Select the objects to check');
-    this.dialog.returnValue = '';
+    this.objs = [...this.doc.selection];
+    this.log.replaceChildren();
+    this.log.hidden = true;
+    this.undoButton.hidden = true;
+    this.dialog.querySelector('#check-scope')!.textContent =
+      this.objs.length === 1 ? this.objs[0].name : `${this.objs.length} objects`;
     this.dialog.showModal();
     await this.runChecks();
   }
 
+  /** The box's objects as they are now in the drawing (undo rebuilds objects, keeping their ids). */
+  private live(): SceneObject[] {
+    this.objs = this.objs
+      .map((o) => this.doc.objects.find((x) => x.id === o.id))
+      .filter((o): o is SceneObject => o !== undefined);
+    return this.objs;
+  }
+
   private async runChecks(): Promise<void> {
-    const objs = [...this.doc.selection];
-    const out = this.dialog.querySelector<HTMLElement>('#check-results')!;
-    out.textContent = 'Checking…';
-    this.dialog.querySelector<HTMLElement>('#check-repair')!.hidden = true;
-    this.dialog.querySelector<HTMLElement>('#check-orient')!.hidden = true;
+    const objs = this.live();
+    this.results.textContent = 'Checking…';
+    this.orientButton.hidden = true;
     try {
       const results = await Promise.all(objs.map((o) => runOp('check', { item: this.doc.placed(o), minWall: settings.ui.minWall })));
       this.checked = objs.map((obj, i) => ({ obj, result: results[i] }));
     } catch (err) {
-      out.textContent = err instanceof Error ? err.message : String(err);
+      this.results.textContent = err instanceof Error ? err.message : String(err);
       return;
     }
-    out.replaceChildren(...this.checked.map(({ obj, result }) => {
+    this.results.replaceChildren(...this.checked.map(({ obj, result }) => {
       const section = document.createElement('section');
       section.className = 'check-object';
       const h = document.createElement('h3');
@@ -88,17 +111,61 @@ export class CheckTools {
       return section;
     }));
     const fixable = this.checked.some((c) => c.result.items.some((i) => i.fixable && i.status !== 'pass'));
-    this.dialog.querySelector<HTMLElement>('#check-repair')!.hidden = !fixable;
-    this.dialog.querySelector<HTMLElement>('#check-orient')!.hidden = !(this.checked.length === 1 && this.checked[0].result.suggestedDown);
+    this.repairButton.classList.toggle('primary', fixable);
+    this.orientButton.hidden = !(this.checked.length === 1 && this.checked[0].result.suggestedDown);
   }
 
-  private repair(objs: SceneObject[]): void {
-    if (objs.length === 0) return this.toast('Select the objects to repair');
-    void this.heavy(objs, () => Promise.all(objs.map((o) => runOp('repair', { mesh: o.data }))), (results) => {
-      this.doc.checkpoint();
-      results.forEach((r, i) => this.doc.setData(objs[i], r.mesh));
-      this.toast(results.map((r, i) => `${objs[i].name}: ${r.actions.join(', ')}`).join(' · '));
-    });
+  private addLog(text: string, kind: 'done' | 'none' | 'error' | 'info' = 'info'): void {
+    const li = document.createElement('li');
+    li.className = kind;
+    li.textContent = text;
+    this.log.append(li);
+    this.log.hidden = false;
+    this.log.scrollTop = this.log.scrollHeight;
+  }
+
+  /** Repair every object in the box; one undo step takes all of it back. */
+  private async repair(): Promise<void> {
+    const objs = this.live();
+    if (objs.length === 0 || this.working) return;
+    this.working = true;
+    this.repairButton.disabled = true;
+    this.log.replaceChildren();
+    this.addLog('Repairing…');
+    try {
+      const settled = await Promise.allSettled(objs.map((o) => runOp('repair', { mesh: o.data })));
+      this.log.replaceChildren();
+      const changed: { obj: SceneObject; mesh: (typeof settled)[number] }[] = [];
+      settled.forEach((r, i) => {
+        const obj = objs[i];
+        if (r.status === 'rejected') {
+          this.addLog(`${obj.name}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`, 'error');
+        } else if (r.value.actions.length === 1 && r.value.actions[0] === NOTHING) {
+          this.addLog(`${obj.name}: nothing needed repairing`, 'none');
+        } else {
+          for (const a of r.value.actions) this.addLog(`${obj.name}: ${a}`, 'done');
+          changed.push({ obj, mesh: r });
+        }
+      });
+      const apply = changed.filter((c) => this.doc.objects.includes(c.obj));
+      if (apply.length) {
+        this.doc.checkpoint();
+        for (const c of apply) if (c.mesh.status === 'fulfilled') this.doc.setData(c.obj, c.mesh.value.mesh);
+        this.doc.emit('transform');
+        this.undoButton.hidden = false;
+      }
+      await this.runChecks();
+    } finally {
+      this.working = false;
+      this.repairButton.disabled = false;
+    }
+  }
+
+  private async undoRepair(): Promise<void> {
+    this.doc.undo();
+    this.undoButton.hidden = true;
+    this.addLog('Repair undone: the objects are back as they were', 'info');
+    await this.runChecks();
   }
 
   private async orientBest(): Promise<void> {

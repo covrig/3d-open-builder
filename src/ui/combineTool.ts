@@ -180,6 +180,8 @@ export class CombineTool {
         const p = pieces[i];
         if (!p) return emptied.push(t);
         this.doc.setData(t, p.mesh);
+        // A new shape gets a new name: half a sphere shouldn't stay called "Cube 1".
+        t.name = this.doc.uniqueName('Object');
         t.mesh.position.set(...p.center);
         t.mesh.quaternion.identity();
         t.mesh.scale.set(1, 1, 1);

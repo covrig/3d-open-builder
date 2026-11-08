@@ -331,13 +331,25 @@ export function textOnFace(
     // places where a letter is drawn from overlapping outlines.
     const section = new CrossSection(o.polygons, 'NonZero');
     try {
-      // Overlap 0.2 mm with the surface so raised text fuses and cut text opens cleanly.
-      const sink = 0.2;
-      const letters = o.mode === 'emboss'
-        ? keep(keep(Manifold.extrude(section, o.depth + sink)).translate([0, 0, -sink]))
-        : keep(keep(Manifold.extrude(section, o.depth + sink)).translate([0, 0, -o.depth]));
-      const placed = keep(letters.transform(o.frame));
-      return toPiece(keep(o.mode === 'emboss' ? solid.add(placed) : solid.subtract(placed)));
+      // The letters follow the surface, so they sit right on round faces too:
+      // tall letter columns along the face normal are cut to the layer between
+      // the surface and the surface pushed out (emboss) or in (deboss) by the
+      // depth. Over the text's width a curved surface drops away by at most
+      // that width, so columns reaching that far each way always meet it.
+      const xs = o.polygons.flat();
+      const reach = Math.hypot(
+        Math.max(...xs.map((p) => Math.abs(p[0]))),
+        Math.max(...xs.map((p) => Math.abs(p[1]))),
+      ) + o.depth + 1;
+      const columns = keep(keep(keep(Manifold.extrude(section, 2 * reach)).translate([0, 0, -reach])).transform(o.frame));
+      const n: Vec3 = [o.frame[8], o.frame[9], o.frame[10]];
+      const shift = (d: number) => keep(solid.translate([n[0] * d, n[1] * d, n[2] * d]));
+      if (o.mode === 'emboss') {
+        // Material within `depth` outside the surface, under the letters.
+        return toPiece(keep(solid.add(keep(columns.intersect(shift(o.depth))))));
+      }
+      // Remove the material within `depth` inside the surface, under the letters.
+      return toPiece(keep(solid.subtract(keep(columns.subtract(shift(-o.depth))))));
     } finally {
       section.delete();
     }

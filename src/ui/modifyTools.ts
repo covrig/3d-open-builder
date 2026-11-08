@@ -13,7 +13,7 @@ type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) =
 const AXES: Record<string, V3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 /**
- * The More menu (chamfer, fillet, shell, gusset) and the Pattern button. Each opens
+ * The More menu (edge bevel, edge rounding, shell, brace) and the Pattern button. Each opens
  * the feature bar with its settings and a live preview.
  */
 export class ModifyTools {
@@ -72,8 +72,8 @@ export class ModifyTools {
     const obj = this.one();
     if (!obj) return;
     const set = findEdges(bakeMesh(this.doc.placed(obj)));
-    if (set.segments.length === 0) return this.toast(`${obj.name} has no sharp edges to ${kind}`);
-    const name = kind === 'chamfer' ? 'Chamfer' : 'Fillet';
+    if (set.segments.length === 0) return this.toast(`${obj.name} has no sharp edges to ${kind === 'chamfer' ? 'bevel' : 'round'}`);
+    const name = kind === 'chamfer' ? 'Edge bevel' : 'Edge rounding';
     this.bar.open<Piece>({
       title: name,
       hint: `${name}: click edges to pick them (click again to drop), or choose "All sharp edges". Esc to cancel.`,
@@ -108,13 +108,13 @@ export class ModifyTools {
     const inside = (s: EdgeSegment) => !s.convex;
     if (!set.segments.some(inside)) return this.toast(`${obj.name} has no inside corner where two walls meet`);
     this.bar.open<Piece>({
-      title: 'Gusset',
-      hint: 'Gusset: click the inside corner where two walls meet. Esc to cancel.',
+      title: 'Brace',
+      hint: 'Brace: click the inside corner where two walls meet. Esc to cancel.',
       fields: [
-        { key: 'leg1', label: 'Leg 1', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far the gusset reaches up the first wall.' },
+        { key: 'leg1', label: 'Leg 1', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far the brace reaches up the first wall.' },
         { key: 'leg2', label: 'Leg 2', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far it reaches along the second wall.' },
         { key: 'thickness', label: 'Thickness', type: 'number', value: 2, min: 0.4, step: 0.5, unit: 'mm', tip: 'Thickness of the triangular plate.' },
-        { key: 'position', label: 'Position', type: 'number', value: 50, min: 0, max: 100, step: 5, unit: '%', tip: 'Where along the corner the gusset sits (0 = one end, 100 = the other).' },
+        { key: 'position', label: 'Position', type: 'number', value: 50, min: 0, max: 100, step: 5, unit: '%', tip: 'Where along the corner the brace sits (0 = one end, 100 = the other).' },
       ],
       ...this.pieceSpec(obj),
       compute: async (v) => {
@@ -219,7 +219,7 @@ export class ModifyTools {
           if (r.empty) return;
           const color = objs[0].color;
           this.doc.remove(all);
-          const merged = this.doc.add('Pattern', r.mesh, color);
+          const merged = this.doc.add('Object', r.mesh, color);
           merged.mesh.position.set(...r.center);
           this.doc.setSelection([merged]);
         });
