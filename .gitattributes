@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.wasm binary
+*.tgz binary
+*.ttf binary
+*.png binary

@@ -1,0 +1,32 @@
+{
+  "name": "3d-open-builder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Free, open-source 3D model builder for 3D printing that runs in the browser.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "licenses": "node scripts/collect-licenses.mjs",
+    "check:browsers": "node scripts/browser-check.mjs"
+  },
+  "dependencies": {
+    "fflate": "file:vendor/fflate-0.8.3.tgz",
+    "lucide": "file:vendor/lucide-1.70.0.tgz",
+    "manifold-3d": "file:vendor/manifold-3d-3.5.4.tgz",
+    "opentype.js": "file:vendor/opentype.js-2.0.0.tgz",
+    "three": "file:vendor/three-0.187.0.tgz"
+  },
+  "devDependencies": {
+    "@types/three": "0.187.0",
+    "happy-dom": "21.0.4",
+    "puppeteer-core": "25.16.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
+  }
+}

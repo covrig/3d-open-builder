@@ -1,0 +1,14 @@
+{
+  "name": "3D Open Builder",
+  "short_name": "3D Open Builder",
+  "description": "Free, open-source 3D model builder for 3D printing that runs in your browser.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f1318",
+  "theme_color": "#151b23",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "fflate",
+    "version": "0.8.3",
+    "license": "MIT",
+    "url": "https://github.com/101arrowz/fflate",
+    "licenseFile": "licenses/fflate.txt"
+  },
+  {
+    "name": "lucide",
+    "version": "1.70.0",
+    "license": "ISC",
+    "url": "https://lucide.dev",
+    "licenseFile": "licenses/lucide.txt"
+  },
+  {
+    "name": "manifold-3d",
+    "version": "3.5.4",
+    "license": "Apache-2.0",
+    "url": "https://github.com/elalish/manifold",
+    "licenseFile": "licenses/manifold-3d.txt"
+  },
+  {
+    "name": "opentype.js",
+    "version": "2.0.0",
+    "license": "MIT",
+    "url": "https://github.com/opentypejs/opentype.js",
+    "licenseFile": "licenses/opentype.js.txt"
+  },
+  {
+    "name": "three",
+    "version": "0.187.0",
+    "license": "MIT",
+    "url": "https://threejs.org",
+    "licenseFile": "licenses/three.txt"
+  },
+  {
+    "name": "Roboto (font)",
+    "version": "–",
+    "license": "OFL-1.1",
+    "url": "https://fonts.google.com",
+    "licenseFile": "fonts/Roboto-LICENSE.txt"
+  },
+  {
+    "name": "Roboto Slab (font)",
+    "version": "–",
+    "license": "Apache-2.0",
+    "url": "https://fonts.google.com",
+    "licenseFile": "fonts/RobotoSlab-LICENSE.txt"
+  },
+  {
+    "name": "Roboto Mono (font)",
+    "version": "–",
+    "license": "OFL-1.1",
+    "url": "https://fonts.google.com",
+    "licenseFile": "fonts/RobotoMono-LICENSE.txt"
+  }
+]
