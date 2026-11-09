@@ -3,7 +3,7 @@ import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { MeshData } from '../geometry/meshData';
 import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
-import { addOverhangShading } from './overhang';
+import { overhangLayer, overhangMaterial } from './overhang';
 
 /**
  * Colours given to new objects in turn. Mid-tone and fairly saturated so they
@@ -205,11 +205,11 @@ export class SceneDocument extends EventTarget {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1 + 2 * (7 - (state.id % 8)),
     });
-    addOverhangShading(material);
     material.clippingPlanes = this.clipping;
     const mesh = new THREE.Mesh(buildGeometry(state.data), material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.add(overhangLayer(mesh.geometry));
     mesh.position.fromArray(state.position);
     mesh.quaternion.fromArray(state.quaternion);
     mesh.scale.fromArray(state.scale);
@@ -258,6 +258,7 @@ export class SceneDocument extends EventTarget {
     obj.thread = undefined;
     obj.mesh.geometry.dispose();
     obj.mesh.geometry = buildGeometry(data);
+    for (const c of obj.mesh.children) if (c.userData.overhangLayer) (c as THREE.Mesh).geometry = obj.mesh.geometry;
     // Rebuild edge lines for the new shape.
     const edges = obj.mesh.userData.edges as THREE.LineSegments | undefined;
     if (edges) {
@@ -373,8 +374,10 @@ export class SceneDocument extends EventTarget {
       o.mesh.material.clippingPlanes = planes;
       o.mesh.material.needsUpdate = true;
     }
-    edgeMaterial.clippingPlanes = planes;
-    edgeMaterial.needsUpdate = true;
+    for (const m of [edgeMaterial, overhangMaterial]) {
+      m.clippingPlanes = planes;
+      m.needsUpdate = true;
+    }
   }
 
   setView(mode: Partial<ViewMode>): void {

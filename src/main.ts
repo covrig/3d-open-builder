@@ -151,10 +151,10 @@ new ModifyTools(viewport, doc, featureBar, heavy, toast);
 new PartsTools(viewport, doc, gizmo, featureBar, heavy, toast);
 const measure = new MeasureTool(viewport, doc, toast);
 // Cross-section view (More menu); measuring works on the cut.
-const crossSection = new CrossSection(viewport, doc);
+const crossSection = new CrossSection(viewport, doc, gizmo);
 measure.section = crossSection;
-// Show overhangs (Check menu): a view panel like the cross-section.
-const overhangs = new OverhangTool(viewport);
+// Show overhangs (Check menu): a view tool like the cross-section.
+const overhangs = new OverhangTool(viewport, gizmo);
 setupViewCube(viewport);
 setupLookSettings(viewport);
 const colors = new ColorPopover(doc, (picking) => {
@@ -675,7 +675,7 @@ const TOOL_KEYS: Record<string, string> = {
 /** Run the last tool again, but only once the previous operation is finished. */
 function repeatLastTool(): void {
   if (!lastTool) return toast('Nothing to repeat yet: use a tool first');
-  if (isToolOpen() || busy) return toast(LOCKED_MESSAGE);
+  if (isToolOpen() || isLocked() || busy) return toast(LOCKED_MESSAGE);
   lastTool.click();
 }
 

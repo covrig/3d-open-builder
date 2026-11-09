@@ -654,7 +654,7 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 }
 #feature-bar .feature-info { flex-basis: 100%; text-align: center; }
 #feature-bar .feature-info:empty { display: none; }
-.top-bar .bar-actions { display: flex; gap: 6px; justify-content: center; }
+.top-bar .bar-actions { display: flex; gap: 6px; justify-content: center; align-items: center; }
 #feature-bar .extra-actions { display: contents; }
 .top-bar .bar-actions button { border: 1px solid var(--border); padding: 5px 14px; }
 .top-bar .bar-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -987,6 +987,8 @@ button.cancel:hover { background: color-mix(in srgb, #e5484d 30%, var(--panel-2)
    doesn't respond (its tooltip says why); the tool's own button stays lit.
    The list matches LOCKED in src/ui/toolGuard.ts. */
 body.tool-locked :is(.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"]), #file-menu [data-action="new"], #file-menu [data-action="open"], #file-menu [data-action="reference"], #sidebar [data-panel="arrange"] button, #sidebar [data-panel="objects"] button, #sidebar .items li, #measure-panel button, #reference-panel button, #transform-bar input, #transform-bar [data-action="reset-rotation"], #transform-bar [data-action="lock"], #view-corner [data-action="multi-select"], #view-corner [data-action="delete-selection"]) { opacity: 0.32; cursor: not-allowed; }
+/* Measuring still works beside the cross-section and the overhangs. */
+body.tool-locked.view-tool-only #measure-panel button { opacity: 1; cursor: pointer; }
 body.tool-locked .toolbar button.tool-current {
   opacity: 1; background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
 }

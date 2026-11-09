@@ -823,7 +823,8 @@ async function runChecks(b) {
       window.app.viewport.invalidate();
       await new Promise((res) => setTimeout(res, 300));
       const shown = window.app.viewport.reflection.group.visible;
-      item.click();
+      // The toolbar is locked while a view tool is open: close with the panel's own button.
+      document.querySelector('#overhang-bar [data-overhang="close"]').click();
       refl.checked = false;
       refl.dispatchEvent(new Event('change'));
       plate.value = '0.35';

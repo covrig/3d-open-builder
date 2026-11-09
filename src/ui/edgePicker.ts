@@ -4,7 +4,8 @@ import type { Viewport } from '../scene/viewport';
 import { viewClicks } from './interaction';
 
 const PICK_PX = 10;
-const COLORS = { idle: 0x8a9bb0, hover: 0xffd166, selected: 0xf2a33a };
+// Picked edges in blue: the result's preview is orange, and they must stand out on it.
+const COLORS = { idle: 0x8a9bb0, hover: 0xffd166, selected: 0x4aa8ff };
 
 /**
  * Shows an object's sharp edges and lets the user click whole edge runs
@@ -24,9 +25,11 @@ export class EdgePicker {
   constructor(private readonly viewport: Viewport) {
     this.lines = new THREE.LineSegments(
       new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ vertexColors: true, depthTest: true }),
+      // Always on top: the object itself is hidden while picking, and the
+      // result's preview must not cover the edges after the first pick.
+      new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false }),
     );
-    this.lines.renderOrder = 2;
+    this.lines.renderOrder = 10;
     this.lines.visible = false;
     viewport.scene.add(this.lines);
   }

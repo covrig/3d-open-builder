@@ -1,13 +1,15 @@
+import type { Gizmo } from '../scene/gizmo';
 import { setOverhangs } from '../scene/overhang';
 import type { Viewport } from '../scene/viewport';
 import { settings, updateUi } from '../settings';
+import { beginViewTool, endViewTool } from './toolLock';
 
 /**
  * Show overhangs (Check menu): a panel at the top with the colour and the
  * angle, marking every surface that tilts down more than that from vertical,
- * live while objects move. A view panel like the cross-section: it locks
- * nothing (docs/tool-rules.md); Close or Esc ends it. Colour and angle are
- * remembered.
+ * on every object. A view tool like the cross-section: while it is open,
+ * objects can't be edited or moved, measuring still works (docs/tool-rules.md);
+ * Close or Esc ends it. Colour and angle are remembered.
  */
 export class OverhangTool {
   private on = false;
@@ -16,7 +18,10 @@ export class OverhangTool {
   private readonly angle = this.bar.querySelector<HTMLInputElement>('#overhang-angle')!;
   private readonly menuItem = document.querySelector<HTMLElement>('[data-action="overhangs"]')!;
 
-  constructor(private readonly viewport: Viewport) {
+  constructor(
+    private readonly viewport: Viewport,
+    private readonly gizmo: Gizmo,
+  ) {
     this.menuItem.addEventListener('click', () => (this.on ? this.close() : this.open()));
     this.bar.querySelector('[data-overhang="close"]')!.addEventListener('click', () => this.close());
     this.color.addEventListener('input', () => {
@@ -36,6 +41,8 @@ export class OverhangTool {
   }
 
   open(): void {
+    beginViewTool('overhangs', () => this.close());
+    this.gizmo.enabled = false;
     this.on = true;
     this.apply();
   }
@@ -44,6 +51,8 @@ export class OverhangTool {
   close(): boolean {
     if (!this.on) return false;
     this.on = false;
+    endViewTool('overhangs');
+    this.gizmo.enabled = true;
     this.apply();
     return true;
   }

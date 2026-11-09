@@ -1,5 +1,5 @@
 import type { SceneDocument } from '../scene/document';
-import { isLocked, onToolChange } from './toolLock';
+import { isLocked, onlyViewLocked, onToolChange } from './toolLock';
 
 /**
  * While a tool with Apply/Cancel is open, the controls that would disturb it
@@ -27,9 +27,12 @@ export const LOCKED = [
 
 export const LOCKED_MESSAGE = 'Finish or cancel the current tool first (Apply, Cancel or Esc)';
 
+/** With only a view tool open (cross-section, overhangs), measuring still works. */
+const VIEW_TOOL_ALLOWED = '#measure-panel button';
+
 /** Is this element locked right now? */
 export function lockedNow(el: Element): boolean {
-  return isLocked() && el.closest(LOCKED) !== null;
+  return isLocked() && el.closest(LOCKED) !== null && !(onlyViewLocked() && el.closest(VIEW_TOOL_ALLOWED));
 }
 
 /**
@@ -78,6 +81,7 @@ export function setupToolGuard(toast: (msg: string) => void, doc: SceneDocument)
   onToolChange(() => {
     const locked = isLocked();
     document.body.classList.toggle('tool-locked', locked);
+    document.body.classList.toggle('view-tool-only', onlyViewLocked());
     current?.classList.remove('tool-current');
     current = null;
     if (!locked || !pressed) return;

@@ -76,7 +76,7 @@ export class ModifyTools {
     const name = kind === 'chamfer' ? 'Edge bevel' : 'Edge rounding';
     this.bar.open<Piece>({
       title: name,
-      hint: `${name}: click edges to pick them (click again to drop). Esc to cancel.`,
+      hint: `${name}: click edges to pick them (blue; click again to drop). The result shows in orange. Esc to cancel.`,
       fields: [
         {
           key: 'size', label: kind === 'chamfer' ? 'Distance' : 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm',

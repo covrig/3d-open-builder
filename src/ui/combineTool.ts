@@ -10,7 +10,12 @@ import { viewClicks } from './interaction';
 
 type Role = 'target' | 'tool';
 
-const WORDS: Record<RoleOp, { title: string; targets: string; tools: string; steps: Record<Role, string> }> = {
+const WORDS: Record<RoleOp, {
+  title: string; targets: string; tools: string; steps: Record<Role, string>;
+  tips: Record<Role, string>;
+  /** Shown between the two buttons, so the bar reads as a sentence */
+  joiner?: string;
+}> = {
   subtract: {
     title: 'Subtract',
     targets: '1 · Objects to cut',
@@ -19,14 +24,23 @@ const WORDS: Record<RoleOp, { title: string; targets: string; tools: string; ste
       target: 'Subtract, step 1: click the objects to cut into (green). Then press "2 · Cutters".',
       tool: 'Subtract, step 2: click the objects to cut away (red). Click again to unmark. Apply when the preview looks right.',
     },
+    tips: {
+      target: 'Then click the objects that should get holes or cuts.',
+      tool: 'Then click the objects to cut away. They disappear on Apply.',
+    },
   },
   intersect: {
     title: 'Intersect',
-    targets: '1 · Objects to trim',
-    tools: '2 · Shapes to keep',
+    targets: '1 · Objects',
+    tools: '2 · Objects',
+    joiner: 'with',
     steps: {
-      target: 'Intersect, step 1: click the objects to trim (green). Then press "2 · Shapes to keep".',
-      tool: 'Intersect, step 2: click the shapes whose inside is kept (red). Click again to unmark. Apply when the preview looks right.',
+      target: 'Intersect, step 1: click the objects to keep the shared part of (green; the result keeps their name and colour). Then press "2 · Objects".',
+      tool: 'Intersect, step 2: click the objects to intersect them with (red). Click again to unmark. Apply when the preview looks right.',
+    },
+    tips: {
+      target: 'Then click the objects to keep the shared part of. The result keeps their name and colour.',
+      tool: 'Then click the objects they are intersected with. Only the shared part is kept; these disappear on Apply.',
     },
   },
 };
@@ -118,9 +132,11 @@ export class CombineTool {
       hint: words.steps[role],
       fields: [
         { key: 'targets', label: words.targets, type: 'button', value: '', onClick: () => setRole('target'),
-          tip: op === 'subtract' ? 'Then click the objects that should get holes or cuts.' : 'Then click the objects that should be trimmed.' },
+          tip: words.tips.target },
+
         { key: 'tools', label: words.tools, type: 'button', value: '', onClick: () => setRole('tool'),
-          tip: op === 'subtract' ? 'Then click the objects to cut away. They disappear on Apply.' : 'Then click the shapes; only what lies inside them is kept. They disappear on Apply.' },
+          tip: words.tips.tool },
+
         { key: 'swap', label: 'Swap', type: 'button', value: '', tip: 'Swap the two groups.',
           onClick: () => {
             [targets, tools] = [tools, targets];
@@ -144,6 +160,12 @@ export class CombineTool {
         this.viewport.invalidate();
       },
     });
+    if (words.joiner) {
+      const joiner = document.createElement('span');
+      joiner.className = 'muted';
+      joiner.textContent = words.joiner;
+      document.querySelector('#feature-bar [data-key="tools"]')!.before(joiner);
+    }
 
     viewClicks.onClick = (e) => {
       const hit = this.viewport.pick(e.clientX, e.clientY);

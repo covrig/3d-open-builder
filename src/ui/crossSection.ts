@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { edgeFeatures, type EdgeFeatures } from '../geometry/edgeMiddles';
 import { cutSegments } from '../geometry/sectionCut';
 import { edgeMaterial, type SceneDocument, type SceneObject } from '../scene/document';
+import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { fromUnit, settings, toUnit } from '../settings';
+import { beginViewTool, endViewTool } from './toolLock';
 
 type Axis = 0 | 1 | 2;
 const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
@@ -26,7 +28,8 @@ interface Helpers {
  * The cut faces are filled in (stencil-buffer caps: each object's back faces
  * count up and front faces count down, and where the count isn't zero the
  * plane lies inside the solid) and outlined like the Edges view. Measuring
- * works on the cut and snaps to its corners and edges.
+ * works on the cut and snaps to its corners and edges. A view tool: while it is
+ * open, objects can't be edited or moved (docs/tool-rules.md); Close or Esc ends it.
  */
 export class CrossSection {
   readonly plane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
@@ -45,6 +48,7 @@ export class CrossSection {
   constructor(
     private readonly viewport: Viewport,
     private readonly doc: SceneDocument,
+    private readonly gizmo: Gizmo,
   ) {
     this.group.visible = false;
     viewport.scene.add(this.group);
@@ -70,6 +74,8 @@ export class CrossSection {
 
   open(): void {
     if (this.doc.objects.length === 0) return;
+    beginViewTool('section', () => this.close());
+    this.gizmo.enabled = false;
     this.on = true;
     this.bar.hidden = false;
     this.group.visible = true;
@@ -82,6 +88,8 @@ export class CrossSection {
   close(): boolean {
     if (!this.on) return false;
     this.on = false;
+    endViewTool('section');
+    this.gizmo.enabled = true;
     this.bar.hidden = true;
     this.group.visible = false;
     this.doc.setClipping(null);
