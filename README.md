@@ -44,7 +44,7 @@ they are there next time. The full statement is in the app under Menu → Privac
 | `src/io/` | Reading and writing 3MF, STL and OBJ files. |
 | `src/app/` | Autosave, restore and error recovery. |
 | `src/style.css` | The look of the app, in light and dark colours. |
-| `docs/` | The screenshot at the top of this page. |
+| `docs/` | The screenshot at the top of this page, and `tool-rules.md`: how tools start and end, and what stays usable while one is open. |
 | `public/` | Files served as they are: the app icon, fonts for text on faces, and the licence texts of the libraries used. |
 | `tests/` | Unit tests for the geometry, file formats and saving. |
 | `vendor/` | The libraries the app uses, stored in this repository so nothing is fetched from other sites — see `vendor/README.md`. They are: **three** (3D drawing), **manifold-3d** (solid geometry engine), **fflate** (zip, for 3MF files), **lucide** (icons) and **opentype.js** (reading fonts). |

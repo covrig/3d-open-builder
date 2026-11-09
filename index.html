@@ -132,7 +132,7 @@
         <div id="brand-overlay" aria-hidden="true"><i data-lucide="box"></i><span>3D Open Builder</span></div>
         <div id="messages">
           <div id="op-hint" role="status" hidden></div>
-          <div id="busy" role="status" hidden><span>Working…</span><button type="button" data-action="cancel-op" data-tip-title="Cancel" data-tip="Stop this calculation. Nothing in the drawing changes.">Cancel</button></div>
+          <div id="busy" role="status" hidden><span>Working…</span><button type="button" data-action="cancel-op" class="cancel" data-tip-title="Cancel" data-tip="Stop this calculation. Nothing in the drawing changes.">Cancel</button></div>
           <div id="toast" role="status" hidden></div>
         </div>
         <div id="shortcuts-panel" hidden>
@@ -187,7 +187,7 @@
           </div>
           <div class="bar-actions">
             <button data-split="apply" class="primary" data-tip-title="Apply" data-tip="Cut the object with the plane.">Apply</button>
-            <button data-split="cancel" data-tip-title="Cancel" data-tip="Leave Split without changing anything.">Cancel</button>
+            <button data-split="cancel" class="cancel" data-tip-title="Cancel" data-tip="Leave Split without changing anything.">Cancel</button>
           </div>
         </div>
 
@@ -216,7 +216,7 @@
           <span class="feature-info muted"></span>
           <div class="bar-actions">
             <button data-feature="apply" class="primary" data-tip-title="Apply" data-tip="Keep the result shown in orange.">Apply</button>
-            <button data-feature="cancel" data-tip-title="Cancel" data-tip="Leave without changing anything (Esc).">Cancel</button>
+            <button data-feature="cancel" class="cancel" data-tip-title="Cancel" data-tip="Leave without changing anything (Esc).">Cancel</button>
           </div>
         </div>
 
@@ -437,7 +437,7 @@
         </label>
         <p id="export-note" class="muted"></p>
         <footer>
-          <button type="submit" value="cancel">Cancel</button>
+          <button type="submit" value="cancel" class="cancel">Cancel</button>
           <button type="submit" value="export" class="primary">Export</button>
         </footer>
       </form>

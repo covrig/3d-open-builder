@@ -318,13 +318,18 @@ async function runChecks(b) {
     if (!(await visible(page, '#split-bar'))) throw new Error('split did not open');
     const keepBoth = await page.$eval('[data-split-keep="both"]', (e) => e.classList.contains('active'));
     if (!keepBoth) throw new Error('split does not default to keeping both');
+    // Other tools are locked while Split is open; Esc ends it, then Shell opens.
+    await page.click('.toolbar [data-menu="modify-menu"]');
+    if (!(await visible(page, '#split-bar'))) throw new Error('split closed when More was clicked');
+    if (await visible(page, '#modify-menu')) throw new Error('More opened during Split');
+    await page.keyboard.press('Escape');
+    if (await visible(page, '#split-bar')) throw new Error('Esc did not close split');
     await clickSel(page, '[data-menu="modify-menu"]');
     await clickSel(page, '[data-modify="shell"]');
-    if (await visible(page, '#split-bar')) throw new Error('split stayed open under shell');
     if (!(await visible(page, '#feature-bar'))) throw new Error('shell did not open');
     await page.keyboard.press('Escape');
     if (await visible(page, '#feature-bar')) throw new Error('Esc did not close shell');
-    return 'split closed when shell opened';
+    return 'More refused during Split; after Esc, Shell opened and Esc closed it';
   });
 
   await check('Split shows the part that will go', async () => {
@@ -341,26 +346,26 @@ async function runChecks(b) {
     return 'removed side drawn as a ghost';
   });
 
-  await check('Deleting the object cancels its tool', async () => {
+  await check('Cut and Delete are refused inside a tool', async () => {
     const id = await page.evaluate(() => window.app.doc.objects[0].id);
     await select([id]);
     await clickSel(page, '[data-menu="modify-menu"]');
     await clickSel(page, '[data-modify="shell"]');
     if (!(await visible(page, '#feature-bar'))) throw new Error('Shell did not open');
     await page.evaluate(() => document.activeElement?.blur());
-    // Delete is ignored inside a tool; Cut (Ctrl+X) still works there and takes the object away.
     await page.keyboard.down('Control');
     await page.keyboard.press('x');
     await page.keyboard.up('Control');
+    await page.keyboard.press('Delete');
     await sleep(100);
-    if (await visible(page, '#feature-bar')) throw new Error('shell stayed open');
-    const msg = await page.$eval('#toast', (e) => e.textContent);
-    if (!msg.includes('cancelled')) throw new Error(`message: "${msg}"`);
-    // Bring the object back for the next checks.
-    await page.evaluate(() => window.app.doc.undo());
-    return msg;
+    const r = await page.evaluate(() => ({ n: window.app.doc.objects.length, msg: document.querySelector('#toast').textContent }));
+    const open = await visible(page, '#feature-bar');
+    await page.keyboard.press('Escape');
+    if (!open) throw new Error('Shell closed');
+    if (r.n !== 1) throw new Error('the object was removed');
+    if (!r.msg.startsWith('Finish or cancel')) throw new Error(`message: "${r.msg}"`);
+    return 'Shell stays open, object kept, message shown';
   });
-
   await check('Measurements go with a deleted object (and come back on undo)', async () => {
     await reset();
     const a = await addCube(0, 0, 20);
@@ -378,7 +383,7 @@ async function runChecks(b) {
     return 'cleared, restored by undo';
   });
 
-  await check('Reference picture: undo, and removing closes Calibrate', async () => {
+  await check('Reference picture: undo; Remove waits for Calibrate', async () => {
     await reset();
     await page.evaluate(async () => {
       const c = document.createElement('canvas');
@@ -395,8 +400,12 @@ async function runChecks(b) {
     await page.waitForSelector('#reference-panel:not([hidden])', { timeout: 5000 });
     await page.click('[data-action="ref-calibrate"]');
     if (!(await visible(page, '#feature-bar'))) throw new Error('calibrate did not open');
+    // Removing the picture is refused while Calibrate is open; after Esc it works.
     await page.click('[data-action="ref-remove"]');
-    if (await visible(page, '#feature-bar')) throw new Error('calibrate stayed open after removing the picture');
+    if (!(await visible(page, '#reference-panel'))) throw new Error('picture removed during Calibrate');
+    await page.keyboard.press('Escape');
+    if (await visible(page, '#feature-bar')) throw new Error('Esc did not close Calibrate');
+    await page.click('[data-action="ref-remove"]');
     if (await visible(page, '#reference-panel')) throw new Error('picture panel still shown');
     await page.click('[data-action="undo"]');
     await page.waitForSelector('#reference-panel:not([hidden])', { timeout: 5000 });
@@ -852,6 +861,146 @@ async function runChecks(b) {
     if (tag !== 'Middle of edge') throw new Error(`snap on the cut: ${tag}`);
     if (after !== 0) throw new Error('still cut after Close');
     return 'cut, snapped to the middle of the cut edge, closed';
+  });
+
+  await check('Esc closes every tool, even from its own field', async () => {
+    await shortcuts(false);
+    await reset();
+    const id = await addCube(0, 0, 20);
+    // [name, how to open, what shows while open]
+    const tools = [
+      ['Split', () => document.querySelector('[data-action="split"]').click(), '#split-bar'],
+      ['Extrude', () => document.querySelector('[data-action="extrude-down"]').click(), '#feature-bar'],
+      ['Pattern', () => document.querySelector('[data-modify="pattern"]').click(), '#feature-bar'],
+      ['Text', () => document.querySelector('[data-modify="text"]').click(), '#feature-bar'],
+      ['Edge bevel', () => document.querySelector('[data-modify="chamfer"]').click(), '#feature-bar'],
+      ['Edge rounding', () => document.querySelector('[data-modify="fillet"]').click(), '#feature-bar'],
+      ['Shell', () => document.querySelector('[data-modify="shell"]').click(), '#feature-bar'],
+      ['Subtract', () => document.querySelector('[data-boolean="difference"]').click(), '#feature-bar'],
+      ['Intersect', () => document.querySelector('[data-boolean="intersection"]').click(), '#feature-bar'],
+      ['Bolt', () => document.querySelector('[data-thread="bolt"]').click(), '#feature-bar'],
+      ['Threaded hole', () => document.querySelector('[data-thread="tap"]').click(), '#feature-bar'],
+      ['Measuring', () => document.querySelector('[data-measure="distance"]').click(), '#op-hint'],
+      ['Cross section', () => document.querySelector('[data-action="cross-section"]').click(), '#section-bar'],
+    ];
+    const results = [];
+    for (const [name, open, shows] of tools) {
+      await select([id]);
+      await page.evaluate(open);
+      await sleep(150);
+      if (!(await visible(page, shows))) throw new Error(`${name} did not open`);
+      // Put the keyboard focus in the tool's own field when it has one.
+      await page.evaluate((shows) => {
+        const field = document.querySelector(`${shows} input`);
+        if (field) field.focus();
+        else document.activeElement?.blur();
+      }, shows);
+      await page.keyboard.press('Escape');
+      await sleep(100);
+      if (await visible(page, shows)) throw new Error(`Esc did not close ${name}`);
+      results.push(name);
+    }
+    return `closed: ${results.join(', ')}`;
+  });
+
+  await check('Clicks in the view do not end a tool', async () => {
+    await reset();
+    const a = await addCube(-30, 0, 20);
+    const other = await addCube(30, 0, 20);
+    await page.evaluate(() => window.app.viewport.fit(window.app.doc.worldBox(window.app.doc.objects)));
+    const spot = (id) => page.evaluate((id) => {
+      const { doc, viewport } = window.app;
+      const o = doc.objects.find((x) => x.id === id);
+      const b = doc.worldBox([o]);
+      const p = viewport.project(b.getCenter(o.mesh.position.clone()).setZ(b.max.z - 1));
+      const r = viewport.element.getBoundingClientRect();
+      return { x: r.left + p.x, y: r.top + p.y };
+    }, id);
+    const tools = [
+      ['Split', '[data-action="split"]', '#split-bar'],
+      ['Extrude', '[data-action="extrude-down"]', '#feature-bar'],
+      ['Pattern', '[data-modify="pattern"]', '#feature-bar'],
+      ['Shell', '[data-modify="shell"]', '#feature-bar'],
+    ];
+    for (const [name, button, shows] of tools) {
+      await select([a]);
+      await page.evaluate((b) => document.querySelector(b).click(), button);
+      await sleep(150);
+      const empty = await page.evaluate(() => {
+        const r = window.app.viewport.element.getBoundingClientRect();
+        return { x: r.left + 40, y: r.bottom - 120 };
+      });
+      await page.mouse.click(empty.x, empty.y);
+      const o = await spot(other);
+      await page.mouse.click(o.x, o.y);
+      await sleep(100);
+      const state = await page.evaluate((shows) => ({ open: !document.querySelector(shows).hidden, sel: window.app.doc.selection.map((x) => x.id) }), shows);
+      await page.keyboard.press('Escape');
+      if (!state.open) throw new Error(`${name} closed after clicks in the view`);
+      if (state.sel.length !== 1 || state.sel[0] !== a) throw new Error(`${name}: the selection changed to ${state.sel}`);
+    }
+    return 'Split, Extrude, Pattern, Shell stay open; selection kept';
+  });
+
+  await check('Other controls are locked while a tool is open', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    await select([id]);
+    await page.click('.toolbar [data-action="extrude-down"]');
+    await sleep(150);
+    await page.click('.toolbar [data-boolean="union"]');
+    const msg = await page.$eval('#toast', (e) => e.textContent);
+    const r = await page.evaluate(() => ({
+      locked: document.body.classList.contains('tool-locked'),
+      title: document.querySelector('#feature-bar .bar-title').textContent,
+      addDim: Number(getComputedStyle(document.querySelector('.toolbar [data-menu="add-menu"]')).opacity),
+      current: document.querySelector('.tool-current')?.dataset.action ?? null,
+    }));
+    await page.mouse.click(5, 300);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('z');
+    await page.keyboard.up('Control');
+    const undoMsg = await page.$eval('#toast', (e) => e.textContent);
+    // The view still works: X-ray on and off.
+    await page.click('[data-view="xray"]');
+    const xray = await page.$eval('[data-view="xray"]', (e) => e.classList.contains('active'));
+    await page.click('[data-view="xray"]');
+    await page.keyboard.press('Escape');
+    const after = await page.evaluate(() => document.body.classList.contains('tool-locked'));
+    if (!r.locked || r.title !== 'Extrude down') throw new Error(`locked ${r.locked}, bar "${r.title}"`);
+    if (!msg.startsWith('Finish or cancel')) throw new Error(`Merge click: "${msg}"`);
+    if (!(r.addDim < 0.5)) throw new Error(`Add object not dimmed (${r.addDim})`);
+    if (r.current !== 'extrude-down') throw new Error(`highlighted: ${r.current}`);
+    if (!undoMsg.startsWith('Finish or cancel')) throw new Error(`Ctrl+Z inside the tool: "${undoMsg}"`);
+    if (!xray) throw new Error('X-ray did not switch on during the tool');
+    if (after) throw new Error('still locked after Esc');
+    return 'Merge refused, Add object dimmed, Extrude lit, Ctrl+Z refused, X-ray works, unlocked after Esc';
+  });
+
+  await check('One Cancel stops a slow preview', async () => {
+    await reset();
+    await page.evaluate(() => {
+      document.querySelector('[data-insert="sphere"]').click();
+      const { doc } = window.app;
+      doc.setSelection(doc.objects);
+    });
+    const before = await page.evaluate(() => window.app.doc.objects[0].data);
+    await page.evaluate(() => (window.dataBefore = window.app.doc.objects[0].data));
+    await page.evaluate(() => document.querySelector('[data-modify="shell"]').click());
+    await sleep(900); // the sphere's hollowing takes a few seconds
+    const during = await page.evaluate(() => ({
+      info: document.querySelector('#feature-bar .feature-info').textContent,
+      busyShown: !document.querySelector('#busy').hidden,
+    }));
+    await page.click('#feature-bar [data-feature="cancel"]');
+    await sleep(3500);
+    const after = await page.evaluate(() => ({ same: window.app.doc.objects[0].data === window.dataBefore, bar: !document.querySelector('#feature-bar').hidden }));
+    void before;
+    if (during.info !== 'Working…') throw new Error(`bar info "${during.info}"`);
+    if (during.busyShown) throw new Error('a second "Working…" box was shown');
+    if (after.bar) throw new Error('bar still open');
+    if (!after.same) throw new Error('the shell was applied after Cancel');
+    return 'one Working…, Cancel closed the bar and stopped the calculation';
   });
 
   await check('Top bar, brand and toolbar layout', async () => {

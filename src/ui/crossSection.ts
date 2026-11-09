@@ -85,8 +85,9 @@ export class CrossSection {
     this.setAxis(this.axis);
   }
 
-  close(): void {
-    if (!this.on) return;
+  /** Close the cross-section; false if it wasn't open. */
+  close(): boolean {
+    if (!this.on) return false;
     this.on = false;
     this.bar.hidden = true;
     this.group.visible = false;
@@ -96,6 +97,7 @@ export class CrossSection {
     this.helpers.clear();
     this.cuts.clear();
     this.viewport.invalidate();
+    return true;
   }
 
   /** The cut through an object (world space), for measuring; null when off or not cut. */

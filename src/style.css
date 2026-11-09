@@ -965,3 +965,19 @@ body:not(.panel-closed) #multi-tip { display: none !important; }
 #section-bar .unit { color: var(--muted); }
 #section-bar > button { border: 1px solid var(--border); padding: 5px 9px; }
 #section-bar .segmented button { padding: 5px 9px; }
+/* Cancel buttons: one reddish look everywhere. */
+button.cancel {
+  color: #ffc9c9;
+  border-color: color-mix(in srgb, #e5484d 55%, var(--border)) !important;
+  background: color-mix(in srgb, #e5484d 16%, var(--panel-2)) !important;
+}
+button.cancel:hover { background: color-mix(in srgb, #e5484d 30%, var(--panel-2)) !important; }
+:root[data-theme='light'] button.cancel { color: #b42318; }
+
+/* While a tool with Apply/Cancel is open: what would disturb it is dimmed and
+   doesn't respond (its tooltip says why); the tool's own button stays lit.
+   The list matches LOCKED in src/ui/toolGuard.ts. */
+body.tool-locked :is(.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"]), #file-menu [data-action="new"], #file-menu [data-action="open"], #file-menu [data-action="reference"], #sidebar [data-panel="arrange"] button, #sidebar [data-panel="objects"] button, #sidebar .items li, #measure-panel button, #reference-panel button, #transform-bar input, #transform-bar [data-action="reset-rotation"], #transform-bar [data-action="lock"], #view-corner [data-action="multi-select"], #view-corner [data-action="delete-selection"]) { opacity: 0.32; cursor: not-allowed; }
+body.tool-locked .toolbar button.tool-current {
+  opacity: 1; background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
+}

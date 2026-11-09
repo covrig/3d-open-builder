@@ -38,7 +38,7 @@ export class ColorPopover {
     }
     this.custom.addEventListener('change', () => this.apply(this.custom.value));
     this.el.querySelector('[data-action="eyedropper"]')!.addEventListener('click', () => {
-      beginTool('eyedropper', () => this.finishPick(undefined));
+      beginTool('eyedropper', () => this.finishPick(undefined), false);
       this.pickingFor = this.targets;
       this.close();
       this.onPickStart(true);

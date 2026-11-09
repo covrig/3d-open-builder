@@ -116,7 +116,8 @@ export class MeasureTool {
   }
 
   setKind(kind: MeasureKind | null): void {
-    if (kind) beginTool('measure', () => this.setKind(null));
+    // Light tool: measuring locks nothing else (it even works with the cross-section on).
+    if (kind) beginTool('measure', () => this.setKind(null), false);
     else endTool('measure');
     this.kind = kind;
     this.pending = [];

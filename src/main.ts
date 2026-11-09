@@ -42,7 +42,8 @@ import { setupMenus } from './ui/menu';
 import { setupSettingsDialog } from './ui/settingsDialog';
 import { SplitTool } from './ui/splitTool';
 import { setupTooltips } from './ui/tooltip';
-import { isToolOpen, stopActiveTool } from './ui/toolLock';
+import { isLocked, isToolOpen, stopActiveTool } from './ui/toolLock';
+import { LOCKED_MESSAGE, setupToolGuard } from './ui/toolGuard';
 import { TransformBar } from './ui/transformBar';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -87,6 +88,7 @@ setupShortcutsPanel();
 watchTopBars();
 setupArrange(doc, (msg) => toast(msg));
 setupPanelToggle();
+setupToolGuard((msg) => toast(msg));
 setupMultiSelect();
 const ruler = new Ruler();
 viewport.scene.add(ruler.group);
@@ -263,12 +265,23 @@ for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
 {
   const el = $('#busy');
   let timer: number | undefined;
+  const cancel = el.querySelector<HTMLElement>('[data-action="cancel-op"]')!;
+  const featureBarEl = $('#feature-bar');
   onBusyChange((working) => {
     clearTimeout(timer);
-    if (working) timer = window.setTimeout(() => (el.hidden = false), 400);
-    else el.hidden = true;
+    if (!working) {
+      el.hidden = true;
+      return;
+    }
+    timer = window.setTimeout(() => {
+      // One "Working…" and one Cancel: the tool bar shows its own (its Cancel
+      // also stops the calculation), and inside another tool (Split) that
+      // tool's Cancel does it.
+      el.hidden = !featureBarEl.hidden;
+      cancel.hidden = isLocked();
+    }, 400);
   });
-  el.querySelector('[data-action="cancel-op"]')!.addEventListener('click', () => cancelAll());
+  cancel.addEventListener('click', () => cancelAll());
 }
 
 // --- Clipboard ------------------------------------------------------------
@@ -637,7 +650,7 @@ const TOOL_KEYS: Record<string, string> = {
 /** Run the last tool again, but only once the previous operation is finished. */
 function repeatLastTool(): void {
   if (!lastTool) return toast('Nothing to repeat yet: use a tool first');
-  if (isToolOpen() || busy) return toast('Finish the current tool first (Apply, or Esc to cancel)');
+  if (isToolOpen() || busy) return toast(LOCKED_MESSAGE);
   lastTool.click();
 }
 
@@ -664,6 +677,21 @@ function nudgeSelection(e: KeyboardEvent): void {
   doc.emit('transform');
 }
 
+// Esc always closes the open tool, whatever has the keyboard focus (a tool
+// bar's field included) and whether shortcuts are on or not: a dropdown menu
+// closes first, then the tool, then the cross-section; else the selection
+// clears. Dialogs close themselves.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+  if (document.querySelector('.menu:not([hidden])')) return; // the menu closes itself
+  if (stopActiveTool() || crossSection.close()) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  if (!(e.target as HTMLElement).closest('input, textarea, select')) doc.setSelection([]);
+}, true);
+
 document.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement;
   // Leave typing in fields and dialogs alone.
@@ -674,17 +702,21 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     fn();
   };
-  // While a tool is open (a tool bar, Split, measuring) or a calculation runs,
-  // only what can't disturb it works: undo/redo, copy/cut/paste, the view keys,
-  // and the arrow keys the tool itself uses.
-  const toolOpen = isToolOpen() || busy;
+  // While a tool with Apply/Cancel is open (or a calculation runs), only what
+  // can't disturb it works: Copy, the view keys, and the arrow keys the tool
+  // itself uses. Undo, redo, cut, paste and Delete would change or remove what
+  // the tool works on (docs/tool-rules.md).
+  const locked = isLocked() || busy;
+  const refuse = () => run(() => toast(LOCKED_MESSAGE));
+  if (ctrl && key === 'c') return run(actions.copy);
+  const editing = (ctrl && ['z', 'y', 'x', 'v', 'a'].includes(key)) || (!ctrl && (e.key === 'Delete' || e.key === 'Backspace'));
+  if (editing && locked) return refuse();
   if (ctrl && key === 'z' && !e.shiftKey) return run(actions.undo);
   if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) return run(actions.redo);
-  if (ctrl && key === 'c') return run(actions.copy);
   if (ctrl && key === 'x') return run(actions.cut);
   if (ctrl && key === 'v') return run(actions.paste);
-  if (ctrl && key === 'a' && !toolOpen) return run(() => doc.setSelection(doc.objects));
-  if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace') && !toolOpen) return run(actions.delete);
+  if (ctrl && key === 'a') return run(() => doc.setSelection(doc.objects));
+  if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) return run(actions.delete);
   // Single-key shortcuts, if switched on in Settings (off by default).
   const single = settings.shortcuts && !ctrl && !e.altKey && !e.shiftKey;
   if (single && key === 'f') return run(fitView);
@@ -692,7 +724,7 @@ document.addEventListener('keydown', (e) => {
   if (single && key === 'r') return run(repeatLastTool); // refuses itself while a tool is open
   // Tool keys press the tool's button (so R can repeat them), only with no tool open.
   const button = single ? TOOL_KEYS[key] : undefined;
-  if (button && toolOpen) return run(() => toast('Finish the current tool first (Apply, or Esc to cancel)'));
+  if (button && (locked || isToolOpen())) return refuse();
   if (button) {
     return run(() => {
       const el = $(button);
@@ -704,15 +736,9 @@ document.addEventListener('keydown', (e) => {
   // with no tool open they move the selection.
   if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {
     if (viewClicks.onKey?.(e)) return e.preventDefault();
-    if (doc.selection.length && !toolOpen) return run(() => nudgeSelection(e));
-  }
-  if (e.key === 'Escape') {
-    // Close the open tool (feature bar, split, measuring, colour picking), else deselect.
-    if (!stopActiveTool()) doc.setSelection([]);
-
+    if (doc.selection.length && !locked && !isToolOpen()) return run(() => nudgeSelection(e));
   }
 });
-
 // --- Clicking in the view -------------------------------------------------
 
 // A click selects (or places a measuring point); a drag turns the camera.
@@ -730,6 +756,10 @@ canvas.addEventListener('pointerup', (e) => {
   if (e.button !== 0 || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
   if (viewClicks.onClick) return viewClicks.onClick(e);
   if (measure.active) return measure.click(e.clientX, e.clientY);
+  // Inside a tool with Apply/Cancel, a click that isn't part of the tool's own
+  // work (picking a face or edge, above) changes nothing: only Apply, Cancel
+  // and Esc end a tool.
+  if (isLocked()) return;
 
   const hit = viewport.pick(e.clientX, e.clientY);
   const obj = hit ? doc.byMesh(hit) : undefined;
