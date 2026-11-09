@@ -219,6 +219,7 @@ for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
       const color = selected[0].color;
       doc.remove(selected);
       const obj = doc.add('Object', result.mesh, color);
+      obj.edged = selected.find((o) => o.edged)?.edged;
       const pieces = countPieces(result.mesh);
       if (pieces > 1) toast(`The objects don't touch, so the merged object is made of ${pieces} separate pieces.`);
       obj.mesh.position.set(...result.center);

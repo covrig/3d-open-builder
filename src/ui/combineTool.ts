@@ -193,6 +193,7 @@ export class CombineTool {
       kept.push(t);
       for (const p of rest) {
         const extra = this.doc.add('Object', p.mesh, t.color);
+        extra.edged = t.edged;
         extra.mesh.position.set(...p.center);
         kept.push(extra);
         split++;

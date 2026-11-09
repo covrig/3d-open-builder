@@ -986,6 +986,7 @@ body.tool-locked .toolbar button.tool-current {
 #overhang-bar input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
 
 /* Single-object tools while a group or several objects are selected (SINGLE_ONLY in src/ui/toolGuard.ts). */
-body.many-selected :is([data-modify="chamfer"], [data-modify="fillet"], [data-modify="shell"], [data-modify="gusset"], [data-modify="text"], [data-action="orient"]) {
+body.many-selected :is([data-modify="chamfer"], [data-modify="fillet"], [data-modify="shell"], [data-modify="gusset"], [data-modify="text"], [data-action="orient"]),
+body.no-chamfer [data-modify="chamfer"], body.no-fillet [data-modify="fillet"] {
   opacity: 0.35; cursor: not-allowed;
 }

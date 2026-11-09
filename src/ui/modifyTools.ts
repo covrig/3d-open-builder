@@ -6,6 +6,7 @@ import { runOp } from '../geometry/workerClient';
 import type { ObjectState, SceneDocument, SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
 import { EdgePicker } from './edgePicker';
+import { edgeBlock } from './toolGuard';
 import { previewMesh, type FeatureBar, type Values } from './featureBar';
 
 type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
@@ -71,26 +72,29 @@ export class ModifyTools {
   private edgeTool(kind: 'chamfer' | 'fillet'): void {
     const obj = this.one();
     if (!obj) return;
+    const blocked = edgeBlock(obj, kind);
+    if (blocked) return this.toast(blocked);
     const set = findEdges(bakeMesh(this.doc.placed(obj)));
     if (set.segments.length === 0) return this.toast(`${obj.name} has no sharp edges to ${kind === 'chamfer' ? 'bevel' : 'round'}`);
     const name = kind === 'chamfer' ? 'Edge bevel' : 'Edge rounding';
     this.bar.open<Piece>({
       title: name,
-      hint: `${name}: click edges to pick them (click again to drop), or choose "All sharp edges". Esc to cancel.`,
+      hint: `${name}: click edges to pick them (click again to drop). Esc to cancel.`,
       fields: [
         {
           key: 'size', label: kind === 'chamfer' ? 'Distance' : 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm',
           tip: kind === 'chamfer' ? 'How far the cut reaches along each face from the edge.' : 'Radius of the rounding. Inside corners get filled with the same radius.',
         },
-        {
-          key: 'scope', label: 'Edges', type: 'select', value: 'picked',
-          options: [['picked', 'Picked edges'], ['all', 'All sharp edges']],
-          tip: 'Only the edges you click, or every sharp edge of the object (outside and inside).',
-        },
       ],
       ...this.pieceSpec(obj),
+      apply: (p: Piece) => {
+        this.replace(obj, p);
+        // After replace's undo checkpoint, so undo drops the mark with the shape.
+        obj.edged = kind;
+        this.doc.emit('change');
+      },
       compute: async (v) => {
-        const segments = v.scope === 'all' ? set.segments : this.edges.segments;
+        const segments = this.edges.segments;
         if (segments.length === 0) return null;
         return runOp('edgeTreatment', { item: this.doc.placed(obj), segments, kind, size: Number(v.size) });
       },
@@ -220,6 +224,7 @@ export class ModifyTools {
           const color = objs[0].color;
           this.doc.remove(all);
           const merged = this.doc.add('Object', r.mesh, color);
+          merged.edged = objs.find((o) => o.edged)?.edged;
           merged.mesh.position.set(...r.center);
           this.doc.setSelection([merged]);
         });

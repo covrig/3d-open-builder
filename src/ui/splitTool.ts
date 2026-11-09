@@ -347,6 +347,7 @@ export class SplitTool {
         // A cut object's second piece gets a new colour, so the two are easy to tell apart (when not in a group).
         const fresh = side === 'negative' && keep === 'both' && obj.groupId === undefined;
         const o = this.doc.add(obj.name.replace(/ \d+$/, ''), piece.mesh, fresh ? undefined : obj.color);
+        o.edged = obj.edged;
         o.mesh.position.set(...piece.center);
         add(side, obj, o);
       }

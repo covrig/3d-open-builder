@@ -17,6 +17,8 @@ const SELECTED_EMISSIVE = 0x1a3050;
 const CREASE_ANGLE = THREE.MathUtils.degToRad(30);
 const MAX_UNDO = 100;
 
+export type EdgeKind = 'chamfer' | 'fillet';
+
 export interface SceneObject {
   id: number;
   name: string;
@@ -29,6 +31,8 @@ export interface SceneObject {
   groupId?: number;
   /** Set on bolts, nuts and rods from Add object; dropped when the shape changes. */
   thread?: ThreadInfo;
+  /** Edge bevel or Edge rounding was applied; the other one is then refused (see toolGuard). */
+  edged?: EdgeKind;
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 }
 
@@ -41,6 +45,7 @@ export interface ObjectState {
   defaultColor?: string;
   groupId?: number;
   thread?: ThreadInfo;
+  edged?: EdgeKind;
   position: [number, number, number];
   quaternion: [number, number, number, number];
   scale: [number, number, number];
@@ -221,6 +226,7 @@ export class SceneDocument extends EventTarget {
       defaultColor: state.defaultColor ?? state.color,
       groupId: state.groupId,
       thread: state.thread,
+      edged: state.edged,
       mesh,
     };
     if (state.groupId !== undefined) this.nextGroupId = Math.max(this.nextGroupId, state.groupId + 1);
@@ -291,6 +297,7 @@ export class SceneDocument extends EventTarget {
       defaultColor: obj.defaultColor,
       groupId: obj.groupId,
       thread: obj.thread,
+      edged: obj.edged,
       position: m.position.toArray() as [number, number, number],
       quaternion: m.quaternion.toArray() as [number, number, number, number],
       scale: m.scale.toArray() as [number, number, number],

@@ -1120,6 +1120,49 @@ async function runChecks(b) {
     return 'mirror swapped sides, on plate kept heights, bevel refused, split into two groups, extrude reached the plate';
   });
 
+  await check('Edge rounding then bevel is refused (and the other way round)', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    await select([id]);
+    await page.evaluate(() => document.querySelector('[data-modify="fillet"]').click());
+    if (await page.$('#feature-bar [data-key="scope"], #feature-bar select[name="scope"]')) throw new Error('"All sharp edges" choice still there');
+    // Pick the cube's top front edge by clicking its middle on screen.
+    const at = await page.evaluate((id) => {
+      const { doc, viewport } = window.app;
+      const o = doc.objects.find((x) => x.id === id);
+      const b = doc.worldBox([o]);
+      const p = viewport.project(b.getCenter(o.mesh.position.clone()).setY(b.min.y).setZ(b.max.z));
+      const r = viewport.element.getBoundingClientRect();
+      return { x: r.left + p.x, y: r.top + p.y };
+    }, id);
+    await page.mouse.click(at.x, at.y);
+    await applyFeature(page);
+    await page.waitForFunction(() => window.app.doc.objects[0]?.edged === 'fillet', { timeout: 15000 });
+    const state = () => page.evaluate(() => ({ dim: document.body.classList.contains('no-chamfer'), bar: !!document.querySelector('#feature-bar:not([hidden])') }));
+    if (!(await state()).dim) throw new Error('Edge bevel not dimmed after rounding');
+    await page.evaluate(() => document.querySelector('[data-modify="chamfer"]').click());
+    const why = await page.$eval('#toast', (e) => e.textContent);
+    if ((await state()).bar || !why.includes('already rounded')) throw new Error(`bevel after rounding: "${why}"`);
+    // Rounding more edges is still allowed.
+    await page.evaluate(() => document.querySelector('[data-modify="fillet"]').click());
+    if (!(await visible(page, '#feature-bar'))) throw new Error('Edge rounding refused on a rounded object');
+    await page.keyboard.press('Escape');
+    // Undo drops the mark with the rounding.
+    await page.evaluate(() => window.app.doc.undo());
+    const after = await page.evaluate(() => ({ edged: window.app.doc.objects[0].edged, dim: document.body.classList.contains('no-chamfer') }));
+    if (after.edged || after.dim) throw new Error(`after undo: ${JSON.stringify(after)}`);
+    // A copy keeps the mark.
+    await page.evaluate(() => {
+      const { doc } = window.app;
+      doc.objects[0].edged = 'chamfer';
+      doc.setSelection([doc.objects[0]]);
+      document.querySelector('[data-action="duplicate"]').click();
+    });
+    const copy = await page.evaluate(() => window.app.doc.objects.at(-1).edged);
+    if (copy !== 'chamfer') throw new Error(`duplicate lost the mark: ${copy}`);
+    return 'no "All sharp edges"; rounded cube: bevel dimmed and refused with reason, rounding still opens; undo clears; duplicate keeps';
+  });
+
   await check('Top bar, brand and toolbar layout', async () => {
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));
