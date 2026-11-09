@@ -1,15 +1,25 @@
 import * as THREE from 'three';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import type { EdgeSegment, EdgeSet } from '../geometry/edges';
 import type { Viewport } from '../scene/viewport';
 import { viewClicks } from './interaction';
 
 const PICK_PX = 10;
-// Picked edges in blue: the result's preview is orange, and they must stand out on it.
-const COLORS = { idle: 0x8a9bb0, hover: 0xffd166, selected: 0x4aa8ff };
+const IDLE = 0x8a9bb0;
+const UNAVAILABLE = 0x4a5563;
+/** Picked edges: blue, which stands out on the orange preview of the result. */
+const PICKED = 0x4aa8ff;
+/** The edge under the pointer: white on the dark theme, near-black on the light one, so it never blends in. */
+const HOVER = { dark: 0xffffff, light: 0x14181e };
 
 /**
  * Shows an object's sharp edges and lets the user click whole edge runs
- * (a cube edge, a hole rim) to select them.
+ * (a cube edge, a hole rim) to select them. All pickable edges are thin
+ * lines; the edge under the pointer and the picked ones are drawn thick on
+ * top (a WebGL line is always 1 px, so those are "fat" lines), above the
+ * orange preview of the result.
  */
 export class EdgePicker {
   private set: EdgeSet | null = null;
@@ -21,6 +31,8 @@ export class EdgePicker {
   private onChange: () => void = () => {};
   private readonly lines: THREE.LineSegments;
   private colors = new Float32Array(0);
+  private readonly picked: LineSegments2;
+  private readonly hovered: LineSegments2;
 
   constructor(private readonly viewport: Viewport) {
     this.lines = new THREE.LineSegments(
@@ -31,7 +43,19 @@ export class EdgePicker {
     );
     this.lines.renderOrder = 10;
     this.lines.visible = false;
-    viewport.scene.add(this.lines);
+    const fat = (width: number, order: number) => {
+      const line = new LineSegments2(new LineSegmentsGeometry(), new LineMaterial({ linewidth: width, depthTest: false, transparent: true }));
+      line.renderOrder = order;
+      line.visible = false;
+      return line;
+    };
+    this.picked = fat(3.5, 11);
+    this.hovered = fat(5, 12);
+    viewport.scene.add(this.lines, this.picked, this.hovered);
+    // Fat lines need the view's size in pixels for their width.
+    viewport.beforeFrame(() => {
+      for (const l of [this.picked, this.hovered]) l.material.resolution.set(viewport.width, viewport.height);
+    });
   }
 
   get active(): boolean {
@@ -89,7 +113,7 @@ export class EdgePicker {
     if (!this.set) return;
     this.set = null;
     this.selected.clear();
-    this.lines.visible = false;
+    this.lines.visible = this.picked.visible = this.hovered.visible = false;
     viewClicks.onClick = null;
     viewClicks.onMove = null;
     this.viewport.invalidate();
@@ -118,17 +142,27 @@ export class EdgePicker {
     return best;
   }
 
+  /** Put these chains' segments into a fat line (hidden when there are none). */
+  private fill(line: LineSegments2, chains: number[], color: number): void {
+    const pos: number[] = [];
+    for (const c of chains) for (const i of this.set!.chains[c]) pos.push(...this.set!.segments[i].a, ...this.set!.segments[i].b);
+    line.visible = pos.length > 0;
+    if (!line.visible) return;
+    line.geometry.dispose();
+    line.geometry = new LineSegmentsGeometry().setPositions(pos);
+    line.material.color.setHex(color);
+  }
+
   private paint(): void {
     if (!this.set) return;
-    const set = (i: number, hex: number) => {
-      const c = new THREE.Color(hex);
-      this.colors.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6);
-    };
+    const tint = new THREE.Color();
     this.set.segments.forEach((s, i) => {
-      const c = this.chainOf[i];
-      set(i, this.selected.has(c) ? COLORS.selected : c === this.hover ? COLORS.hover : this.filter(s) ? COLORS.idle : 0x4a5563);
+      tint.setHex(this.filter(s) ? IDLE : UNAVAILABLE);
+      this.colors.set([tint.r, tint.g, tint.b, tint.r, tint.g, tint.b], i * 6);
     });
     (this.lines.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    this.fill(this.picked, [...this.selected], PICKED);
+    this.fill(this.hovered, this.hover >= 0 ? [this.hover] : [], this.viewport.palette.dark ? HOVER.dark : HOVER.light);
     this.viewport.invalidate();
   }
 }
