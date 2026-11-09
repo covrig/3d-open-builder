@@ -5,7 +5,7 @@ type Which = 'min' | 'mid' | 'max';
 const SPACING = 5; // mm between packed objects
 
 /** Objects that move together: each group is one unit, other objects are units of their own. */
-function units(doc: SceneDocument, objs: SceneObject[]): { objs: SceneObject[]; box: THREE.Box3 }[] {
+export function units(doc: SceneDocument, objs: SceneObject[]): { objs: SceneObject[]; box: THREE.Box3 }[] {
   const byGroup = new Map<string, SceneObject[]>();
   for (const o of objs) {
     const key = o.groupId !== undefined ? `g${o.groupId}` : `o${o.id}`;

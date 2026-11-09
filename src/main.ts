@@ -29,7 +29,7 @@ import { setupViewCube } from './ui/viewCube';
 import { renderIcons } from './ui/icons';
 import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
 import { restrictNumberInputs } from './ui/numberInputs';
-import { setupArrange } from './ui/arrange';
+import { setupArrange, units } from './ui/arrange';
 import { hideHint, showHint, watchTopBars } from './ui/hint';
 import { setupItemsPanel } from './ui/itemsPanel';
 import { MeasureTool } from './ui/measureTool';
@@ -89,7 +89,7 @@ setupShortcutsPanel();
 watchTopBars();
 setupArrange(doc, (msg) => toast(msg));
 setupPanelToggle();
-setupToolGuard((msg) => toast(msg));
+setupToolGuard((msg) => toast(msg), doc);
 setupMultiSelect();
 const ruler = new Ruler();
 viewport.scene.add(ruler.group);
@@ -244,18 +244,24 @@ for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
   btn.addEventListener('click', () =>
     withSelection((objs) => {
       const axis = Number(btn.dataset.mirror) as 0 | 1 | 2;
-      for (const obj of objs) {
-        // Bake rotation and scale into the geometry, then mirror along the
-        // plate axis through the object's centre. The object ends up with no
-        // rotation, which keeps the numbers in the transform bar simple.
-        const m = obj.mesh;
-        const linear = new THREE.Matrix4().compose(new THREE.Vector3(), m.quaternion, m.scale);
-        const mirrored = mirrorMesh(bakeMesh({ mesh: obj.data, matrix: linear.elements }), axis);
-        const { mesh, center } = recenter(mirrored);
-        doc.setData(obj, mesh);
-        m.position.add(new THREE.Vector3(...center));
-        m.quaternion.identity();
-        m.scale.set(1, 1, 1);
+      // A group mirrors as a whole: through the middle of the group, so its
+      // parts swap sides too. A loose object mirrors through its own middle.
+      for (const unit of units(doc, objs)) {
+        const mid = (unit.box.min.getComponent(axis) + unit.box.max.getComponent(axis)) / 2;
+        for (const obj of unit.objs) {
+          // Bake rotation and scale into the geometry and mirror it about the
+          // object's own origin, then place the origin's mirror image. The
+          // object ends up with no rotation, which keeps the transform bar simple.
+          const m = obj.mesh;
+          const linear = new THREE.Matrix4().compose(new THREE.Vector3(), m.quaternion, m.scale);
+          const mirrored = mirrorMesh(bakeMesh({ mesh: obj.data, matrix: linear.elements }), axis);
+          const { mesh, center } = recenter(mirrored);
+          doc.setData(obj, mesh);
+          m.position.setComponent(axis, 2 * mid - m.position.getComponent(axis));
+          m.position.add(new THREE.Vector3(...center));
+          m.quaternion.identity();
+          m.scale.set(1, 1, 1);
+        }
       }
     }),
   );
@@ -350,7 +356,10 @@ on('[data-action="ungroup"]', () => {
 
 // --- Arrange --------------------------------------------------------------
 
-on('[data-action="drop"]', () => withSelection((objs) => objs.forEach(drop)));
+// A group rests on the plate as a whole: its lowest point, not each part's.
+on('[data-action="drop"]', () => withSelection((objs) => {
+  for (const unit of units(doc, objs)) for (const o of unit.objs) o.mesh.position.z -= unit.box.min.z;
+}));
 
 on('[data-action="center"]', () =>
   withSelection((objs) => {
@@ -364,11 +373,20 @@ on('[data-action="center"]', () =>
 
 on('[data-action="lay-flat"]', () =>
   withSelection((objs) => {
-    for (const obj of objs) {
-      const n = largestFlatFaceNormal(wasm, bakeMesh(doc.placed(obj)));
+    // A group turns as a whole, onto the largest flat side of all its parts together.
+    for (const unit of units(doc, objs)) {
+      const baked = unit.objs.map((o) => bakeMesh(doc.placed(o)).positions);
+      const all = new Float32Array(baked.reduce((n, p) => n + p.length, 0));
+      baked.reduce((at, p) => (all.set(p, at), at + p.length), 0);
+      const n = largestFlatFaceNormal(wasm, { positions: all, indices: new Uint32Array() });
       const turn = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(...n), new THREE.Vector3(0, 0, -1));
-      obj.mesh.quaternion.premultiply(turn);
-      drop(obj);
+      const c = unit.box.getCenter(new THREE.Vector3());
+      for (const o of unit.objs) {
+        o.mesh.quaternion.premultiply(turn);
+        o.mesh.position.sub(c).applyQuaternion(turn).add(c);
+      }
+      const low = doc.worldBox(unit.objs).min.z;
+      for (const o of unit.objs) o.mesh.position.z -= low;
     }
   }),
 );

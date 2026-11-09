@@ -51,3 +51,25 @@ Locked controls are dimmed, don't respond, and their tooltip and a message say
 button of the open tool stays highlighted.
 
 With a light tool or a view panel open, everything works as usual.
+
+## Groups (and several selected objects)
+
+Selecting a part of a group selects the whole group.
+
+| Operation | On a group | Behaviour |
+|---|---|---|
+| Move, rotate, size (handles, transform bar) | Yes | The group as a whole |
+| Copy, cut, paste, duplicate, delete | Yes | All parts; copies form a new group |
+| Mirror | Yes | Through the middle of the group: the parts swap sides as well as flip |
+| On plate | Yes | The group's lowest point rests on the plate; parts keep their heights relative to each other |
+| Lay flat | Yes | The group turns as a whole onto the largest flat side of all its parts together |
+| Center, align, distribute, pack | Yes | The group counts as one piece |
+| Pattern | Yes | Copies of the whole group |
+| Split | Yes | One plane across the group; every part it crosses is split; the pieces on each side form their own group |
+| Extrude down | Yes | One plane across the group; every part it crosses is extended down; parts it misses stay as they are |
+| Merge | Yes | All parts become one object |
+| Subtract, intersect | Yes | Clicking a part puts the whole group in the role |
+| Check and Repair | Yes | Each part is checked and repaired |
+| Colour | Yes | All parts, when the group is selected (a part's colour box in the list recolours just that part otherwise) |
+| Edge bevel, edge rounding, shell, brace, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
+| Best print orientation | No | Same: the orientation is worked out for one object |

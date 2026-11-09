@@ -1,3 +1,4 @@
+import type { SceneDocument } from '../scene/document';
 import { isLocked, onToolChange } from './toolLock';
 
 /**
@@ -31,17 +32,40 @@ export function lockedNow(el: Element): boolean {
   return isLocked() && el.closest(LOCKED) !== null;
 }
 
-export function setupToolGuard(toast: (msg: string) => void): void {
+/**
+ * Tools that work on a single object. With a group or several objects
+ * selected they are unavailable (docs/tool-rules.md lists every operation).
+ */
+export const SINGLE_ONLY = [
+  '[data-modify="chamfer"]', '[data-modify="fillet"]', '[data-modify="shell"]',
+  '[data-modify="gusset"]', '[data-modify="text"]', '[data-action="orient"]',
+].join(', ');
+export const SINGLE_ONLY_MESSAGE = 'Works on one object at a time. For a group, Merge it into one object first (or Ungroup and select one part).';
+let manySelected = false;
+
+/** Why this control can't be used right now, or null if it can. */
+export function blockReason(el: Element): string | null {
+  if (lockedNow(el)) return LOCKED_MESSAGE;
+  if (manySelected && el.closest(SINGLE_ONLY)) return SINGLE_ONLY_MESSAGE;
+  return null;
+}
+
+export function setupToolGuard(toast: (msg: string) => void, doc: SceneDocument): void {
+  doc.addEventListener('selection', () => {
+    manySelected = doc.selection.length > 1;
+    document.body.classList.toggle('many-selected', manySelected);
+  });
   // The control last pressed: when it opens a tool, it is that tool's button.
   let pressed: HTMLElement | null = null;
   let current: HTMLElement | null = null;
 
   document.addEventListener('click', (e) => {
     const el = (e.target as Element).closest<HTMLElement>('button, li');
-    if (el && lockedNow(el)) {
+    const reason = el ? blockReason(el) : null;
+    if (reason) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      toast(LOCKED_MESSAGE);
+      toast(reason);
       return;
     }
     if (el) pressed = el;

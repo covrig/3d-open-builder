@@ -20,12 +20,14 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const PLANE_COLOR = 0xf2a33a;
 
 /**
- * Split mode: a cutting plane through the selected object. The user picks a
- * starting direction (X, Y, Z), tilts it, slides it with the slider or the
- * arrow on the plane, chooses which pieces to keep and presses Apply.
+ * Split mode: a cutting plane through the selected objects (one object, a
+ * group, or several). The user picks a starting direction (X, Y, Z), tilts
+ * it, slides it with the slider or the arrow on the plane, chooses which
+ * pieces to keep and presses Apply. Every object the plane crosses is split;
+ * the pieces of a group on each side form a group of their own.
  */
 export class SplitTool {
-  private target?: SceneObject;
+  private targets: SceneObject[] = [];
   private axis: Axis = 2;
   private tiltA = 0; // degrees around the first in-plane axis
   private tiltB = 0; // degrees around the second in-plane axis
@@ -41,8 +43,9 @@ export class SplitTool {
   private readonly handle: SVGPolygonElement;
   private handleDir = new THREE.Vector2(1, 0);
   private handlePxPerMm = 1;
-  /** The part that Apply will throw away, drawn see-through grey */
-  private readonly ghost: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  /** The parts that Apply will throw away, drawn see-through grey (one per object) */
+  private ghosts: THREE.Mesh[] = [];
+  private readonly ghostMaterial: THREE.MeshBasicMaterial;
   private readonly keepClip = new THREE.Plane();
   private readonly dropClip = new THREE.Plane();
 
@@ -72,16 +75,10 @@ export class SplitTool {
     viewport.scene.add(this.plane);
 
     viewport.renderer.localClippingEnabled = true;
-    this.ghost = new THREE.Mesh(
-      new THREE.BufferGeometry(),
-      new THREE.MeshBasicMaterial({
-        color: 0x8f98a3, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
-        clippingPlanes: [this.dropClip],
-      }),
-    );
-    this.ghost.visible = false;
-    this.ghost.raycast = () => {};
-    viewport.scene.add(this.ghost);
+    this.ghostMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8f98a3, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
+      clippingPlanes: [this.dropClip],
+    });
 
     // Drag handle: a double arrow at the plane centre, along the normal.
     this.handleSvg = document.createElementNS(SVG_NS, 'svg');
@@ -115,19 +112,21 @@ export class SplitTool {
     );
     q('[data-split="apply"]').addEventListener('click', () => this.apply());
     q('[data-split="cancel"]').addEventListener('click', () => this.stop());
+    // The tool works on what was selected; if that changes some other way (an undo elsewhere), it closes.
     doc.addEventListener('selection', () => {
-      if (this.target && !(doc.selection.length === 1 && doc.selection[0] === this.target)) this.stop();
+      const same = doc.selection.length === this.targets.length && this.targets.every((o) => doc.selection.includes(o));
+      if (this.targets.length && !same) this.stop();
     });
   }
 
   get active(): boolean {
-    return this.target !== undefined;
+    return this.targets.length > 0;
   }
 
   start(): void {
-    if (this.doc.selection.length !== 1) return this.toast('Select one object to split');
+    if (this.doc.selection.length === 0) return this.toast('Select the objects to split');
     beginTool('split', () => this.stop());
-    this.target = this.doc.selection[0];
+    this.targets = [...this.doc.selection];
     this.gizmo.enabled = false;
     this.bar.hidden = false;
     this.plane.visible = true;
@@ -139,7 +138,7 @@ export class SplitTool {
   stop(): void {
     endTool('split');
     this.showDropped(false);
-    this.target = undefined;
+    this.targets = [];
     this.gizmo.enabled = true;
     this.bar.hidden = true;
     this.plane.visible = false;
@@ -149,7 +148,7 @@ export class SplitTool {
   }
 
   private box(): THREE.Box3 {
-    return this.doc.worldBox([this.target!]);
+    return this.doc.worldBox(this.targets);
   }
 
   /** Plane normal: the chosen axis tilted by the two angles. */
@@ -198,32 +197,44 @@ export class SplitTool {
   }
 
   /**
-   * Show what Apply keeps: the object is cut away at the plane on the side
+   * Show what Apply keeps: the objects are cut away at the plane on the side
    * that will be removed, and that side is drawn as a see-through grey ghost.
    */
   private updateDropped(): void {
-    const obj = this.target;
-    if (!obj || this.keep === 'both') return this.showDropped(false);
+    if (!this.targets.length || this.keep === 'both') return this.showDropped(false);
     const n = this.normal();
     const sign = this.keep === 'positive' ? 1 : -1;
     // A plane keeps the side where normal · p + constant >= 0.
     this.keepClip.set(n.clone().multiplyScalar(sign), -sign * this.offset);
     this.dropClip.set(n.clone().multiplyScalar(-sign), sign * this.offset);
-    obj.mesh.material.clippingPlanes = [this.keepClip];
-    this.ghost.geometry = obj.mesh.geometry;
-    obj.mesh.updateMatrixWorld();
-    this.ghost.matrixAutoUpdate = false;
-    this.ghost.matrix.copy(obj.mesh.matrixWorld);
-    this.ghost.matrixWorldNeedsUpdate = true;
-    this.ghost.visible = true;
+    if (this.ghosts.length !== this.targets.length) {
+      this.clearGhosts();
+      this.ghosts = this.targets.map((obj) => {
+        const ghost = new THREE.Mesh(obj.mesh.geometry, this.ghostMaterial);
+        ghost.matrixAutoUpdate = false;
+        ghost.raycast = () => {};
+        this.viewport.scene.add(ghost);
+        return ghost;
+      });
+    }
+    this.targets.forEach((obj, i) => {
+      obj.mesh.material.clippingPlanes = [this.keepClip];
+      obj.mesh.updateMatrixWorld();
+      this.ghosts[i].matrix.copy(obj.mesh.matrixWorld);
+      this.ghosts[i].matrixWorldNeedsUpdate = true;
+    });
     this.viewport.invalidate();
+  }
+
+  private clearGhosts(): void {
+    for (const g of this.ghosts) this.viewport.scene.remove(g);
+    this.ghosts = [];
   }
 
   private showDropped(on: boolean): void {
     if (!on) {
-      if (this.target) this.target.mesh.material.clippingPlanes = null;
-      this.ghost.visible = false;
-      this.ghost.geometry = new THREE.BufferGeometry();
+      for (const obj of this.targets) obj.mesh.material.clippingPlanes = null;
+      this.clearGhosts();
     }
     this.viewport.invalidate();
   }
@@ -255,7 +266,7 @@ export class SplitTool {
   }
 
   private updateHandle(): void {
-    if (!this.target) return;
+    if (!this.targets.length) return;
     this.handleSvg.style.display = '';
     const p = this.plane.position;
     const s0 = this.viewport.project(p);
@@ -290,32 +301,64 @@ export class SplitTool {
   }
 
   private apply(): void {
-    const obj = this.target!;
+    const objs = [...this.targets];
     const keep = this.keep;
+    const normal = this.normal().toArray();
+    const offset = this.offset;
     void this.heavy(
-      [obj],
-      () => runOp('split', { item: this.doc.placed(obj), normal: this.normal().toArray(), offset: this.offset }),
-      (result) => this.finish(obj, keep, result),
+      objs,
+      () => Promise.all(objs.map((o) => runOp('split', { item: this.doc.placed(o), normal, offset }))),
+      (results) => this.finish(objs, keep, results),
     );
   }
 
-  private finish(obj: SceneObject, keep: Keep, result: { positive: Piece | null; negative: Piece | null }): void {
-    if (!result.positive || !result.negative) return this.toast('Move the plane so it cuts through the object');
-    const pieces = [
-      keep !== 'negative' ? result.positive : null,
-      keep !== 'positive' ? result.negative : null,
-    ].filter((p) => p !== null);
+  /**
+   * Every object the plane crosses is replaced by its pieces; objects wholly
+   * on one side stay as they are (or go, if that side is not kept). The pieces
+   * and whole objects of a group on each side form a group of their own.
+   */
+  private finish(objs: SceneObject[], keep: Keep, results: { positive: Piece | null; negative: Piece | null }[]): void {
+    if (!results.some((r) => r.positive && r.negative)) {
+      return this.toast(objs.length > 1 ? 'Move the plane so it cuts through the objects' : 'Move the plane so it cuts through the object');
+    }
     this.doc.checkpoint();
     this.stop();
-    const base = obj.name.replace(/ \d+$/, '');
-    const color = obj.color;
-    this.doc.remove([obj]);
-    const added = pieces.map((p, i) => {
-      // The second piece gets a new colour so the two are easy to tell apart.
-      const o = this.doc.add(base, p.mesh, i === 0 ? color : undefined);
-      o.mesh.position.set(...p.center);
-      return o;
+    const removed: SceneObject[] = [];
+    const kept: SceneObject[] = [];
+    // Side lists per original group (or per object without a group).
+    const groupKey = (o: SceneObject) => (o.groupId !== undefined ? `g${o.groupId}` : `o${o.id}`);
+    const bySide = { positive: new Map<string, SceneObject[]>(), negative: new Map<string, SceneObject[]>() };
+    const add = (side: 'positive' | 'negative', from: SceneObject, o: SceneObject) => {
+      const list = bySide[side].get(groupKey(from)) ?? [];
+      list.push(o);
+      bySide[side].set(groupKey(from), list);
+      kept.push(o);
+    };
+    objs.forEach((obj, i) => {
+      const r = results[i];
+      for (const side of ['positive', 'negative'] as const) {
+        const piece = r[side];
+        const wanted = keep === 'both' || keep === side;
+        if (!piece || !wanted) continue;
+        if (!r.positive || !r.negative) {
+          add(side, obj, obj); // wholly on this side: stays as it is
+          continue;
+        }
+        // A cut object's second piece gets a new colour, so the two are easy to tell apart (when not in a group).
+        const fresh = side === 'negative' && keep === 'both' && obj.groupId === undefined;
+        const o = this.doc.add(obj.name.replace(/ \d+$/, ''), piece.mesh, fresh ? undefined : obj.color);
+        o.mesh.position.set(...piece.center);
+        add(side, obj, o);
+      }
+      const whole = !r.positive || !r.negative;
+      const onKeptSide = keep === 'both' || (keep === 'positive' ? !!r.positive : !!r.negative);
+      if (!whole || !onKeptSide) removed.push(obj);
     });
-    this.doc.setSelection(added);
-  }
-}
+    this.doc.remove(removed);
+    for (const side of ['positive', 'negative'] as const) {
+      for (const list of bySide[side].values()) {
+        if (list.length > 1) this.doc.group(list);
+      }
+    }
+    this.doc.setSelection(kept.filter((o) => this.doc.objects.includes(o)));
+  }}

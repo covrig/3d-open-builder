@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
+import { bakeMesh } from '../geometry/meshData';
 import { runOp } from '../geometry/workerClient';
 import type { SceneDocument, SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
@@ -58,18 +59,22 @@ export class ExtrudeTool {
     for (const b of document.querySelectorAll('[data-action="extrude-down"]')) b.addEventListener('click', () => this.start());
   }
 
+  /**
+   * One object, a group or several: the plane goes across all of them. Every
+   * object it crosses is extended down; objects it misses stay as they are.
+   */
   private start(): void {
-    if (this.doc.selection.length !== 1) return this.toast('Select one object to extrude down');
-    const obj = this.doc.selection[0];
-    const box = this.doc.worldBox([obj]);
+    const objs = [...this.doc.selection];
+    if (objs.length === 0) return this.toast('Select the objects to extrude down');
+    const box = this.doc.worldBox(objs);
     const lo = box.min.z, hi = box.max.z;
-    if (hi <= 0) return this.toast('The object is below the plate; move it up first');
+    if (hi <= 0) return this.toast('The objects are below the plate; move them up first');
     // Start just above the lowest point (inside the object), so for a bolt
     // standing on its head Apply simply extends the head down to the plate.
     const bottom = Math.max(lo, 0);
     const start = Math.min(hi - 0.05, bottom + Math.min(1, (hi - bottom) * 0.1));
     this.range = [Math.max(bottom, 0.05), hi];
-    this.target = obj;
+    this.target = objs[0];
     this.setHeight(start);
     const size = box.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.y, 10) * 1.5;
@@ -78,36 +83,44 @@ export class ExtrudeTool {
     this.plane.position.y = (box.min.y + box.max.y) / 2;
     this.plane.visible = true;
 
-    this.bar.open<Piece>({
+    this.bar.open<(Piece | null)[]>({
       title: 'Extrude down',
-      hint: 'Extrude down: drag the orange arrow or type a height. Below the plane, the object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
+      hint: 'Extrude down: drag the orange arrow or type a height. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
       fields: [
         {
           key: 'height', label: 'Plane height', type: 'number', value: round(start), min: 0, step: 0.5, unit: 'mm',
           tip: 'Height of the plane above the plate. What is above it stays; below it the shape at the plane goes straight down.',
         },
       ],
-      hide: [obj],
+      hide: objs,
       compute: async (v) => {
         this.setHeight(Number(v.height));
-        // A height outside the object is pulled back in; show where the plane really is.
+        // A height outside the objects is pulled back in; show where the plane really is.
         if (round(this.height) !== Number(v.height)) this.bar.setValue('height', round(this.height), null);
-        return runOp('extrudeDown', { item: this.doc.placed(obj), height: this.height });
+        // An object the plane misses stays as it is (null).
+        const pieces = await Promise.all(objs.map((o) =>
+          runOp('extrudeDown', { item: this.doc.placed(o), height: this.height }).catch(() => null)));
+        if (pieces.every((p) => p === null)) throw new Error('Move the plane so it cuts through the objects');
+        return pieces;
       },
-      show: (p) => [previewMesh(p.mesh, p.center)],
-      apply: (p) => {
-        if (!this.doc.objects.includes(obj)) return;
+      // The new shapes, and the objects the plane misses as they are.
+      show: (pieces) => pieces.map((p, i) => p ? previewMesh(p.mesh, p.center) : previewMesh(bakeMesh(this.doc.placed(objs[i])), [0, 0, 0])),
+      apply: (pieces) => {
+        if (!objs.every((o) => this.doc.objects.includes(o))) return;
         this.doc.checkpoint();
-        this.doc.setData(obj, p.mesh);
-        obj.mesh.position.set(...p.center);
-        obj.mesh.quaternion.identity();
-        obj.mesh.scale.set(1, 1, 1);
+        pieces.forEach((p, i) => {
+          if (!p) return;
+          const obj = objs[i];
+          this.doc.setData(obj, p.mesh);
+          obj.mesh.position.set(...p.center);
+          obj.mesh.quaternion.identity();
+          obj.mesh.scale.set(1, 1, 1);
+        });
         this.doc.emit('transform');
       },
       onClose: () => this.stop(),
     });
   }
-
   private stop(): void {
     this.target = null;
     this.plane.visible = false;

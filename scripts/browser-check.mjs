@@ -1062,6 +1062,64 @@ async function runChecks(b) {
     return `${out.join(', ')}; Delete removed the object, Undo brought it back`;
   });
 
+  await check('Groups: mirror, on plate, split, extrude; one-object tools say why', async () => {
+    await reset();
+    // Two cubes side by side, one higher than the other, grouped.
+    await addCube(-30, 0, 30);
+    await addCube(30, 0, 50);
+    await page.evaluate(() => {
+      const { doc } = window.app;
+      doc.group(doc.objects);
+      doc.setSelection(doc.objects);
+    });
+    const xs = () => page.evaluate(() => window.app.doc.objects.map((o) => Math.round(o.mesh.position.x)));
+    const zs = () => page.evaluate(() => window.app.doc.objects.map((o) => Math.round(window.app.doc.worldBox([o]).min.z)));
+    // Mirror X: the parts swap sides.
+    await page.evaluate(() => document.querySelector('[data-mirror="0"]').click());
+    const mirrored = await xs();
+    if (mirrored[0] !== 30 || mirrored[1] !== -30) throw new Error(`mirror X: parts at ${mirrored}`);
+    // On plate: the group's lowest point rests on the plate; the parts keep their height difference.
+    await page.click('[data-action="drop"]');
+    const dropped = await zs();
+    if (dropped[0] !== 0 || dropped[1] !== 20) throw new Error(`on plate: bottoms at ${dropped}`);
+    // A one-object tool is refused with a reason.
+    await page.evaluate(() => window.app.doc.setSelection(window.app.doc.objects));
+    await page.evaluate(() => document.querySelector('[data-modify="chamfer"]').click());
+    const why = await page.$eval('#toast', (e) => e.textContent);
+    if (await visible(page, '#feature-bar')) throw new Error('Edge bevel opened on a group');
+    if (!why.startsWith('Works on one object')) throw new Error(`edge bevel on a group: "${why}"`);
+    // Split the group with a level plane at z 30: it crosses both cubes (0-40 and 20-60).
+    await page.evaluate(() => document.querySelector('[data-action="split"]').click());
+    await page.evaluate(() => {
+      document.querySelector('[data-split-axis="2"]').click();
+      const v = document.querySelector('#split-value');
+      v.value = '30';
+      v.dispatchEvent(new Event('change'));
+    });
+    await page.click('[data-split="apply"]');
+    await page.waitForFunction(() => window.app.doc.objects.length === 4, { timeout: 15000 });
+    const groups = await page.evaluate(() => {
+      const byGroup = {};
+      for (const o of window.app.doc.objects) {
+        const top = window.app.doc.worldBox([o]).min.z >= 29.9 ? 'top' : 'bottom';
+        (byGroup[o.groupId] ??= new Set()).add(top);
+      }
+      return Object.values(byGroup).map((s) => [...s].join());
+    });
+    if (groups.length !== 2 || !groups.includes('top') || !groups.includes('bottom')) throw new Error(`split groups: ${JSON.stringify(groups)}`);
+    // Extrude the upper group down: the plane crosses both of its parts.
+    await page.evaluate(() => {
+      const { doc } = window.app;
+      doc.setSelection(doc.objects.filter((o) => doc.worldBox([o]).min.z >= 29.9));
+    });
+    await page.evaluate(() => document.querySelector('[data-action="extrude-down"]').click());
+    await applyFeature(page);
+    await sleep(500);
+    const bottoms = await page.evaluate(() => window.app.doc.selection.map((o) => Math.round(window.app.doc.worldBox([o]).min.z)));
+    if (!bottoms.every((z) => z === 0)) throw new Error(`extruded group bottoms at ${bottoms}`);
+    return 'mirror swapped sides, on plate kept heights, bevel refused, split into two groups, extrude reached the plate';
+  });
+
   await check('Top bar, brand and toolbar layout', async () => {
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));

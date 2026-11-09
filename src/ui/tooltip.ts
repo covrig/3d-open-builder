@@ -1,5 +1,5 @@
 import { settings } from '../settings';
-import { LOCKED_MESSAGE, lockedNow } from './toolGuard';
+import { blockReason } from './toolGuard';
 
 /**
  * Hover tooltips with a title line and a description, for any element with
@@ -32,8 +32,8 @@ export function setupTooltips(): void {
     // A button's key is shown only while single-key shortcuts are switched on.
     const key = settings.shortcuts && el.dataset.shortcut ? ` (${el.dataset.shortcut})` : '';
     title.textContent = (el.dataset.tipTitle ?? el.textContent?.trim() ?? '') + key;
-    // While a tool is open, a locked control says so instead.
-    body.textContent = lockedNow(el) ? LOCKED_MESSAGE : el.dataset.tip ?? '';
+    // A control that can't be used right now (a tool is open, a group is selected) says why instead.
+    body.textContent = blockReason(el) ?? el.dataset.tip ?? '';
     tip.hidden = false;
     const r = el.getBoundingClientRect();
     const t = tip.getBoundingClientRect();
