@@ -24,6 +24,7 @@ import { CombineTool } from './ui/combineTool';
 import { CrossSection } from './ui/crossSection';
 import { ExtrudeTool } from './ui/extrudeTool';
 import { setupLookSettings } from './ui/lookSettings';
+import { OverhangTool } from './ui/overhangTool';
 import { setupViewCube } from './ui/viewCube';
 import { renderIcons } from './ui/icons';
 import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
@@ -151,6 +152,8 @@ const measure = new MeasureTool(viewport, doc, toast);
 // Cross-section view (More menu); measuring works on the cut.
 const crossSection = new CrossSection(viewport, doc);
 measure.section = crossSection;
+// Show overhangs (Check menu): a view panel like the cross-section.
+const overhangs = new OverhangTool(viewport);
 setupViewCube(viewport);
 setupLookSettings(viewport);
 const colors = new ColorPopover(doc, (picking) => {
@@ -682,12 +685,12 @@ function nudgeSelection(e: KeyboardEvent): void {
 
 // Esc always closes the open tool, whatever has the keyboard focus (a tool
 // bar's field included) and whether shortcuts are on or not: a dropdown menu
-// closes first, then the tool, then the cross-section; else the selection
-// clears. Dialogs close themselves.
+// closes first, then the tool, then a view panel (cross-section, overhangs);
+// else the selection clears. Dialogs close themselves.
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
   if (document.querySelector('.menu:not([hidden])')) return; // the menu closes itself
-  if (stopActiveTool() || crossSection.close()) {
+  if (stopActiveTool() || crossSection.close() || overhangs.close()) {
     e.preventDefault();
     e.stopPropagation();
     return;

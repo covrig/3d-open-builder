@@ -31,16 +31,19 @@ export function hideHint(owner: string): void {
  */
 export function watchTopBars(): void {
   const messages = document.querySelector<HTMLElement>('#messages')!;
-  const bars = ['#split-bar', '#feature-bar', '#section-bar']
+  // In this order from the top: a tool's bar, then the view panels' bars.
+  const bars = ['#split-bar', '#feature-bar', '#section-bar', '#overhang-bar']
     .map((s) => document.querySelector<HTMLElement>(s))
     .filter((b): b is HTMLElement => b !== null);
   const corner = document.querySelector<HTMLElement>('#view-corner');
   const place = () => {
     const viewTop = messages.parentElement!.getBoundingClientRect().top;
     let top = 12;
+    // Open bars stack one under the other; messages go below them.
     for (const b of bars) {
       if (b.hidden) continue;
-      top = Math.max(top, b.getBoundingClientRect().bottom - viewTop + 8);
+      b.style.top = `${top}px`;
+      top = b.getBoundingClientRect().bottom - viewTop + 8;
     }
     // On narrow views the messages would run under the buttons at the top right.
     // (The buttons only: their labels make way for messages.)

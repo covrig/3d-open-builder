@@ -62,13 +62,6 @@ export class CrossSection {
       this.applyPlane();
     });
     this.bar.querySelector('[data-section="close"]')!.addEventListener('click', () => this.close());
-    // Below a tool's bar when one is open at the same time.
-    const featureBar = document.querySelector<HTMLElement>('#feature-bar')!;
-    const place = () => {
-      this.bar.style.top = featureBar.hidden ? '' : `${featureBar.offsetTop + featureBar.offsetHeight + 8}px`;
-    };
-    new MutationObserver(place).observe(featureBar, { attributes: true, attributeFilter: ['hidden'] });
-    new ResizeObserver(place).observe(featureBar);
   }
 
   get active(): boolean {

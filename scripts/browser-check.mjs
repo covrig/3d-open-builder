@@ -806,6 +806,8 @@ async function runChecks(b) {
       const item = document.querySelector('[data-action="overhangs"]');
       item.click();
       const on = item.getAttribute('aria-checked');
+      const panel = !document.querySelector('#overhang-bar').hidden;
+      const angleField = document.querySelector('#overhang-angle').value;
       const refl = document.querySelector('input[name="reflection"]');
       refl.checked = true;
       refl.dispatchEvent(new Event('change'));
@@ -820,11 +822,12 @@ async function runChecks(b) {
       refl.dispatchEvent(new Event('change'));
       plate.value = '0.35';
       plate.dispatchEvent(new Event('input'));
-      return { on, shown, seeThrough: plate.parentElement.querySelector('output').textContent };
+      return { on, panel, angleField, shown, seeThrough: plate.parentElement.querySelector('output').textContent };
     });
     await page.screenshot({ path: `${SHOTS}/${b.name}-overhangs.png` });
     if (errors.length > before) throw new Error(errors.slice(before).join(' | '));
     if (r.on !== 'true') throw new Error('Show overhangs did not switch on');
+    if (!r.panel || r.angleField !== '45') throw new Error(`overhang panel shown: ${r.panel}, angle field "${r.angleField}"`);
     if (!r.shown) throw new Error('reflection not shown');
     return `overhangs on, reflection shown, plate see-through ${r.seeThrough}, no errors`;
   });
@@ -882,6 +885,7 @@ async function runChecks(b) {
       ['Threaded hole', () => document.querySelector('[data-thread="tap"]').click(), '#feature-bar'],
       ['Measuring', () => document.querySelector('[data-measure="distance"]').click(), '#op-hint'],
       ['Cross section', () => document.querySelector('[data-action="cross-section"]').click(), '#section-bar'],
+      ['Overhangs', () => document.querySelector('[data-action="overhangs"]').click(), '#overhang-bar'],
     ];
     const results = [];
     for (const [name, open, shows] of tools) {
