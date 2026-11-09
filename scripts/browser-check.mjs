@@ -623,9 +623,48 @@ async function runChecks(b) {
         : await tagAt([cx, cy - r * 0.3, box.max[2] - 2]);
       await page.keyboard.press('Escape');
     }
+    // A torus cut through its middle (where a ring of mesh points lies): its rim is only "on edge".
+    await reset();
+    const rim = await page.evaluate(async () => {
+      document.querySelector('[data-insert="torus"]').click();
+      const { doc, viewport } = window.app;
+      viewport.home(doc.worldBox(doc.objects));
+      document.querySelector('[data-action="cross-section"]').click();
+      document.querySelector('[data-section-axis="2"]').click();
+      const b = doc.worldBox(doc.objects);
+      const mid = (b.min.z + b.max.z) / 2;
+      const v = document.querySelector('#section-value');
+      v.value = String(mid);
+      v.dispatchEvent(new Event('change'));
+      await new Promise((r) => setTimeout(r, 100));
+      return { x: b.max.x - 0.3, z: mid };
+    });
+    await clickSel(page, '[data-measure="distance"]');
+    const torusRim = await tagAt([rim.x, 0, rim.z]);
+    await page.keyboard.press('Escape');
+    await page.click('#section-bar [data-section="close"]');
+    // A threaded rod: its crests zigzag across the triangles; no corners or middles there.
+    await reset();
+    const crest = await page.evaluate(async () => {
+      const { doc, viewport } = window.app;
+      document.querySelector('[data-thread="rod"]').click();
+      await new Promise((r) => setTimeout(r, 1500));
+      document.querySelector('#feature-bar [data-feature="apply"]').click();
+      await new Promise((r) => setTimeout(r, 300));
+      viewport.fit(doc.worldBox(doc.objects));
+      const b = doc.worldBox(doc.objects);
+      return { x: b.min.x + 0.2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2 };
+    });
+    await clickSel(page, '[data-measure="distance"]');
+    const threadTags = [];
+    for (const dz of [0, 0.3, 0.6, 0.9]) threadTags.push(await tagAt([crest.x, crest.y, crest.z + dz]));
+    await page.keyboard.press('Escape');
+    if (torusRim !== 'On edge') throw new Error(`torus cut through its middle, rim: ${torusRim}`);
+    if (threadTags.some((t) => t === 'Corner' || t === 'Middle of edge')) throw new Error(`thread crest: ${threadTags.join(', ')}`);
+    if (!threadTags.includes('On edge')) throw new Error(`thread crest not reached: ${threadTags.join(', ')}`);
     if (curved.cylinder !== 'On edge') throw new Error(`cylinder rim: ${curved.cylinder}`);
     if (curved.sphere !== null) throw new Error(`sphere: ${curved.sphere}`);
-    return 'cube: Corner, Middle of edge; cylinder rim: On edge; sphere: none';
+    return 'cube: Corner, Middle of edge; cylinder rim and cut torus: On edge; sphere: none; thread crest: no corners';
   });
 
   await check('R repeats the last tool, only once it is finished', async () => {

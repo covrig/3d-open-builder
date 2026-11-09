@@ -239,25 +239,34 @@ export class MeasureTool {
     // smooth surface was divided up.)
     let best: THREE.Vector3 | null = null;
     let bestPx = SNAP_PX;
-    const nearest = (list: Float32Array | undefined) => {
-      if (!list) return;
+    /**
+     * The one corner (or middle) within snapping distance of the cursor. Where
+     * several crowd together, as along a thread whose crests zigzag across the
+     * triangles, none of them is a real corner: no snap of this kind (zooming
+     * in spreads a small part's real corners apart again).
+     */
+    const single = (...lists: (Float32Array | undefined)[]): THREE.Vector3 | null => {
+      const found: { at: THREE.Vector3; px: number; screen: THREE.Vector2 }[] = [];
       const v = new THREE.Vector3();
-      for (let i = 0; i < list.length; i += 3) {
-        v.set(list[i], list[i + 1], list[i + 2]);
-        if (v.distanceTo(localHit) > near || !shown(toWorld(v))) continue;
-        const px = screenDist(v);
-        if (px < bestPx) {
-          bestPx = px;
-          best = v.clone();
+      for (const list of lists) {
+        if (!list) continue;
+        for (let i = 0; i < list.length; i += 3) {
+          v.set(list[i], list[i + 1], list[i + 2]);
+          if (v.distanceTo(localHit) > near || !shown(toWorld(v))) continue;
+          const screen = this.viewport.project(toWorld(v));
+          const px = screen.distanceTo(cursor);
+          if (px >= SNAP_PX) continue;
+          // The same point listed twice (an own corner the cut passes through) counts once.
+          if (found.some((f) => f.screen.distanceTo(screen) < 2)) continue;
+          found.push({ at: v.clone(), px, screen });
         }
       }
+      return found.length === 1 ? found[0].at : null;
     };
-    nearest(own.corners);
-    nearest(cutLocal?.corners);
-    if (best) return snapped(best, 'corner');
-    nearest(own.mids);
-    nearest(cutLocal?.mids);
-    if (best) return snapped(best, 'middle');
+    const corner = single(own.corners, cutLocal?.corners);
+    if (corner) return snapped(corner, 'corner');
+    const middle = single(own.mids, cutLocal?.mids);
+    if (middle) return snapped(middle, 'middle');
 
     // 3. The nearest sharp edge (cube edges, hole rims, the cut's outline...), never a flat face's diagonal.
     const localRay = raycaster.ray.clone().applyMatrix4(inverse);

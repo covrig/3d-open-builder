@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { edgeFeatures, type EdgeFeatures } from '../geometry/edgeMiddles';
+import { cutSegments } from '../geometry/sectionCut';
 import { edgeMaterial, type SceneDocument, type SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
 import { fromUnit, settings, toUnit } from '../settings';
@@ -185,11 +186,11 @@ export class CrossSection {
       h.cap.scale.setScalar(sphere.radius * 2.2);
       h.cap.visible = obj.mesh.visible;
       // The outline of the cut, also used for measuring snaps.
-      const segs = cutSegments(obj.mesh, this.plane);
+      const { segs, sharp } = cutSegments(obj.mesh, this.plane);
       h.outline.geometry.dispose();
       h.outline.geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(segs, 3));
       h.outline.visible = obj.mesh.visible;
-      if (segs.length) this.cuts.set(obj, { segs, ...edgeFeatures(segs) });
+      if (segs.length) this.cuts.set(obj, { segs, ...edgeFeatures(segs, sharp) });
     });
   }
 
@@ -231,30 +232,4 @@ export class CrossSection {
     h.outline.geometry.dispose();
     (h.outline.material as THREE.Material).dispose();
   }
-}
-
-/** Where a mesh's triangles cross the plane: line segments (6 numbers each), world space. */
-export function cutSegments(mesh: THREE.Mesh, plane: THREE.Plane): Float32Array {
-  const pos = mesh.geometry.getAttribute('position');
-  const index = mesh.geometry.getIndex();
-  const count = index ? index.count : pos.count;
-  const m = mesh.matrixWorld;
-  const p = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-  const d = [0, 0, 0];
-  const out: number[] = [];
-  for (let t = 0; t + 2 < count; t += 3) {
-    for (let k = 0; k < 3; k++) {
-      p[k].fromBufferAttribute(pos, index ? index.getX(t + k) : t + k).applyMatrix4(m);
-      d[k] = plane.distanceToPoint(p[k]);
-    }
-    // A corner exactly on the plane counts as on the kept side.
-    const side = d.map((v) => v >= 0);
-    if (side[0] === side[1] && side[1] === side[2]) continue;
-    for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) {
-      if (side[a] === side[b]) continue;
-      const s = d[a] / (d[a] - d[b]);
-      out.push(p[a].x + (p[b].x - p[a].x) * s, p[a].y + (p[b].y - p[a].y) * s, p[a].z + (p[b].z - p[a].z) * s);
-    }
-  }
-  return new Float32Array(out);
 }
