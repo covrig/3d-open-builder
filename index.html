@@ -122,13 +122,24 @@
           </div>
         </noscript>
         <div id="loading">Loading geometry engine…</div>
+        <!-- Floating buttons, one under the other: side panel, Select several (touch screens), Delete.
+             The labels on their left show only while the side panel is closed. -->
         <div id="view-corner">
-          <button data-action="multi-select" class="multi-select" aria-pressed="false" data-tip-title="Select several" data-tip="While on, each tap on an object (or its row in the list) adds it to the selection or takes it out, like Ctrl+click."><i data-lucide="list-checks"></i><span>Select several</span></button>
-          <button data-action="open-panel" class="panel-open" data-tip-title="Panel" data-tip="Show the side panel (view, arrange, measure, objects)."><i data-lucide="panel-right-open"></i><span>Panel</span></button>
-          <button data-action="close-panel" class="panel-close" aria-label="Hide the side panel" data-tip-title="Hide panel" data-tip="Close the side panel for more room. The Panel button brings it back."><i data-lucide="chevron-right"></i></button>
+          <div class="corner-item">
+            <span class="corner-label">Side panel</span>
+            <button data-action="open-panel" class="panel-open" aria-label="Show the side panel" data-tip-title="Show the side panel" data-tip="View, arrange, measure and the list of objects."><i data-lucide="panel-right-open"></i></button>
+            <button data-action="close-panel" class="panel-close" aria-label="Hide the side panel" data-tip-title="Hide the side panel" data-tip="More room for the view. The same button brings it back."><i data-lucide="chevron-right"></i></button>
+          </div>
+          <div class="corner-item multi-select-item">
+            <span class="corner-label">Select several</span>
+            <button data-action="multi-select" class="multi-select" aria-pressed="false" aria-label="Select several" data-tip-title="Select several" data-tip="While on, each tap on an object (or its row in the list) adds it to the selection or takes it out, like Ctrl+click."><i data-lucide="list-checks"></i></button>
+          </div>
+          <div class="corner-item">
+            <span class="corner-label">Delete selected</span>
+            <button data-action="delete-selection" aria-label="Delete the selected objects" data-tip-title="Delete" data-tip="Delete the selected objects. Undo brings them back."><i data-lucide="trash-2"></i></button>
+          </div>
         </div>
         <div id="view-cube" aria-label="View cube: click a side to look at it"><div class="vc-stage"><div class="vc-cube"></div><div class="vc-ring"></div></div></div>
-        <div id="multi-tip" role="status" hidden>Select several is on: each tap adds an object or takes it out. Tap <b>Select several</b> again to stop.</div>
         <div id="brand-overlay" aria-hidden="true"><i data-lucide="box"></i><span>3D Open Builder</span></div>
         <div id="messages">
           <div id="op-hint" role="status" hidden></div>
@@ -137,7 +148,7 @@
         </div>
         <div id="shortcuts-panel" hidden>
           <header><strong>Keyboard shortcuts</strong><button data-action="shortcuts" aria-label="Hide keyboard shortcuts" data-tip-title="Hide" data-tip="Hide this panel. Show it again from the Menu.">×</button></header>
-          <p class="shortcuts-off muted">Single-key shortcuts (D, M, F…) are off. Turn them on in Settings.</p>
+          <p class="shortcuts-off muted">Single-key shortcuts (D, M, F…) are off. Turn on “Enable shortcuts” in Settings.</p>
           <dl>
             <dt>Ctrl+Z / Ctrl+Y</dt><dd>Undo / redo</dd>
             <dt>Ctrl+C / X / V</dt><dd>Copy / cut / paste</dd>
@@ -369,7 +380,7 @@
         </fieldset>
         <fieldset>
           <legend>Keyboard</legend>
-          <label><input type="checkbox" name="shortcuts" /> Single-key shortcuts: 1 2 3 add shapes, D duplicate, M merge, S split… (Ctrl+Z, Ctrl+C and the like always work)</label>
+          <label><input type="checkbox" name="shortcuts" /> Enable shortcuts: single keys like 1 2 3 to add shapes, D duplicate, M merge, S split… (Ctrl+Z, Ctrl+C and Esc always work)</label>
         </fieldset>
         <fieldset>
           <legend>Plate</legend>

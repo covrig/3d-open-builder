@@ -43,8 +43,11 @@ export function watchTopBars(): void {
       top = Math.max(top, b.getBoundingClientRect().bottom - viewTop + 8);
     }
     // On narrow views the messages would run under the buttons at the top right.
-    const c = corner?.getBoundingClientRect();
-    if (c && c.width > 0 && messages.getBoundingClientRect().right > c.left - 4) top = Math.max(top, c.bottom - viewTop + 8);
+    // (The buttons only: their labels make way for messages.)
+    for (const b of corner?.querySelectorAll('button') ?? []) {
+      const c = b.getBoundingClientRect();
+      if (c.width > 0 && messages.getBoundingClientRect().right > c.left - 4) top = Math.max(top, c.bottom - viewTop + 8);
+    }
     messages.style.top = `${top}px`;
   };
   const observer = new MutationObserver(place);

@@ -334,6 +334,9 @@ for (const [name, fn] of Object.entries(actions)) {
   document.querySelector(`[data-action="${name}"]`)?.addEventListener('click', fn);
 }
 
+// The Delete button in the view's corner (touch screens have no Delete key).
+on('[data-action="delete-selection"]', actions.delete);
+
 // --- Groups ---------------------------------------------------------------
 
 on('[data-action="group"]', () => withSelection((objs) => doc.group(objs), 2));

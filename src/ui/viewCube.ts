@@ -35,8 +35,7 @@ export function setupViewCube(viewport: Viewport): void {
     face.type = 'button';
     face.className = 'vc-face';
     face.textContent = f.name.toUpperCase();
-    face.dataset.tipTitle = `${f.name} view`;
-    face.dataset.tip = `Turn the view to look at the ${f.name.toLowerCase()} side.`;
+    face.setAttribute('aria-label', `${f.name} view`);
     // Label reads left to right and upright when that side faces the viewer.
     face.style.transform = cssMatrix(up.clone().cross(n), up.clone().negate(), n, n.clone().multiplyScalar(HALF));
     face.addEventListener('click', () => viewport.viewFrom(n));

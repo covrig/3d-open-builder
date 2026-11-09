@@ -40,13 +40,7 @@ export function setupTooltips(): void {
     const gap = 8;
     let x: number;
     let y: number;
-    const cube = el.closest('#view-cube');
-    if (cube) {
-      // Beside the view cube, never over it.
-      const c = cube.getBoundingClientRect();
-      x = c.right + gap;
-      y = c.top + c.height / 2 - t.height / 2;
-    } else if (el.closest('#sidebar')) {
+    if (el.closest('#sidebar')) {
       x = r.left - t.width - gap;
       y = r.top + r.height / 2 - t.height / 2;
     } else if (el.closest('#transform-bar')) {

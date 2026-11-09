@@ -456,7 +456,7 @@ button.primary:hover { filter: brightness(1.1); background: var(--accent); }
 .button-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .button-grid > button, .button-grid > label { justify-content: center; min-width: 0; }
 /* Tiles: icon above the label (View, Arrange, Measure). Same font size as other sidebar buttons. */
-.button-grid.tiles > button { flex-direction: column; gap: 4px; padding: 8px 4px; }
+.button-grid.tiles > button { flex-direction: column; gap: 2px; padding: 5px 4px; }
 .button-grid span { overflow: hidden; text-overflow: ellipsis; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
@@ -578,7 +578,7 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 /* Short screens: tiles show only their icon (the tooltip still names them),
    and spacing tightens, so the whole sidebar fits without scrolling. */
 @media (max-height: 860px), (max-width: 1100px) {
-  .button-grid.tiles > button { padding: 6px 4px; }
+  .button-grid.tiles > button { padding: 4px 4px; }
   .button-grid.tiles > button span { display: none; }
   #sidebar { gap: 8px; padding: 8px; }
   #sidebar section, #sidebar details.panel { padding: 8px; gap: 6px; }
@@ -803,10 +803,10 @@ dialog footer { gap: 8px; }
 #brand-overlay svg { width: 22px; height: 22px; color: var(--accent); }
 
 /* Messages, hints and the tool bars at the top share one width, text centred. */
-#messages { width: min(760px, calc(100% - 24px)); max-width: none; }
+#messages { max-width: none; }
 #toast, #op-hint { text-align: center; max-width: 100%; }
 #toast.warn { border-color: #e0a020; background: color-mix(in srgb, #e0a020 22%, var(--overlay)); font-weight: 550; }
-.top-bar { width: min(760px, calc(100% - 24px)); box-sizing: border-box; justify-content: center; }
+.top-bar { box-sizing: border-box; justify-content: center; }
 
 /* Orbit, pan and zoom show what the mouse is doing. */
 #viewport.orbiting canvas { cursor: grabbing; }
@@ -816,41 +816,53 @@ dialog footer { gap: 8px; }
 /* Fix sits right after More, without a divider. */
 .toolbar .group.joined { border-left: 0; padding-left: 0; }
 
-/* Top right of the view: Select several (touch screens) and Panel (while the panel is closed). */
+/* Top right of the view, one under the other: side panel, Select several
+   (touch screens), Delete. Each has a quiet label on its left while the side
+   panel is closed and no tool bar is open. */
+:root { --corner-room: 60px; } /* width kept free at the right for the buttons */
 #view-corner {
   position: absolute;
   top: 10px;
   right: 12px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 6px;
   z-index: 3;
 }
+#view-corner .corner-item { display: flex; align-items: center; gap: 8px; }
+#view-corner .corner-label {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.6;
+  text-shadow: 0 1px 2px var(--measure-halo);
+  white-space: nowrap;
+  pointer-events: none;
+}
+body:not(.panel-closed) #view-corner .corner-label,
+#viewport:has(.top-bar:not([hidden])) #view-corner .corner-label { display: none; }
 #view-corner button {
+  width: 38px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
   background: var(--overlay);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow);
-  padding: 6px 10px;
-  font-size: 13px;
 }
+#view-corner button svg { width: 18px; height: 18px; }
 #view-corner button.active { background: color-mix(in srgb, var(--accent) 25%, var(--overlay)); border-color: var(--accent); }
-body:not(.panel-closed) #view-corner .panel-open { display: none; }
-#view-corner .multi-select { display: none; }
-@media (hover: none), (pointer: coarse) {
-  #view-corner .multi-select { display: inline-flex; }
-}
-/* Phones: icons only, so the corner buttons fit beside the app name. */
-@media (max-width: 600px) {
-  #view-corner button { padding: 7px 9px; }
-  #view-corner button span { display: none; }
-}
-
-/* The side panel can be closed on any screen. Its > button sits at the top
-   right of the view, just left of the open panel, where Panel appears once closed. */
-body.sidebar-hidden #sidebar { display: none; }
+body:not(.panel-closed) #view-corner .panel-open,
 body.panel-closed #view-corner .panel-close { display: none; }
-#view-corner .panel-close { width: 34px; padding: 6px 0; justify-content: center; }
-#view-corner .panel-close svg { width: 18px; height: 18px; }
-@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
+#view-corner .multi-select-item { display: none; }
+@media (hover: none), (pointer: coarse) {
+  #view-corner .multi-select-item { display: flex; }
+}
+/* The tool bars and messages at the top leave the corner free (centred, so the same room on both sides). */
+.top-bar, #messages { width: min(760px, calc(100% - 2 * var(--corner-room))); }
+
+/* The side panel can be closed on any screen. */
+body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
   /* The drawer covers the right of the view: keep the > just left of it. */
   body.sidebar-open #view-corner { right: calc(min(290px, 86vw) + 8px); z-index: 21; }
   /* On phones the open drawer leaves little room: the app name makes way for the >. */
@@ -944,15 +956,6 @@ svg.gizmo .corner-touch { r: 16px; }
   /* Like the app name: out of the way while the panel drawer is open. */
   body.sidebar-open #view-cube { visibility: hidden; }
 }
-
-/* Select several: what taps do while it is on (not while the side panel is open). */
-#multi-tip {
-  position: absolute; top: 56px; right: 12px; z-index: 3; max-width: 250px;
-  padding: 7px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.35;
-  background: color-mix(in srgb, var(--accent) 22%, var(--overlay)); border: 1px solid var(--accent);
-  box-shadow: var(--shadow);
-}
-body:not(.panel-closed) #multi-tip { display: none !important; }
 
 /* Cross-section bar (like Split's). */
 #section-bar { top: 12px; align-items: center; gap: 6px 8px; padding: 6px 10px; flex-wrap: wrap; }

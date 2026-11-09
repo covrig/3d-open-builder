@@ -1003,6 +1003,55 @@ async function runChecks(b) {
     return 'one Working…, Cancel closed the bar and stopped the calculation';
   });
 
+  await check('Corner buttons: stacked, labelled, Delete works, never over a tool bar', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    await select([id]);
+    const out = [];
+    for (const [w, h] of [[1400, 900], [820, 1180], [390, 844]]) {
+      await page.setViewport({ width: w, height: h });
+      await sleep(300);
+      const r = await page.evaluate(async () => {
+        const several = document.querySelector('#view-corner .multi-select-item');
+        several.style.display = 'flex'; // shown on touch screens; measure it everywhere
+        const corner = () => [...document.querySelectorAll('#view-corner button')]
+          .filter((b) => b.offsetParent)
+          .map((b) => ({ action: b.dataset.action, rect: b.getBoundingClientRect().toJSON() }));
+        const labels = () => [...document.querySelectorAll('#view-corner .corner-label')].filter((l) => l.offsetParent).length;
+        const closedPanel = document.body.classList.contains('panel-closed');
+        // Open a tool bar and see whether any corner button overlaps it.
+        document.querySelector('[data-modify="pattern"]').click();
+        await new Promise((res) => setTimeout(res, 200));
+        const bar = document.querySelector('#feature-bar').getBoundingClientRect();
+        const overlap = corner().some(({ rect: c }) => c.left < bar.right && c.right > bar.left && c.top < bar.bottom && c.bottom > bar.top);
+        const labelsWithBar = labels();
+        document.querySelector('#feature-bar [data-feature="cancel"]').click();
+        const order = corner().map((c) => c.action);
+        const tops = corner().map((c) => Math.round(c.rect.top));
+        const r = { closedPanel, labels: labels(), labelsWithBar, overlap, order, stacked: tops.every((t, i) => i === 0 || t > tops[i - 1]) };
+        several.style.display = '';
+        return r;
+      });
+      if (r.overlap) throw new Error(`${w}px: a corner button covers the tool bar`);
+      if (!r.stacked) throw new Error(`${w}px: buttons not one under the other`);
+      if (r.order.join() !== `${r.closedPanel ? 'open-panel' : 'close-panel'},multi-select,delete-selection`) throw new Error(`${w}px: order ${r.order}`);
+      if (r.closedPanel && r.labels !== 3) throw new Error(`${w}px: ${r.labels} labels with the panel closed`);
+      if (!r.closedPanel && r.labels !== 0) throw new Error(`${w}px: labels shown with the panel open`);
+      if (r.labelsWithBar !== 0) throw new Error(`${w}px: labels shown next to an open tool bar`);
+      out.push(`${w}px ${r.closedPanel ? 'closed' : 'open'}`);
+    }
+    await page.setViewport({ width: 1400, height: 900 });
+    await sleep(300);
+    await select([id]);
+    await page.click('#view-corner [data-action="delete-selection"]');
+    const n = await page.evaluate(() => window.app.doc.objects.length);
+    if (n !== 0) throw new Error('Delete did not remove the selected object');
+    await page.click('[data-action="undo"]');
+    const back = await page.evaluate(() => window.app.doc.objects.length);
+    if (back !== 1) throw new Error('Undo did not bring the object back');
+    return `${out.join(', ')}; Delete removed the object, Undo brought it back`;
+  });
+
   await check('Top bar, brand and toolbar layout', async () => {
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));
@@ -1079,8 +1128,8 @@ async function runChecks(b) {
     if (closed.view < closed.win - 1) throw new Error(`view is ${closed.view} px of ${closed.win} px (empty strip beside it)`);
     // The corner buttons (Select several shows on touch screens; force it here) stay clear of the app name.
     const overlap = await page.evaluate(() => {
-      const several = document.querySelector('#view-corner .multi-select');
-      several.style.display = 'inline-flex';
+      const several = document.querySelector('#view-corner .multi-select-item');
+      several.style.display = 'flex';
       const name = document.querySelector('#brand-overlay').getBoundingClientRect();
       const corner = document.querySelector('#view-corner').getBoundingClientRect();
       several.style.display = '';
