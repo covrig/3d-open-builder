@@ -38,21 +38,21 @@
     "name": "Roboto (font)",
     "version": "–",
     "license": "OFL-1.1",
-    "url": "https://fonts.google.com",
+    "url": "https://fonts.google.com/specimen/Roboto",
     "licenseFile": "fonts/Roboto-LICENSE.txt"
   },
   {
     "name": "Roboto Slab (font)",
     "version": "–",
     "license": "Apache-2.0",
-    "url": "https://fonts.google.com",
+    "url": "https://fonts.google.com/specimen/Roboto+Slab",
     "licenseFile": "fonts/RobotoSlab-LICENSE.txt"
   },
   {
     "name": "Roboto Mono (font)",
     "version": "–",
     "license": "OFL-1.1",
-    "url": "https://fonts.google.com",
+    "url": "https://fonts.google.com/specimen/Roboto+Mono",
     "licenseFile": "fonts/RobotoMono-LICENSE.txt"
   }
 ]

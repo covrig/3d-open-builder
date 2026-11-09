@@ -36,13 +36,13 @@ const libraries = Object.keys(pkg.dependencies).map((name) => {
 
 // Fonts used for embossed text, kept in public/fonts with their licences.
 const fonts = [
-  ['Roboto (font)', 'OFL-1.1', 'Roboto-LICENSE.txt'],
-  ['Roboto Slab (font)', 'Apache-2.0', 'RobotoSlab-LICENSE.txt'],
-  ['Roboto Mono (font)', 'OFL-1.1', 'RobotoMono-LICENSE.txt'],
+  ['Roboto (font)', 'OFL-1.1', 'Roboto-LICENSE.txt', 'https://fonts.google.com/specimen/Roboto'],
+  ['Roboto Slab (font)', 'Apache-2.0', 'RobotoSlab-LICENSE.txt', 'https://fonts.google.com/specimen/Roboto+Slab'],
+  ['Roboto Mono (font)', 'OFL-1.1', 'RobotoMono-LICENSE.txt', 'https://fonts.google.com/specimen/Roboto+Mono'],
 ];
-for (const [name, license, file] of fonts) {
+for (const [name, license, file, url] of fonts) {
   if (!existsSync(join(root, 'public', 'fonts', file))) continue;
-  libraries.push({ name, version: '–', license, url: 'https://fonts.google.com', licenseFile: `fonts/${file}` });
+  libraries.push({ name, version: '–', license, url, licenseFile: `fonts/${file}` });
 }
 
 writeFileSync(join(root, 'src', 'libraries.json'), `${JSON.stringify(libraries, null, 2)}\n`);

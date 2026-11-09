@@ -20,10 +20,13 @@ Nothing to install, no account, and your files never leave your computer.
 ## What you can do
 
 - **Shapes and threads:** basic shapes, plus bolts, nuts, threaded rods and threaded holes in metric and imperial sizes.
-- **Combine and edit:** merge, subtract, intersect, split, mirror, pattern, extrude down to the plate, shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces).
-- **Place precisely:** move, rotate and size handles with snapping, align and distribute, lay flat, measuring tools, and a reference picture to trace over.
-- **Print-ready:** print check with automatic repair, best print orientation, and export to 3MF (with colours) or STL. Imports 3MF, STL and OBJ.
-- **Safe to use:** 100 undo steps, autosave, and works on desktop, tablet and phone.
+- **Combine and edit:** merge, subtract and intersect (pieces that end up apart become separate objects), split, mirror, pattern, extrude down to the plate, shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces). Groups work with move, mirror, split, extrude and pattern.
+- **Place precisely:** move, rotate and size handles with snapping, put on the plate, lay flat, align, distribute and pack, and a reference picture to trace over.
+- **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges and edge middles; a cross section that cuts the view open, with measuring on the cut.
+- **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour (also through X-ray), best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.
+- **See it your way:** X-ray, wireframe, edges and shadows, a view cube, a see-through plate with an optional reflection, and light or dark colours.
+- **Any device:** mouse, trackpad (two fingers pan, pinch zooms) or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a key to repeat the last tool.
+- **Safe to use:** 100 undo steps and autosave; every tool ends with Apply or Cancel, and nothing else can change the model while one is open.
 
 ## Private by design
 
@@ -33,30 +36,42 @@ they are there next time. The full statement is in the app under Menu → Privac
 
 ## What's where
 
-| Path | Contents |
+You only need the link above to use the app. If you want to look around this
+repository, this is what each part is for.
+
+**If you just want to look around**
+
+| Where | What it is |
 |---|---|
-| `index.html` | The app page: toolbar, side panel, dialogs. |
-| `src/` | The app's source code (TypeScript): |
-| `src/main.ts` | Starts the app and connects the toolbar and side panel to the features. |
-| `src/geometry/` | Pure geometry, no user interface: shapes, Merge/Subtract/Intersect, split, extrude, edge bevel and rounding (chamfer, fillet), brace, shell, threads, text, mesh check and repair. `worker.ts` runs the heavy operations in the background so the page stays responsive. |
-| `src/scene/` | The 3D view: camera, ground grid, rulers, move/rotate/size handles, and the list of objects with undo/redo. |
-| `src/ui/` | Toolbar menus, side panel sections, tooltips and the tools that take clicks in the view (measuring, picking edges, reference picture). |
-| `src/io/` | Reading and writing 3MF, STL and OBJ files. |
-| `src/app/` | Autosave, restore and error recovery. |
-| `src/style.css` | The look of the app, in light and dark colours. |
-| `docs/` | The screenshot at the top of this page, and `tool-rules.md`: how tools start and end, and what stays usable while one is open. |
-| `public/` | Files served as they are: the app icon, fonts for text on faces, and the licence texts of the libraries used. |
-| `tests/` | Unit tests for the geometry, file formats and saving. |
-| `vendor/` | The libraries the app uses, stored in this repository so nothing is fetched from other sites — see `vendor/README.md`. They are: **three** (3D drawing), **manifold-3d** (solid geometry engine), **fflate** (zip, for 3MF files), **lucide** (icons) and **opentype.js** (reading fonts). |
-| `scripts/` | Helper scripts for developers: listing library licences, cross-browser checks. |
-| `.github/workflows/` | Builds, tests and publishes the site on every push. |
-| `package.json` | Project settings and the commands below; `package-lock.json` pins exact versions. |
-| `vite.config.ts`, `tsconfig.json` | Build and TypeScript settings. |
+| [`README.md`](README.md) | This page. |
+| [`LICENSE`](LICENSE) | The app's licence (MIT): you may use, copy and change it freely. |
+| [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | The libraries and fonts the app is built with, and their licences. |
+| [`docs/`](docs) | The picture at the top of this page, and [`tool-rules.md`](docs/tool-rules.md): how tools start and end, and what still works while one is open. |
+| [`index.html`](index.html) | The page your browser opens: the toolbar, the side panel and the dialog boxes. |
+| [`public/`](public) | Files used exactly as they are: the app icon, the three fonts for text on objects, and the licence texts. |
+
+**For developers**
+
+| Where | What it is |
+|---|---|
+| [`src/`](src) | The app itself (in TypeScript). [`src/main.ts`](src/main.ts) starts it and connects the buttons to the features. |
+| [`src/geometry/`](src/geometry) | The maths that makes and changes shapes: basic shapes, threads, text, merge and the other combinations, splitting, rounding edges, checking and repairing models. It has no buttons or screens; the heavy work runs in the background so the page never freezes. |
+| [`src/scene/`](src/scene) | The 3D view: camera, build plate, shadows and reflection, the move/rotate/size handles, and the list of objects with undo and redo. |
+| [`src/ui/`](src/ui) | Everything you click: menus, the side panel, tool bars, tooltips, and the tools that work by clicking in the view (measuring, picking edges, cross section). |
+| [`src/io/`](src/io) | Opening and saving 3MF, STL and OBJ files. |
+| [`src/app/`](src/app) | Autosave, and getting your work back after a problem. |
+| [`src/style.css`](src/style.css) | How the app looks, in light and dark colours. |
+| [`tests/`](tests) | Automatic tests for the geometry, the file formats and saving. |
+| [`scripts/`](scripts) | Helper scripts: checks in real Chrome, Edge and Firefox, and collecting the library licences. |
+| [`vendor/`](vendor) | Copies of the libraries the app uses, kept here so nothing is downloaded from other sites (see [`vendor/README.md`](vendor/README.md)). |
+| [`.github/workflows/`](.github/workflows) | Tests the app and publishes the website after every change. |
+| `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig.json` | Settings for building the app, and the exact library versions. |
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Bundled libraries and fonts keep their own
-licences (listed in the app under Menu → About and libraries).
+MIT — see [LICENSE](LICENSE). The bundled libraries and fonts keep their own
+licences: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), or Menu →
+About and libraries in the app.
 
 ## Run it locally
 
