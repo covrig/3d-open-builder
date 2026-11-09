@@ -48,7 +48,7 @@ the other), and measuring works beside them.
 | Select several, Delete (corner buttons) | No | Selection and deleting |
 
 Locked controls are dimmed, don't respond, and their tooltip and a message say
-"Finish or cancel the current tool first (Apply, Cancel or Esc)". The toolbar
+"Finish or cancel the current tool first (Apply or Cancel)". The toolbar
 button of the open tool stays highlighted.
 
 With a light tool open, everything works as usual. With a view tool open,

@@ -31,16 +31,16 @@ const WORDS: Record<RoleOp, {
   },
   intersect: {
     title: 'Intersect',
-    targets: '1 · Objects',
-    tools: '2 · Objects',
+    targets: '1 · Objects A',
+    tools: '2 · Objects B',
     joiner: 'with',
     steps: {
-      target: 'Intersect, step 1: click the objects to keep the shared part of (green; the result keeps their name and colour). Then press "2 · Objects".',
-      tool: 'Intersect, step 2: click the objects to intersect them with (red). Click again to unmark. Apply when the preview looks right.',
+      target: 'Intersect, step 1: click Objects A (green). Each keeps only its part that lies inside Objects B, in its own colour. Then press "2 · Objects B".',
+      tool: 'Intersect, step 2: click Objects B (red), the shapes Objects A are trimmed to. Click again to unmark. Apply when the preview looks right.',
     },
     tips: {
-      target: 'Then click the objects to keep the shared part of. The result keeps their name and colour.',
-      tool: 'Then click the objects they are intersected with. Only the shared part is kept; these disappear on Apply.',
+      target: 'Then click Objects A: each keeps only its part inside Objects B, in its own colour (separate pieces become separate objects).',
+      tool: 'Then click Objects B: together they form the shape Objects A are trimmed to. They are removed on Apply.',
     },
   },
 };

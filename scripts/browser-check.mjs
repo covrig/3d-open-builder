@@ -1014,7 +1014,7 @@ async function runChecks(b) {
     return 'one Working…, Cancel closed the bar and stopped the calculation';
   });
 
-  await check('Corner buttons: bottom right by the transform bar, labelled, Delete on touch only', async () => {
+  await check('Corner buttons: bottom right by the transform bar, labelled, Home and Delete on touch only', async () => {
     await reset();
     const id = await addCube(0, 0, 20);
     await select([id]);
@@ -1056,8 +1056,8 @@ async function runChecks(b) {
       if (r.overBar) throw new Error(`${w}px: the corner buttons cover the transform bar`);
       if (!r.level && !r.above) throw new Error(`${w}px: neither level with the transform bar nor above it`);
       if (!r.stacked) throw new Error(`${w}px: buttons not one under the other`);
-      if (r.order.join() !== `${r.closedPanel ? 'open-panel' : 'close-panel'},delete-selection,multi-select`) throw new Error(`${w}px: order ${r.order}`);
-      if (r.closedPanel && r.labels !== 3) throw new Error(`${w}px: ${r.labels} labels with the panel closed`);
+      if (r.order.join() !== `home,${r.closedPanel ? 'open-panel' : 'close-panel'},delete-selection,multi-select`) throw new Error(`${w}px: order ${r.order}`);
+      if (r.closedPanel && r.labels !== 4) throw new Error(`${w}px: ${r.labels} labels with the panel closed`);
       if (!r.closedPanel && r.labels !== 0) throw new Error(`${w}px: labels shown with the panel open`);
       out.push(`${w}px ${r.level ? 'level' : 'above'}${r.closedPanel ? ', labelled' : ''}`);
     }

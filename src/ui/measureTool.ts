@@ -9,9 +9,9 @@ import { edgeFeatures } from '../geometry/edgeMiddles';
 
 const POINTS_NEEDED: Record<MeasureKind, number> = { distance: 2, angle: 3, circle: 3 };
 const HINTS: Record<MeasureKind, string> = {
-  distance: 'Distance: click two points. Click Distance again or press Esc to stop.',
-  angle: 'Angle: click the start, the corner, then the end. Esc to stop.',
-  circle: 'Circle: click three points on the edge of a circle or hole. Esc to stop.',
+  distance: 'Distance: click two points. Click Distance again to stop.',
+  angle: 'Angle: click the start, the corner, then the end. Click Angle again to stop.',
+  circle: 'Circle: click three points on the edge of a circle or hole. Click Circle again to stop.',
 };
 /** Colours of the 1st, 2nd and 3rd point. */
 const POINT_COLORS = ['#4cb8ff', '#7ed321', '#c77dff'];

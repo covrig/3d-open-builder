@@ -402,6 +402,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 dialog form { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
 dialog h2 { margin: 0; font-size: 18px; }
 dialog fieldset {
+  min-width: 0; /* a fieldset otherwise never gets narrower than its content (the sliders) */
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -654,7 +655,8 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 }
 #feature-bar .feature-info { flex-basis: 100%; text-align: center; }
 #feature-bar .feature-info:empty { display: none; }
-.top-bar .bar-actions { display: flex; gap: 6px; justify-content: center; align-items: center; }
+/* Wraps on narrow screens (Subtract and Intersect have five buttons here). */
+.top-bar .bar-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
 #feature-bar .extra-actions { display: contents; }
 .top-bar .bar-actions button { border: 1px solid var(--border); padding: 5px 14px; }
 .top-bar .bar-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -663,13 +665,25 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 .inline-field input { width: 70px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
 .panel-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .panel-order li { display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
-.panel-order li span { flex: 1; }
+.panel-order li label { flex: 1; display: flex; align-items: center; gap: 8px; }
+.panel-order li.off label { color: var(--muted); }
+/* Sections switched off under Settings › Panel order. */
+#sidebar > [data-panel].panel-off { display: none !important; }
+
+/* Long dropdowns in tool bars on touch screens: an in-app list that a tap outside closes. */
+.touch-select { display: inline-flex; align-items: center; gap: 6px; max-width: 150px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; font: inherit; }
+.touch-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.touch-select svg { width: 14px; height: 14px; flex: none; }
+.select-list { position: fixed; z-index: 60; display: flex; flex-direction: column; padding: 4px; overflow-y: auto; background: var(--overlay); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow); }
+.select-list button { justify-content: flex-start; text-align: left; padding: 10px 14px; background: transparent; border: 0; border-radius: 6px; white-space: nowrap; }
+.select-list button.active { background: var(--accent-soft); }
 .panel-order button { padding: 3px 6px; background: transparent; }
 .panel-order button svg { width: 16px; height: 16px; }
 .privacy-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; line-height: 1.45; }
 #privacy-dialog p { margin: 0; line-height: 1.45; }
 #privacy-dialog { width: min(520px, 94vw); }
-#check-results { max-height: 40vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+/* No scroll areas of their own: the whole box scrolls. */
+#check-results { display: flex; flex-direction: column; gap: 12px; }
 .check-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .check-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .repair-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--panel-2); }
@@ -678,7 +692,7 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 .repair-row > button { flex: none; justify-content: center; min-width: 104px; padding: 8px 14px; }
 .repair-box > #repair-undo { align-self: flex-start; }
 .repair-log {
-  margin: 0; padding: 6px 8px 6px 26px; max-height: 140px; overflow: auto; font-size: 12.5px;
+  margin: 0; padding: 6px 8px 6px 26px; font-size: 12.5px;
   background: var(--bg); border-radius: 6px; display: flex; flex-direction: column; gap: 3px;
 }
 .repair-log li.done::marker { color: #30a46c; }
@@ -928,10 +942,11 @@ body.shortcuts-on .shortcuts-off { display: none; }
 #shortcuts-panel .shortcuts-off { margin: 0 0 6px; max-width: 220px; }
 
 /* Settings: slider rows. */
-dialog label.slider-setting { align-items: center; }
-dialog label.slider-setting > span { min-width: 140px; }
-dialog label.slider-setting input[type='range'] { flex: 1; min-width: 0; }
-dialog label.slider-setting output { min-width: 52px; text-align: right; color: var(--muted); font-size: 12.5px; }
+/* The name, the slider and its value on one line; they share the room, and wrap only on very narrow screens. */
+dialog label.slider-setting { align-items: center; flex-wrap: wrap; }
+dialog label.slider-setting > span { flex: 1 1 120px; min-width: 0; }
+dialog label.slider-setting input[type='range'] { flex: 2 1 90px; min-width: 0; }
+dialog label.slider-setting output { flex: none; min-width: 44px; text-align: right; color: var(--muted); font-size: 12.5px; }
 dialog label.slider-setting input:disabled { opacity: 0.4; }
 
 /* Touch screens: invisible, larger grab areas under the move/rotate/size handles. */

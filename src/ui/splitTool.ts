@@ -129,7 +129,7 @@ export class SplitTool {
     this.gizmo.enabled = false;
     this.bar.hidden = false;
     this.plane.visible = true;
-    showHint('split', 'Split: slide or drag the orange plane, choose what to keep, then Apply. Esc to cancel.');
+    showHint('split', 'Split: slide or drag the orange plane, choose what to keep, then Apply.');
     this.setKeep('both');
     this.setAxis(this.axis);
   }

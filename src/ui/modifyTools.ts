@@ -76,7 +76,7 @@ export class ModifyTools {
     const name = kind === 'chamfer' ? 'Edge bevel' : 'Edge rounding';
     this.bar.open<Piece>({
       title: name,
-      hint: `${name}: click edges to pick them (blue; click again to drop). The result shows in orange. Esc to cancel.`,
+      hint: `${name}: click edges to pick them (blue; click again to drop). The result shows in orange.`,
       fields: [
         {
           key: 'size', label: kind === 'chamfer' ? 'Distance' : 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm',
@@ -105,7 +105,7 @@ export class ModifyTools {
     if (!set.segments.some(inside)) return this.toast(`${obj.name} has no inside corner where two walls meet`);
     this.bar.open<Piece>({
       title: 'Brace',
-      hint: 'Brace: click the inside corner where two walls meet. Esc to cancel.',
+      hint: 'Brace: click the inside corner where two walls meet.',
       fields: [
         { key: 'leg1', label: 'Leg 1', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far the brace reaches up the first wall.' },
         { key: 'leg2', label: 'Leg 2', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far it reaches along the second wall.' },

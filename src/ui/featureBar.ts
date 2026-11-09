@@ -5,6 +5,7 @@ import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { hideHint, showHint } from './hint';
 import { beginTool, endTool } from './toolLock';
+import { touchFriendly } from './touchSelect';
 
 export interface Field {
   key: string;
@@ -176,7 +177,7 @@ export class FeatureBar {
     });
     // Typing in a field must not trigger shortcuts like Delete.
     input.addEventListener('keydown', (e) => e.stopPropagation());
-    label.append(name, input);
+    label.append(name, input instanceof HTMLSelectElement ? touchFriendly(input) : input);
     if (f.unit) {
       const u = document.createElement('span');
       u.className = 'muted';
@@ -193,7 +194,10 @@ export class FeatureBar {
     const input = this.el.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${key}"] input, [data-key="${key}"] select`);
     if (input && document.activeElement !== input) {
       if (input instanceof HTMLInputElement && input.type === 'checkbox') input.checked = Boolean(value);
-      else input.value = String(value);
+      else {
+        input.value = String(value);
+        input.dispatchEvent(new Event('sync')); // a touch dropdown shows the new value
+      }
     }
     // null: only show the value (the preview already uses it).
     if (delay !== null) this.refresh(delay);

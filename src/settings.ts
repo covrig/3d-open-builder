@@ -12,6 +12,8 @@ export interface UiState {
   minWall: number;
   /** Order of the side panel sections (ids from PANELS) */
   panelOrder: PanelId[];
+  /** Side panel sections switched off */
+  hiddenPanels: PanelId[];
   /** How much of the plate's fill shows (0 = clear, 1 = solid) */
   plateOpacity: number;
   /** Mirror image of the objects in the plate: how strong, and how deep (mm) before it fades out */
@@ -57,6 +59,7 @@ const DEFAULTS: Settings = {
     shortcuts: false,
     minWall: 0.8,
     panelOrder: PANELS.map(([id]) => id),
+    hiddenPanels: [],
     plateOpacity: 0.35,
     reflection: { on: false, strength: 0.3, depth: 60 },
     overhang: { angle: 45, color: '#e5484d' },
@@ -89,6 +92,7 @@ function load(): Settings {
   const known = PANELS.map(([id]) => id) as PanelId[];
   const saved = Array.isArray(s.ui.panelOrder) ? s.ui.panelOrder.filter((id) => known.includes(id)) : [];
   s.ui.panelOrder = [...new Set([...saved, ...known])];
+  s.ui.hiddenPanels = Array.isArray(s.ui.hiddenPanels) ? s.ui.hiddenPanels.filter((id) => known.includes(id)) : [];
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
   s.ui.measure.snap = true;
   return s;

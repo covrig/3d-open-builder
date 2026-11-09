@@ -96,8 +96,8 @@
           <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
           <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Edge bevel<kbd class="key-hint">B</kbd></button>
           <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Edge rounding<kbd class="key-hint">O</kbd></button>
-          <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
           <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Brace</button>
+          <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
           <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Cross section</button>
         </div>
       </div>
@@ -122,9 +122,13 @@
           </div>
         </noscript>
         <div id="loading">Loading geometry engine…</div>
-        <!-- Floating buttons at the bottom right, one under the other: panel, Delete and Select several
-             (both touch screens only). The labels on their left show only while the panel is closed. -->
+        <!-- Floating buttons at the bottom right, one under the other: Home (touch screens only), panel,
+             Delete and Select several (both touch screens only). The labels on their left show only while the panel is closed. -->
         <div id="view-corner">
+          <div class="corner-item touch-only">
+            <span class="corner-label">Home</span>
+            <button data-action="home" aria-label="Home view" data-tip-title="Home view" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i></button>
+          </div>
           <div class="corner-item">
             <span class="corner-label">Panel</span>
             <button data-action="open-panel" class="panel-open" aria-label="Show the panel" data-tip-title="Show the panel" data-tip="View, arrange, measure and the list of objects."><i data-lucide="panel-right-open"></i></button>
@@ -243,7 +247,7 @@
           <span class="feature-info muted"></span>
           <div class="bar-actions">
             <button data-feature="apply" class="primary" data-tip-title="Apply" data-tip="Keep the result shown in orange.">Apply</button>
-            <button data-feature="cancel" class="cancel" data-tip-title="Cancel" data-tip="Leave without changing anything (Esc).">Cancel</button>
+            <button data-feature="cancel" class="cancel" data-tip-title="Cancel" data-tip="Leave without changing anything.">Cancel</button>
           </div>
         </div>
 
@@ -324,7 +328,7 @@
         <section id="measure-panel" data-panel="measure">
           <header><h2>Measure</h2></header>
           <div class="button-grid cols-3 tiles">
-            <button data-measure="distance" data-tip-title="Distance" data-tip="Click two points to measure the distance between them. Click again or press Esc to stop."><i data-lucide="ruler"></i><span>Distance</span></button>
+            <button data-measure="distance" data-tip-title="Distance" data-tip="Click two points to measure the distance between them. Click Distance again to stop."><i data-lucide="ruler"></i><span>Distance</span></button>
             <button data-measure="angle" data-tip-title="Angle" data-tip="Click three points: start, corner, end. Shows the angle at the corner."><i data-lucide="angle"></i><span>Angle</span></button>
             <button data-measure="circle" data-tip-title="Circle" data-tip="Click three points on the edge of a circle or hole. Shows its diameter and radius."><i data-lucide="circle-dashed"></i><span>Circle</span></button>
           </div>
@@ -342,7 +346,7 @@
           <header><h2>Objects</h2><span id="object-count" class="muted"></span></header>
           <div class="button-grid cols-3">
             <button data-action="select-all" data-tip-title="Select all (Ctrl+A)" data-tip="Select every object.">All</button>
-            <button data-action="deselect-all" data-tip-title="Select none (Esc)" data-tip="Clear the selection.">None</button>
+            <button data-action="deselect-all" data-tip-title="Select none" data-tip="Clear the selection.">None</button>
             <button data-action="invert-selection" data-tip-title="Invert selection" data-tip="Select what isn't selected, and the other way round.">Invert</button>
           </div>
           <div class="button-grid cols-2">
@@ -407,7 +411,7 @@
           <label class="slider-setting"><span>Reflection depth</span><input type="range" name="reflectionDepth" min="5" max="200" step="5" /><output></output></label>
         </fieldset>
         <fieldset>
-          <legend>Panel order</legend>
+          <legend>Panel order (untick to hide)</legend>
           <ol id="panel-order" class="panel-order"></ol>
         </fieldset>
         <footer><button type="button" data-action="close-settings">Close</button></footer>

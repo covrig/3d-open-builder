@@ -135,7 +135,10 @@ export function setupPrivacy(): void {
   });
 }
 
-/** Side panel sections in the order chosen in Settings (remembered), with up/down buttons to change it. */
+/**
+ * Side panel sections in the order chosen in Settings (remembered), with up/down
+ * buttons to change it and a box to show or hide each one.
+ */
 export function setupPanelOrder(): void {
   const sidebar = document.querySelector<HTMLElement>('#sidebar')!;
   const list = document.querySelector<HTMLOListElement>('#panel-order')!;
@@ -144,7 +147,9 @@ export function setupPanelOrder(): void {
   const arrange = () => {
     for (const id of settings.ui.panelOrder) {
       const el = sidebar.querySelector(`:scope > [data-panel="${id}"]`);
-      if (el) sidebar.append(el);
+      if (!el) continue;
+      sidebar.append(el);
+      el.classList.toggle('panel-off', settings.ui.hiddenPanels.includes(id));
     }
     // The reference picture panel (shown only with a picture) stays just above Measure.
     const reference = sidebar.querySelector('#reference-panel');
@@ -167,8 +172,19 @@ export function setupPanelOrder(): void {
   const render = () => {
     list.replaceChildren(...settings.ui.panelOrder.map((id, i, all) => {
       const li = document.createElement('li');
-      const label = document.createElement('span');
-      label.textContent = names.get(id) ?? id;
+      const shown = !settings.ui.hiddenPanels.includes(id);
+      li.classList.toggle('off', !shown);
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = shown;
+      box.setAttribute('aria-label', `Show ${names.get(id) ?? id}`);
+      box.addEventListener('change', () => {
+        updateUi((ui) => (ui.hiddenPanels = box.checked ? ui.hiddenPanels.filter((p) => p !== id) : [...ui.hiddenPanels, id]));
+        arrange();
+        render();
+      });
+      label.append(box, names.get(id) ?? id);
       const up = document.createElement('button');
       up.type = 'button';
       up.className = 'up';

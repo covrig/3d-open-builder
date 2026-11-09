@@ -159,7 +159,7 @@ setupViewCube(viewport);
 setupLookSettings(viewport);
 const colors = new ColorPopover(doc, (picking) => {
   $('#viewport').classList.toggle('picking', picking);
-  if (picking) showHint('eyedropper', 'Copy colour: click the object whose colour you want. Esc to cancel.');
+  if (picking) showHint('eyedropper', 'Copy colour: click the object whose colour you want.');
   else hideHint('eyedropper');
 });
 setupItemsPanel($('#sidebar'), doc, colors, {
@@ -708,7 +708,7 @@ function nudgeSelection(e: KeyboardEvent): void {
 // else the selection clears. Dialogs close themselves.
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
-  if (document.querySelector('.menu:not([hidden])')) return; // the menu closes itself
+  if (document.querySelector('.menu:not([hidden]), .select-list')) return; // the menu or list closes itself
   if (stopActiveTool() || crossSection.close() || overhangs.close()) {
     e.preventDefault();
     e.stopPropagation();
