@@ -43,6 +43,24 @@ export function weld(mesh: MeshData, eps = 1e-4): MeshData {
   return { positions: new Float32Array(out), indices: new Uint32Array(tris) };
 }
 
+/**
+ * Weld as little as needed: the smallest distance (from 1 nm up to 1 µm)
+ * that leaves no open or non-manifold edges, else the one that leaves the
+ * fewest. Welding further than needed merges the corners of genuinely small
+ * triangles (rounded edges have many) and tears the surface it should mend.
+ */
+export function gentleWeld(mesh: MeshData): { mesh: MeshData; report: MeshReport } {
+  let best: { mesh: MeshData; report: MeshReport } | null = null;
+  for (const eps of [1e-6, 1e-5, 1e-4, 1e-3]) {
+    const welded = weld(mesh, eps);
+    const report = analyze(welded);
+    if (report.openEdges === 0 && report.nonManifoldEdges === 0) return { mesh: welded, report };
+    const bad = report.openEdges + report.nonManifoldEdges;
+    if (!best || bad < best.report.openEdges + best.report.nonManifoldEdges) best = { mesh: welded, report };
+  }
+  return best!;
+}
+
 /** Number of separate pieces (groups of triangles connected through shared vertices). */
 export function countPieces(mesh: MeshData): number {
   const n = mesh.positions.length / 3;

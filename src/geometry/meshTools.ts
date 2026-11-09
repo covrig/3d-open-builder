@@ -1,5 +1,5 @@
 import type { Manifold, ManifoldToplevel, Vec3 } from 'manifold-3d';
-import { analyze, fillHoles, orient, weld, type MeshReport } from './meshCheck';
+import { analyze, fillHoles, gentleWeld, orient, type MeshReport } from './meshCheck';
 import { bakeMesh, manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail';
@@ -130,7 +130,12 @@ function wallThickness(m: Manifold, mesh: MeshData, minWall: number): { thin: nu
 /** Full printability check of one object (geometry in world space). */
 export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: number): CheckResult {
   const world = bakeMesh(item);
-  const welded = weld(world);
+  // A valid closed solid is judged as it is. Anything else is welded as little
+  // as needed first: welding further merges the corners of genuinely small
+  // triangles (rounded edges have many) and reports problems that aren't there.
+  let solid = tryManifold(wasm, world);
+  const welded = solid ? manifoldToMeshData(solid) : gentleWeld(world).mesh;
+  solid ??= tryManifold(wasm, welded);
   const r: MeshReport = analyze(welded);
   const items: CheckItem[] = [];
 
@@ -146,12 +151,6 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
     : { id: 'normals', label: 'Normals', status: 'fail', detail: inverted ? 'The model is inside out.' : `${r.flippedEdges} edges join faces pointing opposite ways.`, fixable: true });
 
   // The remaining checks need a valid solid.
-  let solid: Manifold | null = null;
-  try {
-    solid = meshDataToManifold(wasm, welded);
-  } catch {
-    solid = null;
-  }
   if (!solid) {
     const skip = 'Repair the problems above first.';
     items.push({ id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: skip, fixable: false });
@@ -198,27 +197,51 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
   return { items, suggestedDown };
 }
 
-/** Automatic repair: weld, drop broken triangles, fix normals, close holes, merge overlapping parts. */
-export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: MeshData; actions: string[] } {
-  const actions: string[] = [];
-  const before = analyze(mesh);
-  let m = weld(mesh);
-  const welded = analyze(m);
-  if (welded.triangles < before.triangles) actions.push(`Removed ${before.triangles - welded.triangles} broken or duplicate triangles`);
-  if (welded.flippedEdges > 0 || welded.signedVolume < 0) {
-    m = orient(m);
-    actions.push('Turned faces to point outward');
-  }
-  const filled = fillHoles(m);
-  if (filled.holes > 0) {
-    m = filled.mesh;
-    actions.push(`Closed ${filled.holes} hole${filled.holes > 1 ? 's' : ''}`);
-  }
+/**
+ * The mesh as a solid, or null if it isn't a valid closed one facing outward.
+ * Manifold accepts inside-out pieces (negative volume), so those are checked here.
+ */
+function tryManifold(wasm: ManifoldToplevel, mesh: MeshData): Manifold | null {
   let solid: Manifold;
   try {
-    solid = meshDataToManifold(wasm, m);
+    solid = meshDataToManifold(wasm, mesh);
   } catch {
-    throw new Error(`Could not turn this into a closed solid automatically${actions.length ? ` (did: ${actions.join(', ').toLowerCase()})` : ''}.`);
+    return null;
+  }
+  const parts = solid.decompose();
+  const outward = parts.every((p) => p.volume() > 0);
+  for (const p of parts) p.delete();
+  if (outward) return solid;
+  solid.delete();
+  return null;
+}
+
+/**
+ * Automatic repair. A mesh that already is a valid closed solid keeps its
+ * surface exactly (only overlapping separate parts are merged). Anything else
+ * is welded as little as needed, its faces turned outward and its holes
+ * closed. When it still isn't a closed solid, the message says what is left.
+ */
+export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: MeshData; actions: string[] } {
+  const actions: string[] = [];
+  let solid = tryManifold(wasm, mesh);
+  if (!solid) {
+    const before = analyze(mesh);
+    const welded = gentleWeld(mesh);
+    let m = welded.mesh;
+    const dropped = before.triangles - welded.report.triangles;
+    if (dropped > 0) actions.push(`Removed ${dropped} broken or duplicate triangle${dropped > 1 ? 's' : ''}`);
+    if (welded.report.flippedEdges > 0 || welded.report.signedVolume < 0) {
+      m = orient(m);
+      actions.push('Turned faces to point outward');
+    }
+    const filled = fillHoles(m);
+    if (filled.holes > 0) {
+      m = filled.mesh;
+      actions.push(`Closed ${filled.holes} hole${filled.holes > 1 ? 's' : ''}`);
+    }
+    solid = tryManifold(wasm, m);
+    if (!solid) throw new Error(repairFailure(analyze(m), actions));
   }
   // Union of the separate parts removes faces where parts overlap.
   const parts = solid.decompose();
@@ -231,9 +254,21 @@ export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: Mesh
   }
   for (const p of parts) p.delete();
   try {
-    if (actions.length === 0) actions.push('Nothing needed repairing');
+    // Nothing to do: hand back the very same surface, not a rebuilt copy.
+    if (actions.length === 0) return { mesh, actions: ['Nothing needed repairing'] };
     return { mesh: manifoldToMeshData(solid), actions };
   } finally {
     solid.delete();
   }
+}
+
+/** What is still wrong after an automatic repair, and what to do about it. */
+function repairFailure(left: MeshReport, actions: string[]): string {
+  const what: string[] = [];
+  if (left.openEdges) what.push(`${left.openEdges} edges still border holes too large or twisted to fill`);
+  if (left.nonManifoldEdges) what.push(`${left.nonManifoldEdges} edges are shared by more than two faces`);
+  if (!what.length) what.push('the surface crosses itself');
+  const did = actions.length ? ` Done so far: ${actions.join(', ').toLowerCase()}.` : '';
+  return `Could not make this a closed solid automatically.${did} Left: ${what.join('; ')}. `
+    + 'Fix those areas in the program that made the model, or export it from there again, then repair once more.';
 }

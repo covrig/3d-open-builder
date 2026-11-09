@@ -4,6 +4,8 @@ import { applyH, invertH, solveH } from '../src/geometry/homography';
 import { analyze, fillHoles, orient, weld } from '../src/geometry/meshCheck';
 import { meshDataToManifold, type MeshData } from '../src/geometry/meshData';
 import { checkMesh, repairMesh } from '../src/geometry/meshTools';
+import { findEdges } from '../src/geometry/edges';
+import { edgeTreatment } from '../src/geometry/features';
 import { createPrimitive } from '../src/geometry/primitives';
 
 let wasm: ManifoldToplevel;
@@ -79,6 +81,72 @@ describe('mesh checks', () => {
     const { mesh, actions } = repairMesh(wasm, broken);
     expect(volume(mesh)).toBeCloseTo(64000, 0);
     expect(actions.join(' ')).toMatch(/hole/i);
+  });
+
+  describe('repair on deliberately broken meshes', () => {
+    /** A rounded tube: a valid solid whose fillets have many genuinely tiny triangles. */
+    const roundedTube = (): MeshData => {
+      const tube = createPrimitive(wasm, 'tube');
+      return edgeTreatment(wasm, { mesh: tube, matrix: IDENTITY }, findEdges(tube).segments, 'fillet', 2).mesh;
+    };
+
+    it('leaves a valid solid with tiny triangles exactly as it is', () => {
+      // The old fixed 0.1 µm weld merged fillet corners and tore the surface
+      // ("removed 2693 broken or duplicate triangles", then failed).
+      const mesh = roundedTube();
+      const coarse = weld(mesh, 1e-4);
+      expect(coarse.indices.length).toBeLessThan(mesh.indices.length);
+      const r = repairMesh(wasm, mesh);
+      expect(r.actions).toEqual(['Nothing needed repairing']);
+      expect(r.mesh).toBe(mesh);
+      const check = checkMesh(wasm, { mesh, matrix: IDENTITY }, 0.8);
+      for (const id of ['watertight', 'manifold', 'normals'] as const) {
+        expect(check.items.find((i) => i.id === id)?.status).toBe('pass');
+      }
+    }, 60000);
+
+    it('welds an unwelded (STL-style) copy of it without dropping triangles', () => {
+      const mesh = roundedTube();
+      const r = repairMesh(wasm, unwelded(mesh));
+      expect(r.actions.join(' ')).not.toMatch(/removed/i);
+      expect(volume(r.mesh)).toBeCloseTo(volume(mesh), 0);
+    }, 60000);
+    it('drops duplicate triangles and reports how many', () => {
+      const cube = createPrimitive(wasm, 'cube');
+      const dup = { positions: cube.positions, indices: Uint32Array.from([...cube.indices, ...cube.indices.slice(0, 6)]) };
+      const r = repairMesh(wasm, dup);
+      expect(r.actions).toContain('Removed 2 broken or duplicate triangles');
+      expect(volume(r.mesh)).toBeCloseTo(64000, 0);
+    });
+
+    it('turns an inside-out mesh right way out', () => {
+      const all = Array.from({ length: 12 }, (_, i) => i);
+      const r = repairMesh(wasm, flipTriangles(createPrimitive(wasm, 'cube'), all));
+      expect(r.actions).toContain('Turned faces to point outward');
+      expect(volume(r.mesh)).toBeCloseTo(64000, 0);
+    });
+
+    it('merges overlapping separate parts', () => {
+      const a = createPrimitive(wasm, 'cube');
+      const n = a.positions.length / 3;
+      const shifted = a.positions.map((v, i) => (i % 3 === 0 ? v + 10 : v));
+      const both = {
+        positions: Float32Array.from([...a.positions, ...shifted]),
+        indices: Uint32Array.from([...a.indices, ...[...a.indices].map((i) => i + n)]),
+      };
+      const r = repairMesh(wasm, both);
+      expect(r.actions).toContain('Merged overlapping parts');
+      expect(volume(r.mesh)).toBeCloseTo(50 * 40 * 40, 0);
+    });
+
+    it('explains what is left when a mesh cannot be closed', () => {
+      // An open box missing a whole side plus a fin shared by three faces.
+      const cube = createPrimitive(wasm, 'cube');
+      const open = withoutTriangles(cube, [0, 1, 2, 3]);
+      const p = open.positions;
+      const fin = { positions: Float32Array.from([...p, 0, 0, 100]), indices: Uint32Array.from([...open.indices, open.indices[0], open.indices[1], p.length / 3]) };
+      expect(() => repairMesh(wasm, fin)).toThrow(/Left: .*edges .*Fix those areas/);
+    });
   });
 
   it('runs the print check: passes a cube, flags thin walls', () => {
