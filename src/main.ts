@@ -21,7 +21,10 @@ import { MM_PER_UNIT, settings, settingsEvents, toUnit, watchTheme } from './set
 import { loadClipboard, saveClipboard } from './ui/clipboardStore';
 import { ColorPopover } from './ui/colorPopover';
 import { CombineTool } from './ui/combineTool';
+import { CrossSection } from './ui/crossSection';
 import { ExtrudeTool } from './ui/extrudeTool';
+import { setupLookSettings } from './ui/lookSettings';
+import { setupViewCube } from './ui/viewCube';
 import { renderIcons } from './ui/icons';
 import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
 import { restrictNumberInputs } from './ui/numberInputs';
@@ -143,6 +146,11 @@ const featureBar = new FeatureBar(viewport, gizmo, doc, toast);
 new ModifyTools(viewport, doc, featureBar, heavy, toast);
 new PartsTools(viewport, doc, gizmo, featureBar, heavy, toast);
 const measure = new MeasureTool(viewport, doc, toast);
+// Cross-section view (More menu); measuring works on the cut.
+const crossSection = new CrossSection(viewport, doc);
+measure.section = crossSection;
+setupViewCube(viewport);
+setupLookSettings(viewport);
 const colors = new ColorPopover(doc, (picking) => {
   $('#viewport').classList.toggle('picking', picking);
   if (picking) showHint('eyedropper', 'Copy colour: click the object whose colour you want. Esc to cancel.');
@@ -219,6 +227,8 @@ for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
 
 on('[data-action="split"]', () => {
   measure.setKind(null);
+  // Split shows its own cut; the cross-section would hide it.
+  crossSection.close();
   if (splitTool.active) splitTool.stop();
   else splitTool.start();
 });
@@ -664,19 +674,25 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     fn();
   };
+  // While a tool is open (a tool bar, Split, measuring) or a calculation runs,
+  // only what can't disturb it works: undo/redo, copy/cut/paste, the view keys,
+  // and the arrow keys the tool itself uses.
+  const toolOpen = isToolOpen() || busy;
   if (ctrl && key === 'z' && !e.shiftKey) return run(actions.undo);
   if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) return run(actions.redo);
   if (ctrl && key === 'c') return run(actions.copy);
   if (ctrl && key === 'x') return run(actions.cut);
   if (ctrl && key === 'v') return run(actions.paste);
-  if (ctrl && key === 'd') return run(actions.duplicate);
-  if (ctrl && key === 'a') return run(() => doc.setSelection(doc.objects));
-  if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) return run(actions.delete);
-  if (!ctrl && !e.altKey && key === 'f') return run(fitView);
-  if (!ctrl && !e.altKey && key === 'h') return run(homeView);
-  if (!ctrl && !e.altKey && key === 'r') return run(repeatLastTool);
-  // Single keys for the common tools: the same as clicking their button (and R repeats them).
-  const button = !ctrl && !e.altKey && !e.shiftKey ? TOOL_KEYS[key] : undefined;
+  if (ctrl && key === 'a' && !toolOpen) return run(() => doc.setSelection(doc.objects));
+  if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace') && !toolOpen) return run(actions.delete);
+  // Single-key shortcuts, if switched on in Settings (off by default).
+  const single = settings.shortcuts && !ctrl && !e.altKey && !e.shiftKey;
+  if (single && key === 'f') return run(fitView);
+  if (single && key === 'h') return run(homeView);
+  if (single && key === 'r') return run(repeatLastTool); // refuses itself while a tool is open
+  // Tool keys press the tool's button (so R can repeat them), only with no tool open.
+  const button = single ? TOOL_KEYS[key] : undefined;
+  if (button && toolOpen) return run(() => toast('Finish the current tool first (Apply, or Esc to cancel)'));
   if (button) {
     return run(() => {
       const el = $(button);
@@ -684,11 +700,11 @@ document.addEventListener('keydown', (e) => {
       el.click();
     });
   }
-  // Arrow keys: an active tool (text, threaded hole) may use them to nudge;
-  // otherwise they move the selection.
+  // Arrow keys: an open tool (text, threaded hole) may use them to nudge;
+  // with no tool open they move the selection.
   if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {
     if (viewClicks.onKey?.(e)) return e.preventDefault();
-    if (doc.selection.length && !featureBar.active) return run(() => nudgeSelection(e));
+    if (doc.selection.length && !toolOpen) return run(() => nudgeSelection(e));
   }
   if (e.key === 'Escape') {
     // Close the open tool (feature bar, split, measuring, colour picking), else deselect.
@@ -820,4 +836,4 @@ updateShadows();
 void offerRestore();
 
 // Exposed for debugging in the browser console.
-Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave } });
+Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection } });

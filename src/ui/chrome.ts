@@ -119,10 +119,13 @@ export const multiSelect = { on: false };
 
 export function setupMultiSelect(): void {
   const button = document.querySelector<HTMLButtonElement>('[data-action="multi-select"]')!;
+  // While on, a note under the button says what taps do now (hidden while the side panel is open).
+  const tip = document.querySelector<HTMLElement>('#multi-tip')!;
   button.addEventListener('click', () => {
     multiSelect.on = !multiSelect.on;
     button.classList.toggle('active', multiSelect.on);
     button.setAttribute('aria-pressed', String(multiSelect.on));
+    tip.hidden = !multiSelect.on;
   });
 }
 

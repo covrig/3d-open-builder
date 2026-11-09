@@ -6,6 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Ground, type GroundColors } from './ground';
 import { makeLabel } from './labels';
+import { Reflection } from './reflection';
 
 // 3D printing files (STL, 3MF) use Z as "up"; make Three.js agree so no
 // axis conversion is ever needed on import or export. Must run before any
@@ -72,6 +73,10 @@ export class Viewport extends EventTarget {
   private readonly shadowFocus = new THREE.Sphere(new THREE.Vector3(), 100);
   private frameRequested = false;
   private originLabel?: THREE.Mesh;
+  /** Mirror image of the objects in the plate (Settings; off by default) */
+  readonly reflection: Reflection;
+  /** The plate fill's see-through value from Settings (null: the colour theme's own) */
+  private plateOpacity: number | null = null;
   palette = DARK;
 
   constructor(container: HTMLElement) {
@@ -81,6 +86,8 @@ export class Viewport extends EventTarget {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // Clipping planes per material (Split's preview, the cross-section).
+    this.renderer.localClippingEnabled = true;
     container.prepend(this.renderer.domElement);
 
     this.scene.add(this.objectRoot);
@@ -93,6 +100,8 @@ export class Viewport extends EventTarget {
     this.orbit.target.copy(HOME_TARGET);
     this.orbit.update();
     this.orbit.addEventListener('change', () => this.invalidate());
+    // Dragging the view stops a running turn to a view cube side.
+    this.orbit.addEventListener('start', () => this.cameraRun++);
     // The controls set an inline "cursor: auto" on the canvas, which would beat
     // every cursor in the stylesheet (turning, panning, zooming, measuring…).
     this.renderer.domElement.style.removeProperty('cursor');
@@ -116,10 +125,13 @@ export class Viewport extends EventTarget {
     this.scene.add(under);
 
     this.scene.add(this.ground.group);
+    this.reflection = new Reflection(this.scene, this.objectRoot);
+    this.beforeFrame(() => this.reflection.sync());
 
     // Render through a composer so the selection gets a silhouette outline.
     // The multisampled target keeps edges smooth (the default one has no anti-aliasing).
-    const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType });
+    // A stencil buffer too: the cross-section fills its cut faces with it.
+    const target = new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType, stencilBuffer: true });
     this.composer = new EffectComposer(this.renderer, target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.outline = new OutlinePass(new THREE.Vector2(1, 1), this.scene, this.camera);
@@ -282,10 +294,29 @@ export class Viewport extends EventTarget {
     return this.raycaster;
   }
 
-  /** Return the user object under a screen point, or null. */
+  /** While the cross-section hides part of the view: which points are still shown. */
+  clipFilter: ((p: THREE.Vector3) => boolean) | null = null;
+
+  /**
+   * Hits of a ray on the user objects, nearest first, without cut-away parts.
+   * With the cross-section on, both sides of surfaces count: looking into a
+   * cut, the ray's first hit is the inside of the far wall.
+   */
+  hitsOn(raycaster: THREE.Raycaster): THREE.Intersection[] {
+    if (!this.clipFilter) return raycaster.intersectObjects(this.objectRoot.children, false);
+    const meshes = this.objectRoot.children.filter((o): o is THREE.Mesh => (o as THREE.Mesh).isMesh);
+    const sides = meshes.map((m) => (m.material as THREE.Material).side);
+    for (const m of meshes) (m.material as THREE.Material).side = THREE.DoubleSide;
+    try {
+      return raycaster.intersectObjects(meshes, false).filter((h) => this.clipFilter!(h.point));
+    } finally {
+      meshes.forEach((m, i) => ((m.material as THREE.Material).side = sides[i]));
+    }
+  }
+
+  /** Return the user object under a screen point (ignoring hidden, cut-away parts), or null. */
   pick(clientX: number, clientY: number): THREE.Object3D | null {
-    const hit = this.rayAt(clientX, clientY).intersectObjects(this.objectRoot.children, false)[0];
-    return hit?.object ?? null;
+    return this.hitsOn(this.rayAt(clientX, clientY))[0]?.object ?? null;
   }
 
   setOutlined(objects: THREE.Object3D[]): void {
@@ -296,7 +327,7 @@ export class Viewport extends EventTarget {
   setTheme(dark: boolean): void {
     this.palette = dark ? DARK : LIGHT;
     this.scene.background = new THREE.Color(this.palette.background);
-    this.ground.setColors(this.palette);
+    this.ground.setColors({ ...this.palette, fillOpacity: this.plateOpacity ?? this.palette.fillOpacity });
     // "0" where the red X and green Y axis lines cross: the origin.
     if (this.originLabel) {
       this.ground.group.remove(this.originLabel);
@@ -315,6 +346,44 @@ export class Viewport extends EventTarget {
   setGridVisible(visible: boolean): void {
     this.ground.group.visible = visible;
     this.invalidate();
+  }
+
+  /** How much of the plate's fill shows (0 = clear, 1 = solid); null goes back to the theme's value. */
+  setPlateOpacity(value: number | null): void {
+    this.plateOpacity = value;
+    this.ground.setColors({ ...this.palette, fillOpacity: value ?? this.palette.fillOpacity });
+    this.invalidate();
+  }
+
+  /**
+   * Turn the camera to look from a direction (e.g. a side of the view cube),
+   * around the same point and at the same distance, in a short animation.
+   */
+  /** Bumped by every camera move, so a running viewFrom() animation stops when something else moves the camera. */
+  private cameraRun = 0;
+
+  viewFrom(direction: THREE.Vector3): void {
+    const target = this.orbit.target.clone();
+    const distance = this.camera.position.distanceTo(target);
+    const from = this.camera.position.clone().sub(target).normalize();
+    const to = direction.clone().normalize();
+    // Straight up or down has no "up" on screen; lean a hair towards the front
+    // so the front stays at the bottom of the screen.
+    if (Math.abs(to.z) > 0.9999) to.set(0, -0.002, Math.sign(to.z)).normalize();
+    const turn = new THREE.Quaternion().setFromUnitVectors(from, to);
+    const start = performance.now();
+    const run = ++this.cameraRun;
+    const step = () => {
+      if (run !== this.cameraRun) return; // another camera move took over
+      const t = Math.min(1, (performance.now() - start) / 280);
+      const eased = 1 - (1 - t) ** 3;
+      const q = new THREE.Quaternion().slerp(turn, eased);
+      this.camera.position.copy(target).addScaledVector(from.clone().applyQuaternion(q), distance);
+      this.orbit.update();
+      this.invalidate();
+      if (t < 1) requestAnimationFrame(step);
+    };
+    step();
   }
 
   setShadows(enabled: boolean): void {
@@ -338,6 +407,7 @@ export class Viewport extends EventTarget {
     if (box && !box.isEmpty()) area.union(box);
     const dir = HOME_POSITION.clone().sub(HOME_TARGET).normalize();
     if (!box || box.isEmpty()) {
+      this.cameraRun++;
       this.orbit.target.copy(HOME_TARGET);
       this.camera.position.copy(HOME_POSITION);
       this.orbit.update();
@@ -349,6 +419,7 @@ export class Viewport extends EventTarget {
 
   /** Aim along `dir` at the box's middle, far enough back to see all of it (and at least `minDistance`). */
   private look(box: THREE.Box3, dir: THREE.Vector3, minDistance: number): void {
+    this.cameraRun++;
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
     // Leave room around the object (and for the rulers and the transform bar).

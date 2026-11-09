@@ -3,6 +3,7 @@ import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { MeshData } from '../geometry/meshData';
 import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
+import { addOverhangShading } from './overhang';
 
 /**
  * Colours given to new objects in turn. Mid-tone and fairly saturated so they
@@ -90,7 +91,8 @@ export interface ViewMode {
 
 /** Edges sharper than this get a line in the Edges view. */
 const EDGE_ANGLE = 25;
-const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
+/** Sharp-edge lines (Edges view); the cross-section draws its cut outline with it too. */
+export const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
 
 export function setEdgeColor(hex: number): void {
   edgeMaterial.color.setHex(hex);
@@ -203,6 +205,8 @@ export class SceneDocument extends EventTarget {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1 + 2 * (7 - (state.id % 8)),
     });
+    addOverhangShading(material);
+    material.clippingPlanes = this.clipping;
     const mesh = new THREE.Mesh(buildGeometry(state.data), material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -359,6 +363,19 @@ export class SceneDocument extends EventTarget {
   }
 
   // --- View modes ---------------------------------------------------------
+
+  /** Clipping planes for every object and its edge lines (the cross-section), or null. */
+  private clipping: THREE.Plane[] | null = null;
+
+  setClipping(planes: THREE.Plane[] | null): void {
+    this.clipping = planes;
+    for (const o of this.objects) {
+      o.mesh.material.clippingPlanes = planes;
+      o.mesh.material.needsUpdate = true;
+    }
+    edgeMaterial.clippingPlanes = planes;
+    edgeMaterial.needsUpdate = true;
+  }
 
   setView(mode: Partial<ViewMode>): void {
     Object.assign(this.view, mode);

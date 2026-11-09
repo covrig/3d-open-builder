@@ -31,7 +31,7 @@ export function hideHint(owner: string): void {
  */
 export function watchTopBars(): void {
   const messages = document.querySelector<HTMLElement>('#messages')!;
-  const bars = ['#split-bar', '#feature-bar']
+  const bars = ['#split-bar', '#feature-bar', '#section-bar']
     .map((s) => document.querySelector<HTMLElement>(s))
     .filter((b): b is HTMLElement => b !== null);
   const corner = document.querySelector<HTMLElement>('#view-corner');

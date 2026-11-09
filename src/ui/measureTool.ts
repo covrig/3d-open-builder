@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { MeasureKind, MeasurePoint, SceneDocument } from '../scene/document';
+import type { MeasureKind, MeasurePoint, SceneDocument, SceneObject } from '../scene/document';
+import type { SectionCut } from './crossSection';
 import type { Viewport } from '../scene/viewport';
 import { settings, toUnit, updateUi } from '../settings';
 import { hideHint, showHint } from './hint';
@@ -178,73 +179,108 @@ export class MeasureTool {
     return obj.mesh.localToWorld(p.local.clone());
   }
 
+  /** The cross-section, when on: measuring then works on what is still shown and on the cut. */
+  section: { active: boolean; plane: THREE.Plane; cutOf(obj: SceneObject): SectionCut | null } | null = null;
+
   /**
    * Point under the cursor: on an object (snapped, when close, to a corner,
    * the middle of a straight edge or an edge, in that order), else on the
-   * plate. Also says what it snapped to.
+   * plate. Also says what it snapped to. With the cross-section on, cut-away
+   * parts are ignored, the filled cut face can be measured on, and its outline
+   * counts as edges.
    */
   private pickPoint(clientX: number, clientY: number): { point: MeasurePoint; snap: SnapKind | null } | null {
     const raycaster = this.viewport.rayAt(clientX, clientY);
-    const hit = raycaster.intersectObjects(this.viewport.objectRoot.children, false)[0];
+    const section = this.section?.active ? this.section : null;
+    const shown = (world: THREE.Vector3) => !section || section.plane.distanceToPoint(world) >= -1e-4;
+    const hit = section ? this.viewport.hitsOn(raycaster)[0] : raycaster.intersectObjects(this.viewport.objectRoot.children, false)[0];
     if (!hit) {
       const onPlate = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
       return onPlate ? { point: { local: onPlate }, snap: null } : null;
     }
     const mesh = hit.object as THREE.Mesh;
     const obj = this.doc.byMesh(mesh);
+    // Looking into the cut: the first surface still shown faces away, so what
+    // is seen is the filled cut face, where the ray meets the plane.
+    let worldHit = hit.point;
+    if (section && hit.face && hit.face.normal.clone().transformDirection(mesh.matrixWorld).dot(raycaster.ray.direction) > 0) {
+      const onPlane = raycaster.ray.intersectPlane(section.plane, new THREE.Vector3());
+      if (onPlane) worldHit = onPlane;
+    }
     const toLocal = (w: THREE.Vector3) => mesh.worldToLocal(w.clone());
     const snapped = (local: THREE.Vector3, snap: SnapKind | null) => ({ point: { objectId: obj?.id, local }, snap });
-    if (!this.options.snap || !hit.face) return snapped(toLocal(hit.point), null);
+    if (!this.options.snap || !hit.face) return snapped(toLocal(worldHit), null);
 
     const r = this.viewport.element.getBoundingClientRect();
     const cursor = new THREE.Vector2(clientX - r.left, clientY - r.top);
-    const screenDist = (localPoint: THREE.Vector3) =>
-      this.viewport.project(localPoint.clone().applyMatrix4(mesh.matrixWorld)).distanceTo(cursor);
-    const localHit = toLocal(hit.point);
+    const toWorld = (localPoint: THREE.Vector3) => localPoint.clone().applyMatrix4(mesh.matrixWorld);
+    const screenDist = (localPoint: THREE.Vector3) => this.viewport.project(toWorld(localPoint)).distanceTo(cursor);
+    const localHit = toLocal(worldHit);
     // Cheap filter for edges and middles: only those near the hit point.
     const near = (mesh.geometry.boundingSphere?.radius ?? 20) * 0.2;
+
+    // Snap targets: the object's sharp edges, plus the outline of the cut (in the object's own coordinates).
+    const own = featureEdges(mesh.geometry);
+    const cut = section && obj ? section.cutOf(obj) : null;
+    const inverse = mesh.matrixWorld.clone().invert();
+    const toLocalList = (list: Float32Array) => {
+      const out = new Float32Array(list.length);
+      const v = new THREE.Vector3();
+      for (let i = 0; i < list.length; i += 3) {
+        v.set(list[i], list[i + 1], list[i + 2]).applyMatrix4(inverse);
+        out.set([v.x, v.y, v.z], i);
+      }
+      return out;
+    };
+    const cutLocal = cut ? { corners: toLocalList(cut.corners), mids: toLocalList(cut.mids), segs: toLocalList(cut.segs) } : null;
 
     // 1. Real corners, then 2. middles of straight edges. (Not the points of the
     // triangles: on a sphere or a cylinder's rim those are only where the
     // smooth surface was divided up.)
-    const { segs, corners, mids } = featureEdges(mesh.geometry);
     let best: THREE.Vector3 | null = null;
     let bestPx = SNAP_PX;
-    const nearest = (list: Float32Array) => {
+    const nearest = (list: Float32Array | undefined) => {
+      if (!list) return;
       const v = new THREE.Vector3();
       for (let i = 0; i < list.length; i += 3) {
         v.set(list[i], list[i + 1], list[i + 2]);
-        if (v.distanceTo(localHit) > near) continue;
+        if (v.distanceTo(localHit) > near || !shown(toWorld(v))) continue;
         const px = screenDist(v);
         if (px < bestPx) {
           bestPx = px;
           best = v.clone();
         }
       }
-      return best;
     };
-    if (nearest(corners)) return snapped(best!, 'corner');
-    if (nearest(mids)) return snapped(best!, 'middle');
+    nearest(own.corners);
+    nearest(cutLocal?.corners);
+    if (best) return snapped(best, 'corner');
+    nearest(own.mids);
+    nearest(cutLocal?.mids);
+    if (best) return snapped(best, 'middle');
 
-    // 3. The nearest sharp edge (cube edges, hole rims...), never a flat face's diagonal.
-    const localRay = raycaster.ray.clone().applyMatrix4(mesh.matrixWorld.clone().invert());
+    // 3. The nearest sharp edge (cube edges, hole rims, the cut's outline...), never a flat face's diagonal.
+    const localRay = raycaster.ray.clone().applyMatrix4(inverse);
     const a = new THREE.Vector3(), b = new THREE.Vector3(), onSeg = new THREE.Vector3();
     const seg = new THREE.Line3();
-    for (let i = 0; i < segs.length; i += 6) {
-      a.set(segs[i], segs[i + 1], segs[i + 2]);
-      b.set(segs[i + 3], segs[i + 4], segs[i + 5]);
-      seg.set(a, b);
-      if (seg.closestPointToPoint(localHit, true, onSeg).distanceTo(localHit) > near) continue;
-      localRay.distanceSqToSegment(a, b, undefined, onSeg);
-      const px = screenDist(onSeg);
-      if (px < bestPx) {
-        bestPx = px;
-        best = onSeg.clone();
+    for (const segs of [own.segs, cutLocal?.segs]) {
+      if (!segs) continue;
+      for (let i = 0; i < segs.length; i += 6) {
+        a.set(segs[i], segs[i + 1], segs[i + 2]);
+        b.set(segs[i + 3], segs[i + 4], segs[i + 5]);
+        seg.set(a, b);
+        if (seg.closestPointToPoint(localHit, true, onSeg).distanceTo(localHit) > near) continue;
+        localRay.distanceSqToSegment(a, b, undefined, onSeg);
+        if (!shown(toWorld(onSeg))) continue;
+        const px = screenDist(onSeg);
+        if (px < bestPx) {
+          bestPx = px;
+          best = onSeg.clone();
+        }
       }
     }
     return best ? snapped(best, 'edge') : snapped(localHit, null);
   }
-
   // --- Drawing ------------------------------------------------------------
 
   private draw(): void {

@@ -36,6 +36,9 @@ function distanceToLoop(p: THREE.Vector2, loop: THREE.Vector2[]): number {
   return best;
 }
 
+/** Touch screens (no precise pointer): handles get larger invisible grab areas. */
+const COARSE = window.matchMedia('(pointer: coarse)');
+
 /** Double-headed arrow along +x, centred on the origin. */
 function doubleArrow(length: number): string {
   const h = length / 2, head = 9, w = 7, shaft = 2;
@@ -68,6 +71,8 @@ interface Handle {
   faceOn?: boolean;
   /** Rotate: where on the ring the arrow sits (step of 72) */
   step?: number;
+  /** Touch screens: an invisible, larger copy under the handle that is easier to grab */
+  touch?: SVGElement;
 }
 
 /** Something a tool lets the handles move and turn (see Gizmo.setProxy). */
@@ -138,7 +143,17 @@ export class Gizmo {
     viewport.scene.add(this.rings);
     this.build();
     viewport.beforeFrame(() => this.placeRings());
-    viewport.onFrame(() => this.update());
+    viewport.onFrame(() => {
+      this.update();
+      // Touch twins follow their handles.
+      for (const h of this.handles) {
+        if (!h.touch) continue;
+        for (const a of ['transform', 'cx', 'cy']) {
+          const v = h.el.getAttribute(a);
+          if (v !== null) h.touch.setAttribute(a, v);
+        }
+      }
+    });
   }
 
   private readonly rings = new THREE.Group();
@@ -212,7 +227,15 @@ export class Gizmo {
 
   private addHandle(kind: HandleKind, axis: number, sign: number, el: SVGElement, extra: Partial<Handle> = {}): void {
     const handle: Handle = { kind, axis, sign, el, u: new THREE.Vector2(1, 0), pxPerMm: 1, ...extra };
-    for (const target of [el, extra.hit]) {
+    // Fingers are less precise than a mouse: on touch screens each handle gets
+    // a wider invisible twin. All twins go below all handles, so a twin never
+    // covers another handle.
+    if (COARSE.matches) {
+      handle.touch = el.cloneNode() as SVGElement;
+      handle.touch.setAttribute('class', el.tagName === 'circle' ? 'handle-touch corner-touch' : 'handle-touch');
+      this.svg.prepend(handle.touch);
+    }
+    for (const target of [el, extra.hit, handle.touch]) {
       target?.addEventListener('pointerdown', (e) => this.startDrag(e as PointerEvent, handle));
     }
     this.handles.push(handle);

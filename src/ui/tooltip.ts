@@ -1,3 +1,5 @@
+import { settings } from '../settings';
+
 /**
  * Hover tooltips with a title line and a description, for any element with
  * data-tip (description) and optionally data-tip-title (defaults to the
@@ -26,7 +28,9 @@ export function setupTooltips(): void {
   };
 
   const show = (el: HTMLElement) => {
-    title.textContent = el.dataset.tipTitle ?? el.textContent?.trim() ?? '';
+    // A button's key is shown only while single-key shortcuts are switched on.
+    const key = settings.shortcuts && el.dataset.shortcut ? ` (${el.dataset.shortcut})` : '';
+    title.textContent = (el.dataset.tipTitle ?? el.textContent?.trim() ?? '') + key;
     body.textContent = el.dataset.tip ?? '';
     tip.hidden = false;
     const r = el.getBoundingClientRect();
@@ -34,7 +38,13 @@ export function setupTooltips(): void {
     const gap = 8;
     let x: number;
     let y: number;
-    if (el.closest('#sidebar')) {
+    const cube = el.closest('#view-cube');
+    if (cube) {
+      // Beside the view cube, never over it.
+      const c = cube.getBoundingClientRect();
+      x = c.right + gap;
+      y = c.top + c.height / 2 - t.height / 2;
+    } else if (el.closest('#sidebar')) {
       x = r.left - t.width - gap;
       y = r.top + r.height / 2 - t.height / 2;
     } else if (el.closest('#transform-bar')) {

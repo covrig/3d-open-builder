@@ -892,3 +892,76 @@ svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
 }
 .export-field input:focus { outline: none; border-color: var(--accent); }
 #export-note { margin: 0; }
+/* --- Toolbar dropdowns: the arrow sits beside the icon (outside the button's
+   width), so every button is as wide as its label, menus or not. --- */
+.toolbar button .icon-row { position: relative; display: inline-flex; }
+.toolbar button .icon-row .caret { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 1px; }
+
+/* A menu item that switches something on shows a tick while on. */
+.menu > button.checked::after { content: '✓'; margin-left: auto; padding-left: 12px; color: var(--accent); font-weight: 700; }
+
+/* Single-key shortcut hints only while those shortcuts are on (Settings). */
+body:not(.shortcuts-on) .key-hint, body:not(.shortcuts-on) .single-key { display: none; }
+body.shortcuts-on .shortcuts-off { display: none; }
+#shortcuts-panel .shortcuts-off { margin: 0 0 6px; max-width: 220px; }
+
+/* Settings: slider rows. */
+dialog label.slider-setting { align-items: center; }
+dialog label.slider-setting > span { min-width: 140px; }
+dialog label.slider-setting input[type='range'] { flex: 1; min-width: 0; }
+dialog label.slider-setting input[type='number'] {
+  width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; font: inherit;
+}
+dialog label.slider-setting input[type='color'] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; }
+dialog label.slider-setting output { min-width: 52px; text-align: right; color: var(--muted); font-size: 12.5px; }
+dialog label.slider-setting input:disabled { opacity: 0.4; }
+
+/* Touch screens: invisible, larger grab areas under the move/rotate/size handles. */
+svg.gizmo .handle-touch { fill: transparent; stroke: transparent; stroke-width: 26px; stroke-linejoin: round; pointer-events: all; cursor: grab; }
+svg.gizmo .corner-touch { r: 16px; }
+@media (pointer: coarse) {
+  svg.gizmo .ring-hit { stroke-width: 26; }
+}
+
+/* View cube under the app name. */
+#view-cube { position: absolute; top: 58px; left: 22px; width: 80px; height: 80px; z-index: 2; }
+#view-cube .vc-stage { position: absolute; left: 50%; top: 50%; }
+#view-cube .vc-cube { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+#view-cube .vc-face {
+  position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--accent); border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text); font-size: 9.5px; font-weight: 650; letter-spacing: 0.04em;
+  backface-visibility: hidden; cursor: pointer;
+}
+#view-cube .vc-face:hover { background: color-mix(in srgb, var(--accent) 42%, var(--panel)); border-color: var(--accent); }
+#view-cube .vc-ring {
+  position: absolute; left: -42px; top: -42px; width: 84px; height: 84px; border-radius: 50%;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); pointer-events: none;
+}
+@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
+  /* Like the app name: out of the way while the panel drawer is open. */
+  body.sidebar-open #view-cube { visibility: hidden; }
+}
+
+/* Select several: what taps do while it is on (not while the side panel is open). */
+#multi-tip {
+  position: absolute; top: 56px; right: 12px; z-index: 3; max-width: 250px;
+  padding: 7px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.35;
+  background: color-mix(in srgb, var(--accent) 22%, var(--overlay)); border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+}
+body:not(.panel-closed) #multi-tip { display: none !important; }
+
+/* Cross-section bar (like Split's). */
+#section-bar { top: 12px; align-items: center; gap: 6px 8px; padding: 6px 10px; flex-wrap: wrap; }
+#section-bar .bar-title { font-weight: 600; }
+#section-bar .bar-field { display: flex; align-items: center; gap: 6px; }
+#section-bar input[type='range'] { width: 160px; accent-color: var(--accent); }
+#section-bar input[type='number'] {
+  width: 70px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px; font: inherit; text-align: center;
+}
+#section-bar .unit { color: var(--muted); }
+#section-bar > button { border: 1px solid var(--border); padding: 5px 9px; }
+#section-bar .segmented button { padding: 5px 9px; }

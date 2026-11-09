@@ -12,6 +12,12 @@ export interface UiState {
   minWall: number;
   /** Order of the side panel sections (ids from PANELS) */
   panelOrder: PanelId[];
+  /** How much of the plate's fill shows (0 = clear, 1 = solid) */
+  plateOpacity: number;
+  /** Mirror image of the objects in the plate: how strong, and how deep (mm) before it fades out */
+  reflection: { on: boolean; strength: number; depth: number };
+  /** Overhang view: surfaces steeper than ngle degrees from vertical get color */
+  overhang: { angle: number; color: string };
 }
 
 export const PANELS = [
@@ -28,6 +34,8 @@ export interface Settings {
   theme: ThemeChoice;
   snapping: boolean;
   collision: boolean;
+  /** Single-key shortcuts (1, D, M, F…); Ctrl+Z, Ctrl+C and the like always work */
+  shortcuts: boolean;
   ui: UiState;
 }
 
@@ -41,6 +49,7 @@ const DEFAULTS: Settings = {
   theme: 'system',
   snapping: true,
   collision: false,
+  shortcuts: false,
   ui: {
     view: { xray: false, wireframe: false, edges: false, grid: true, shadows: true },
     measure: { snap: true, dotted: true, deltas: false },
@@ -48,6 +57,9 @@ const DEFAULTS: Settings = {
     shortcuts: false,
     minWall: 0.8,
     panelOrder: PANELS.map(([id]) => id),
+    plateOpacity: 0.35,
+    reflection: { on: false, strength: 0.3, depth: 60 },
+    overhang: { angle: 45, color: '#e5484d' },
   },
 };
 const KEY = '3d-open-builder.settings';
@@ -64,6 +76,8 @@ function load(): Settings {
           ...saved.ui,
           view: { ...s.ui.view, ...saved.ui?.view },
           measure: { ...s.ui.measure, ...saved.ui?.measure },
+          reflection: { ...s.ui.reflection, ...saved.ui?.reflection },
+          overhang: { ...s.ui.overhang, ...saved.ui?.overhang },
         },
       });
     }

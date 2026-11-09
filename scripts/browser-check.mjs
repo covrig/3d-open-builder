@@ -112,9 +112,16 @@ async function runChecks(b) {
     });
     if (r.names.length !== 1 || !r.names[0].startsWith('Torus')) throw new Error(`objects: ${JSON.stringify(r.names)}`);
     if (Math.abs(r.minZ) > 0.2 || Math.abs(r.cx) > 0.2) throw new Error(`not centred on the plate (x ${r.cx}, bottom ${r.minZ})`);
+    // Single-key shortcuts start off: D does nothing.
+    await page.evaluate(() => window.app.doc.setSelection(window.app.doc.objects));
+    await page.mouse.click(5, 300);
+    await page.evaluate(() => window.app.doc.setSelection(window.app.doc.objects));
+    await page.keyboard.press('d');
+    const afterD = await page.evaluate(() => window.app.doc.objects.length);
+    if (afterD !== 1) throw new Error('D duplicated although single-key shortcuts start off');
     // The remaining checks start from an empty plate.
     await page.evaluate(() => window.app.doc.clear());
-    return 'one torus, centred, on the plate';
+    return 'one torus, centred, on the plate; single-key shortcuts off';
   });
 
   await check('Add object from menu', async () => {
@@ -249,6 +256,12 @@ async function runChecks(b) {
     return { min: b.min.toArray(), max: b.max.toArray() };
   }, id);
   const near = (a, b, tol = 0.2) => Math.abs(a - b) <= tol;
+  /** Switch single-key shortcuts on or off (Settings; off by default). */
+  const shortcuts = (on) => page.evaluate((on) => {
+    const i = document.querySelector('input[name="shortcuts"]');
+    i.checked = on;
+    i.dispatchEvent(new Event('change'));
+  }, on);
 
   await check('Subtract: one cutter through two objects', async () => {
     await reset();
@@ -329,13 +342,22 @@ async function runChecks(b) {
   });
 
   await check('Deleting the object cancels its tool', async () => {
+    const id = await page.evaluate(() => window.app.doc.objects[0].id);
+    await select([id]);
     await clickSel(page, '[data-menu="modify-menu"]');
     await clickSel(page, '[data-modify="shell"]');
+    if (!(await visible(page, '#feature-bar'))) throw new Error('Shell did not open');
     await page.evaluate(() => document.activeElement?.blur());
-    await page.keyboard.press('Delete');
+    // Delete is ignored inside a tool; Cut (Ctrl+X) still works there and takes the object away.
+    await page.keyboard.down('Control');
+    await page.keyboard.press('x');
+    await page.keyboard.up('Control');
     await sleep(100);
     if (await visible(page, '#feature-bar')) throw new Error('shell stayed open');
     const msg = await page.$eval('#toast', (e) => e.textContent);
+    if (!msg.includes('cancelled')) throw new Error(`message: "${msg}"`);
+    // Bring the object back for the next checks.
+    await page.evaluate(() => window.app.doc.undo());
     return msg;
   });
 
@@ -465,6 +487,11 @@ async function runChecks(b) {
   });
 
   await check('Home view (H) returns to the start angle', async () => {
+    await page.evaluate(() => {
+      const i = document.querySelector('input[name="shortcuts"]');
+      i.checked = true;
+      i.dispatchEvent(new Event('change'));
+    });
     const dir = () => page.evaluate(() => {
       const { camera, orbit } = window.app.viewport;
       const d = camera.position.clone().sub(orbit.target).normalize();
@@ -602,6 +629,7 @@ async function runChecks(b) {
   });
 
   await check('R repeats the last tool, only once it is finished', async () => {
+    await shortcuts(true);
     await reset();
     const id = await addCube(0, 0, 20);
     await select([id]);
@@ -650,6 +678,7 @@ async function runChecks(b) {
   });
 
   await check('Single-key tool shortcuts', async () => {
+    await shortcuts(true);
     await reset();
     await page.mouse.click(5, 300);
     const count = () => page.evaluate(() => window.app.doc.objects.length);
@@ -674,6 +703,116 @@ async function runChecks(b) {
     await page.keyboard.press('Escape');
     if (!split) throw new Error('S did not open Split');
     return '1 2 3 D B O P E S all work';
+  });
+
+  await check('Tool keys and Delete are ignored while a tool is open', async () => {
+    await shortcuts(true);
+    await reset();
+    const a = await addCube(0, 0, 20);
+    const b2 = await addCube(30, 0, 20);
+    await select([a, b2]);
+    await page.mouse.click(5, 300);
+    await select([a]);
+    await page.click('.toolbar [data-action="extrude-down"]');
+    for (const key of ['d', 'm', 's', '1', 'Delete']) await page.keyboard.press(key);
+    const r = await page.evaluate(() => ({ n: window.app.doc.objects.length, bar: !document.querySelector('#feature-bar').hidden, title: document.querySelector('#feature-bar .bar-title').textContent }));
+    // Copy still works inside a tool.
+    await page.keyboard.down('Control');
+    await page.keyboard.press('c');
+    await page.keyboard.up('Control');
+    const copied = await page.$eval('#toast', (e) => (e.hidden ? '' : e.textContent));
+    await page.keyboard.press('Escape');
+    if (r.n !== 2) throw new Error(`objects changed to ${r.n} while Extrude was open`);
+    if (!r.bar || r.title !== 'Extrude down') throw new Error(`Extrude bar replaced by "${r.title}"`);
+    if (!copied.startsWith('Copied')) throw new Error(`Ctrl+C inside a tool: "${copied}"`);
+    return 'D M S 1 Delete ignored in Extrude; Ctrl+C works';
+  });
+
+  await check('View cube turns the view', async () => {
+    const dir = async (name) => {
+      await page.evaluate((name) => [...document.querySelectorAll('#view-cube .vc-face')].find((f) => f.textContent === name).click(), name);
+      await sleep(700);
+      return page.evaluate(() => {
+        const { camera, orbit } = window.app.viewport;
+        return camera.position.clone().sub(orbit.target).normalize().toArray().map((v) => Math.round(v * 100) / 100);
+      });
+    };
+    const top = await dir('TOP');
+    const right = await dir('RIGHT');
+    if (top[2] < 0.99) throw new Error(`Top view looks from ${top}`);
+    if (right[0] < 0.99) throw new Error(`Right view looks from ${right}`);
+    await page.keyboard.press('h');
+    return `Top from ${top}, Right from ${right}`;
+  });
+
+  await check('Overhangs, reflection and plate settings apply', async () => {
+    await reset();
+    await page.evaluate(() => {
+      document.querySelector('[data-insert="sphere"]').click();
+      const { doc } = window.app;
+      doc.objects[0].mesh.position.z += 15;
+      doc.emit('transform');
+    });
+    const before = errors.length;
+    const r = await page.evaluate(async () => {
+      const item = document.querySelector('[data-action="overhangs"]');
+      item.click();
+      const on = item.getAttribute('aria-checked');
+      const refl = document.querySelector('input[name="reflection"]');
+      refl.checked = true;
+      refl.dispatchEvent(new Event('change'));
+      const plate = document.querySelector('input[name="plateOpacity"]');
+      plate.value = '0.1';
+      plate.dispatchEvent(new Event('input'));
+      window.app.viewport.invalidate();
+      await new Promise((res) => setTimeout(res, 300));
+      const shown = window.app.viewport.reflection.group.visible;
+      item.click();
+      refl.checked = false;
+      refl.dispatchEvent(new Event('change'));
+      plate.value = '0.35';
+      plate.dispatchEvent(new Event('input'));
+      return { on, shown, seeThrough: plate.parentElement.querySelector('output').textContent };
+    });
+    await page.screenshot({ path: `${SHOTS}/${b.name}-overhangs.png` });
+    if (errors.length > before) throw new Error(errors.slice(before).join(' | '));
+    if (r.on !== 'true') throw new Error('Show overhangs did not switch on');
+    if (!r.shown) throw new Error('reflection not shown');
+    return `overhangs on, reflection shown, plate see-through ${r.seeThrough}, no errors`;
+  });
+
+  await check('Cross section: cut filled, measuring snaps on it', async () => {
+    await reset();
+    await addCube(0, 0, 20);
+    const before = errors.length;
+    await page.evaluate(() => {
+      const { doc, viewport } = window.app;
+      viewport.home(doc.worldBox(doc.objects));
+      document.querySelector('[data-action="cross-section"]').click();
+      document.querySelector('[data-section-axis="1"]').click();
+    });
+    await sleep(200);
+    const clipped = await page.evaluate(() => window.app.doc.objects[0].mesh.material.clippingPlanes?.length ?? 0);
+    await clickSel(page, '[data-measure="distance"]');
+    // The middle of the cut's top edge: world (0, 0, 40) for a 40 mm cube centred at z = 20.
+    const at = await page.evaluate(() => {
+      const { viewport } = window.app;
+      const p = viewport.project(new viewport.camera.position.constructor(0, 0, 39.6));
+      const r = viewport.element.getBoundingClientRect();
+      return { x: r.left + p.x, y: r.top + p.y };
+    });
+    await page.mouse.move(at.x, at.y);
+    await sleep(150);
+    const tag = await page.evaluate(() => document.querySelector('.m-snap')?.textContent ?? null);
+    await page.screenshot({ path: `${SHOTS}/${b.name}-section.png` });
+    await page.keyboard.press('Escape');
+    await page.click('#section-bar [data-section="close"]');
+    const after = await page.evaluate(() => window.app.doc.objects[0].mesh.material.clippingPlanes?.length ?? 0);
+    if (errors.length > before) throw new Error(errors.slice(before).join(' | '));
+    if (clipped !== 1) throw new Error('objects not cut');
+    if (tag !== 'Middle of edge') throw new Error(`snap on the cut: ${tag}`);
+    if (after !== 0) throw new Error('still cut after Close');
+    return 'cut, snapped to the middle of the cut edge, closed';
   });
 
   await check('Top bar, brand and toolbar layout', async () => {

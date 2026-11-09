@@ -6,7 +6,7 @@ import {
   Dome, Download, Eraser, FilePlus, FlipHorizontal2, Focus, FolderOpen, Ghost, Globe, Group, Hexagon,
   House, Image, Info, Keyboard, LayoutDashboard, LayoutGrid, ListChecks, LocateFixed, Lock, LockOpen, Menu,
   Move, PanelBottom, PanelRightOpen, PencilRuler, Pipette, Plus, Pyramid, Redo2, RefreshCw, Rotate3d,
-  RotateCcw, RotateCw, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
+  RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
   SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, Squircle, Sun, Torus, Trash2, Triangle,
   TriangleRight, Type, Undo2, Ungroup, Wrench,
   createElement, createIcons, type IconNode,
@@ -21,7 +21,7 @@ const ICONS: Record<string, IconNode> = {
   Dome, Download, Eraser, FilePlus, FlipHorizontal2, Focus, FolderOpen, Ghost, Globe, Group, Hexagon,
   House, Image, Info, Keyboard, LayoutDashboard, LayoutGrid, ListChecks, LocateFixed, Lock, LockOpen, Menu,
   Move, PanelBottom, PanelRightOpen, PencilRuler, Pipette, Plus, Pyramid, Redo2, RefreshCw, Rotate3d,
-  RotateCcw, RotateCw, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
+  RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
   SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, Squircle, Sun, Torus, Trash2, Triangle,
   TriangleRight, Type, Undo2, Ungroup, Wrench,
 };
