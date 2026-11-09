@@ -291,10 +291,16 @@ async function runChecks(b) {
     await markInView(page, 'targets', [a]);
     await markInView(page, 'tools', [s1, s2]);
     await applyFeature(page);
-    await page.waitForFunction(() => window.app.doc.objects.length === 1, { timeout: 15000 });
-    const b = await boxOf(a);
-    if (!near(b.max[1] - b.min[1], 10) || !near(b.max[0] - b.min[0], 40)) throw new Error(`unexpected size ${JSON.stringify(b)}`);
-    return 'kept both ends of the cube inside the two shapes';
+    // The two ends left (5 mm of the cube inside each 10 mm shape) are separate pieces: two objects.
+    await page.waitForFunction(() => window.app.doc.objects.length === 2, { timeout: 15000 });
+    const sizes = await page.evaluate(() => window.app.doc.objects.map((o) => {
+      const b = window.app.doc.worldBox([o]);
+      return [b.max.x - b.min.x, b.max.y - b.min.y].map((v) => Math.round(v * 10) / 10);
+    }));
+    if (!sizes.every(([x, y]) => near(x, 5) && near(y, 10))) throw new Error(`unexpected sizes ${JSON.stringify(sizes)}`);
+    const names = await page.evaluate(() => window.app.doc.objects.map((o) => o.name));
+    if (!names.every((n) => /^Object \d+$/.test(n))) throw new Error(`names ${names}`);
+    return `kept both ends of the cube as two objects (${names.join(', ')})`;
   });
 
   await check('Extrude down to the plate', async () => {

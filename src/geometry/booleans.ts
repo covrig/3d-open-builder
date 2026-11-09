@@ -68,15 +68,16 @@ export type RoleOp = 'subtract' | 'intersect';
 /**
  * Subtract or intersect with roles: each target is cut by all the tools at
  * once (their union). Subtract removes the tools from every target; intersect
- * keeps only the part of every target inside the tools. One result per
- * target, null where nothing is left.
+ * keeps only the part of every target inside the tools. For each target, the
+ * separate pieces that are left (a cut can split an object in two), largest
+ * first; none where nothing is left.
  */
 export function combineWithTools(
   wasm: ManifoldToplevel,
   op: RoleOp,
   targets: PlacedMesh[],
   tools: PlacedMesh[],
-): (Piece | null)[] {
+): Piece[][] {
   if (targets.length === 0 || tools.length === 0) throw new Error('Mark at least one object of each kind');
   const owned: Manifold[] = [];
   const keep = (m: Manifold) => (owned.push(m), m);
@@ -87,7 +88,12 @@ export function combineWithTools(
       const result = keep(op === 'subtract' ? solid.subtract(cutter) : solid.intersect(cutter));
       const status = result.status();
       if (status !== 'NoError') throw new Error(`Operation failed (${status})`);
-      return toPiece(result);
+      const parts = result.decompose();
+      owned.push(...parts);
+      return parts
+        .sort((x, y) => y.volume() - x.volume())
+        .map(toPiece)
+        .filter((p): p is Piece => p !== null);
     });
   } finally {
     for (const m of owned) m.delete();

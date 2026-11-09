@@ -113,7 +113,7 @@ export class CombineTool {
     };
     this.doc.addEventListener('change', onDocChange);
 
-    this.bar.open<(Piece | null)[]>({
+    this.bar.open<Piece[][]>({
       title: words.title,
       hint: words.steps[role],
       fields: [
@@ -133,7 +133,7 @@ export class CombineTool {
           op, targets: targets.map((o) => this.doc.placed(o)), tools: tools.map((o) => this.doc.placed(o)),
         });
       },
-      show: (pieces) => pieces.filter((p) => p !== null).map((p) => previewMesh(p.mesh, p.center)),
+      show: (pieces) => pieces.flat().map((p) => previewMesh(p.mesh, p.center)),
       apply: (pieces) => this.finish(op, targets, tools, pieces),
       onClose: () => {
         this.doc.removeEventListener('change', onDocChange);
@@ -166,31 +166,43 @@ export class CombineTool {
     redraw();
   }
 
-  private finish(op: RoleOp, targets: SceneObject[], tools: SceneObject[], pieces: (Piece | null)[]): void {
+  /**
+   * Each target becomes what is left of it. Where that is several separate
+   * pieces (a cut through the middle), the largest stays the target and each
+   * other piece becomes its own object, so every object is one solid.
+   */
+  private finish(op: RoleOp, targets: SceneObject[], tools: SceneObject[], pieces: Piece[][]): void {
     const all = [...targets, ...tools];
     if (!all.every((o) => this.doc.objects.includes(o))) return;
-    if (pieces.every((p) => p === null)) {
+    if (pieces.every((p) => p.length === 0)) {
       return this.toast(op === 'subtract' ? 'Nothing would be left: the cutters cover the whole object' : 'Nothing is left: the objects do not overlap');
     }
-    {
-      this.doc.checkpoint();
-      const kept: SceneObject[] = [];
-      const emptied: SceneObject[] = [];
-      targets.forEach((t, i) => {
-        const p = pieces[i];
-        if (!p) return emptied.push(t);
-        this.doc.setData(t, p.mesh);
-        // A new shape gets a new name: half a sphere shouldn't stay called "Cube 1".
-        t.name = this.doc.uniqueName('Object');
-        t.mesh.position.set(...p.center);
-        t.mesh.quaternion.identity();
-        t.mesh.scale.set(1, 1, 1);
-        kept.push(t);
-      });
-      this.doc.remove([...tools, ...emptied]);
-      this.doc.setSelection(kept);
-      this.doc.emit('transform');
-      if (emptied.length) this.toast(`${emptied.map((o) => o.name).join(', ')}: nothing was left, so ${emptied.length > 1 ? 'they were' : 'it was'} removed`);
-    }
-  }
-}
+    this.doc.checkpoint();
+    const kept: SceneObject[] = [];
+    const emptied: SceneObject[] = [];
+    let split = 0;
+    targets.forEach((t, i) => {
+      const [first, ...rest] = pieces[i];
+      if (!first) return emptied.push(t);
+      this.doc.setData(t, first.mesh);
+      // A new shape gets a new name: half a sphere shouldn't stay called "Cube 1".
+      t.name = this.doc.uniqueName('Object');
+      t.mesh.position.set(...first.center);
+      t.mesh.quaternion.identity();
+      t.mesh.scale.set(1, 1, 1);
+      kept.push(t);
+      for (const p of rest) {
+        const extra = this.doc.add('Object', p.mesh, t.color);
+        extra.mesh.position.set(...p.center);
+        kept.push(extra);
+        split++;
+      }
+    });
+    this.doc.remove([...tools, ...emptied]);
+    this.doc.setSelection(kept);
+    this.doc.emit('transform');
+    const notes: string[] = [];
+    if (split) notes.push(`${split} more separate piece${split > 1 ? 's' : ''} became ${split > 1 ? 'their own objects' : 'its own object'}`);
+    if (emptied.length) notes.push(`${emptied.map((o) => o.name).join(', ')}: nothing was left, so ${emptied.length > 1 ? 'they were' : 'it was'} removed`);
+    if (notes.length) this.toast(notes.join('. '));
+  }}

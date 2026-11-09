@@ -33,19 +33,31 @@ const bar = () => box([40, 2, 2], [-5, 4, 4]);
 describe('subtract and intersect with roles', () => {
   it('cuts one cutter out of two objects', () => {
     const [a, b] = combineWithTools(wasm, 'subtract', [left(), right()], [bar()]);
-    expect(volume(a!.mesh)).toBeCloseTo(1000 - 40, 3);
-    expect(volume(b!.mesh)).toBeCloseTo(1000 - 40, 3);
+    expect(a).toHaveLength(1);
+    expect(volume(a[0].mesh)).toBeCloseTo(1000 - 40, 3);
+    expect(volume(b[0].mesh)).toBeCloseTo(1000 - 40, 3);
   });
 
-  it('keeps each object inside the shapes, even if the shapes do not overlap each other', () => {
+  it('gives the separate pieces of an intersect as separate results', () => {
+    // Two shapes that don't touch each other keep two separate ends of the cube.
     const shapeA = box([4, 10, 10], [-2, 0, 0]);
     const shapeB = box([4, 10, 10], [8, 0, 0]);
-    const [a] = combineWithTools(wasm, 'intersect', [left()], [shapeA, shapeB]);
-    expect(volume(a!.mesh)).toBeCloseTo(2 * 200, 3);
+    const [pieces] = combineWithTools(wasm, 'intersect', [left()], [shapeA, shapeB]);
+    expect(pieces).toHaveLength(2);
+    for (const p of pieces) expect(volume(p.mesh)).toBeCloseTo(200, 3);
   });
 
-  it('returns null where nothing is left', () => {
+  it('gives the separate pieces of a subtract as separate results, largest first', () => {
+    // A slab through the cube, off centre: two pieces of 6 mm and 2 mm.
+    const slab = box([12, 12, 2], [-1, -1, 6]);
+    const [pieces] = combineWithTools(wasm, 'subtract', [left()], [slab]);
+    expect(pieces).toHaveLength(2);
+    expect(volume(pieces[0].mesh)).toBeCloseTo(600, 3);
+    expect(volume(pieces[1].mesh)).toBeCloseTo(200, 3);
+  });
+
+  it('returns no pieces where nothing is left', () => {
     const [a] = combineWithTools(wasm, 'intersect', [left()], [box([5, 5, 5], [50, 0, 0])]);
-    expect(a).toBeNull();
+    expect(a).toEqual([]);
   });
 });
