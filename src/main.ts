@@ -30,7 +30,7 @@ import { renderIcons } from './ui/icons';
 import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
 import { restrictNumberInputs } from './ui/numberInputs';
 import { setupArrange, units } from './ui/arrange';
-import { hideHint, showHint, watchTopBars } from './ui/hint';
+import { hideHint, showHint, watchCorner, watchTopBars } from './ui/hint';
 import { setupItemsPanel } from './ui/itemsPanel';
 import { MeasureTool } from './ui/measureTool';
 import { CheckTools } from './ui/checkTools';
@@ -87,6 +87,7 @@ setupAbout();
 setupPrivacy();
 setupShortcutsPanel();
 watchTopBars();
+watchCorner();
 setupArrange(doc, (msg) => toast(msg));
 setupPanelToggle();
 setupToolGuard((msg) => toast(msg), doc);
@@ -219,7 +220,6 @@ for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
       const color = selected[0].color;
       doc.remove(selected);
       const obj = doc.add('Object', result.mesh, color);
-      obj.edged = selected.find((o) => o.edged)?.edged;
       const pieces = countPieces(result.mesh);
       if (pieces > 1) toast(`The objects don't touch, so the merged object is made of ${pieces} separate pieces.`);
       obj.mesh.position.set(...result.center);
@@ -891,4 +891,4 @@ updateShadows();
 void offerRestore();
 
 // Exposed for debugging in the browser console.
-Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection } });
+Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection, overhangs } });

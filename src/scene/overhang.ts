@@ -5,6 +5,7 @@ import * as THREE from 'three';
  * (the ones a 3D printer needs supports for) are drawn in a warning colour.
  * Done per pixel in each object's own shader, so it follows every move and
  * turn at no extra cost. Surfaces resting on the plate are not overhangs.
+ * In X-ray the overhangs stay solid while the rest turns see-through.
  */
 export const overhangUniforms = {
   uOverhangOn: { value: 0 },
@@ -38,7 +39,8 @@ export function addOverhangShading(material: THREE.MeshStandardMaterial): void {
   if (uOverhangOn > 0.5 && vOverhangZ > 0.05) {
     // The normal here is in camera space; turn it back into the world (Z up).
     vec3 worldNormal = inverseTransformDirection(normal, viewMatrix);
-    if (-worldNormal.z > uOverhangSin) diffuseColor.rgb = uOverhangColor;
+    // Fully opaque even in X-ray, so the overhangs stand out from the see-through rest.
+    if (-worldNormal.z > uOverhangSin) diffuseColor = vec4(uOverhangColor, 1.0);
   }`,
     );
   };

@@ -6,7 +6,6 @@ import { runOp } from '../geometry/workerClient';
 import type { ObjectState, SceneDocument, SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
 import { EdgePicker } from './edgePicker';
-import { edgeBlock } from './toolGuard';
 import { previewMesh, type FeatureBar, type Values } from './featureBar';
 
 type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
@@ -72,8 +71,6 @@ export class ModifyTools {
   private edgeTool(kind: 'chamfer' | 'fillet'): void {
     const obj = this.one();
     if (!obj) return;
-    const blocked = edgeBlock(obj, kind);
-    if (blocked) return this.toast(blocked);
     const set = findEdges(bakeMesh(this.doc.placed(obj)));
     if (set.segments.length === 0) return this.toast(`${obj.name} has no sharp edges to ${kind === 'chamfer' ? 'bevel' : 'round'}`);
     const name = kind === 'chamfer' ? 'Edge bevel' : 'Edge rounding';
@@ -87,12 +84,7 @@ export class ModifyTools {
         },
       ],
       ...this.pieceSpec(obj),
-      apply: (p: Piece) => {
-        this.replace(obj, p);
-        // After replace's undo checkpoint, so undo drops the mark with the shape.
-        obj.edged = kind;
-        this.doc.emit('change');
-      },
+
       compute: async (v) => {
         const segments = this.edges.segments;
         if (segments.length === 0) return null;
@@ -224,7 +216,6 @@ export class ModifyTools {
           const color = objs[0].color;
           this.doc.remove(all);
           const merged = this.doc.add('Object', r.mesh, color);
-          merged.edged = objs.find((o) => o.edged)?.edged;
           merged.mesh.position.set(...r.center);
           this.doc.setSelection([merged]);
         });

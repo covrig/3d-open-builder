@@ -35,8 +35,8 @@ export function watchTopBars(): void {
   const bars = ['#split-bar', '#feature-bar', '#section-bar', '#overhang-bar']
     .map((s) => document.querySelector<HTMLElement>(s))
     .filter((b): b is HTMLElement => b !== null);
-  const corner = document.querySelector<HTMLElement>('#view-corner');
   const place = () => {
+
     const viewTop = messages.parentElement!.getBoundingClientRect().top;
     let top = 12;
     // Open bars stack one under the other; messages go below them.
@@ -45,13 +45,8 @@ export function watchTopBars(): void {
       b.style.top = `${top}px`;
       top = b.getBoundingClientRect().bottom - viewTop + 8;
     }
-    // On narrow views the messages would run under the buttons at the top right.
-    // (The buttons only: their labels make way for messages.)
-    for (const b of corner?.querySelectorAll('button') ?? []) {
-      const c = b.getBoundingClientRect();
-      if (c.width > 0 && messages.getBoundingClientRect().right > c.left - 4) top = Math.max(top, c.bottom - viewTop + 8);
-    }
     messages.style.top = `${top}px`;
+
   };
   const observer = new MutationObserver(place);
   const sizes = new ResizeObserver(place);
@@ -59,8 +54,27 @@ export function watchTopBars(): void {
     observer.observe(b, { attributes: true, attributeFilter: ['hidden'] });
     sizes.observe(b);
   }
-  // The corner buttons change with the window size and when the panel opens or closes.
   sizes.observe(messages.parentElement!);
-  if (corner) sizes.observe(corner);
+  place();
+}
+
+/**
+ * The floating buttons at the bottom right: level with the transform bar
+ * when they fit beside it, otherwise stacked just above it.
+ */
+export function watchCorner(): void {
+  const corner = document.querySelector<HTMLElement>('#view-corner')!;
+  const bar = document.querySelector<HTMLElement>('#transform-bar')!;
+  const view = corner.parentElement!;
+  const place = () => {
+    corner.style.bottom = '';
+    const c = corner.getBoundingClientRect();
+    const b = bar.getBoundingClientRect();
+    if (b.width > 0 && c.left < b.right + 8) corner.style.bottom = `${view.getBoundingClientRect().bottom - b.top + 8}px`;
+  };
+  const sizes = new ResizeObserver(place);
+  for (const el of [view, corner, bar]) sizes.observe(el);
+  // The phone drawer moves the buttons sideways when it opens.
+  new MutationObserver(place).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   place();
 }

@@ -143,7 +143,15 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
   padding: 8px 14px;
   border-radius: 6px;
 }
-#op-hint { border-color: var(--accent); }
+/* The tool's hint stays quiet next to the tool bar above it. */
+#op-hint {
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 5px 12px;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+  background: color-mix(in srgb, var(--overlay) 80%, transparent);
+  box-shadow: none;
+}
 
 #drop-hint {
   position: absolute;
@@ -638,9 +646,8 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 }
 #feature-bar select { width: auto; max-width: 150px; }
 #feature-bar input[type='text'] { width: 120px; }
-#feature-bar .feature-fields > button { border: 1px solid var(--border); padding: 4px 10px; }
-/* A field that matters most (the text to emboss) sits on its own line above the actions. */
-#feature-bar .feature-main { flex-basis: 100%; display: flex; justify-content: center; }
+/* A field that matters most (the text to emboss) gets its own line, with Apply and Cancel beside it. */
+#feature-bar .feature-main { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: center; }
 #feature-bar .bar-field.prominent input {
   width: min(360px, 60vw); font-size: 15px; font-weight: 600; padding: 5px 8px;
   border: 2px solid #f08a24; background: color-mix(in srgb, #f08a24 12%, var(--bg));
@@ -648,6 +655,7 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 #feature-bar .feature-info { flex-basis: 100%; text-align: center; }
 #feature-bar .feature-info:empty { display: none; }
 .top-bar .bar-actions { display: flex; gap: 6px; justify-content: center; }
+#feature-bar .extra-actions { display: contents; }
 .top-bar .bar-actions button { border: 1px solid var(--border); padding: 5px 14px; }
 .top-bar .bar-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 #check-dialog { width: min(560px, 94vw); }
@@ -802,7 +810,7 @@ dialog footer { gap: 8px; }
 }
 #brand-overlay svg { width: 22px; height: 22px; color: var(--accent); }
 
-/* Messages, hints and the tool bars at the top share one width, text centred. */
+/* Messages, hints and the tool bars at the top: centred, text centred. */
 #messages { max-width: none; }
 #toast, #op-hint { text-align: center; max-width: 100%; }
 #toast.warn { border-color: #e0a020; background: color-mix(in srgb, #e0a020 22%, var(--overlay)); font-weight: 550; }
@@ -816,13 +824,13 @@ dialog footer { gap: 8px; }
 /* Fix sits right after More, without a divider. */
 .toolbar .group.joined { border-left: 0; padding-left: 0; }
 
-/* Top right of the view, one under the other: side panel, Select several
-   (touch screens), Delete. Each has a quiet label on its left while the side
-   panel is closed and no tool bar is open. */
-:root { --corner-room: 60px; } /* width kept free at the right for the buttons */
+/* Bottom right of the view, one under the other: panel, then Delete and
+   Select several (touch screens). Level with the transform bar where there is
+   room beside it, otherwise just above it (placeCorner in hint.ts sets
+   "bottom"). Each has a quiet label on its left while the panel is closed. */
 #view-corner {
   position: absolute;
-  top: 10px;
+  bottom: 16px; /* the transform bar's */
   right: 12px;
   display: flex;
   flex-direction: column;
@@ -839,8 +847,8 @@ dialog footer { gap: 8px; }
   white-space: nowrap;
   pointer-events: none;
 }
-body:not(.panel-closed) #view-corner .corner-label,
-#viewport:has(.top-bar:not([hidden])) #view-corner .corner-label { display: none; }
+body:not(.panel-closed) #view-corner .corner-label { display: none; }
+
 #view-corner button {
   width: 38px;
   height: 36px;
@@ -854,12 +862,14 @@ body:not(.panel-closed) #view-corner .corner-label,
 #view-corner button.active { background: color-mix(in srgb, var(--accent) 25%, var(--overlay)); border-color: var(--accent); }
 body:not(.panel-closed) #view-corner .panel-open,
 body.panel-closed #view-corner .panel-close { display: none; }
-#view-corner .multi-select-item { display: none; }
+#view-corner .touch-only { display: none; }
 @media (hover: none), (pointer: coarse) {
-  #view-corner .multi-select-item { display: flex; }
+  #view-corner .touch-only { display: flex; }
 }
-/* The tool bars and messages at the top leave the corner free (centred, so the same room on both sides). */
-.top-bar, #messages { width: min(760px, calc(100% - 2 * var(--corner-room))); }
+/* The tool bars and messages at the top: as wide as their content (no empty
+   sides), centred, wrapping only when the view is narrower. max-content
+   because a box centred with left: 50% would otherwise shrink to half the view. */
+.top-bar, #messages { width: max-content; max-width: min(760px, calc(100% - 24px)); }
 
 /* The side panel can be closed on any screen. */
 body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
@@ -986,7 +996,6 @@ body.tool-locked .toolbar button.tool-current {
 #overhang-bar input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
 
 /* Single-object tools while a group or several objects are selected (SINGLE_ONLY in src/ui/toolGuard.ts). */
-body.many-selected :is([data-modify="chamfer"], [data-modify="fillet"], [data-modify="shell"], [data-modify="gusset"], [data-modify="text"], [data-action="orient"]),
-body.no-chamfer [data-modify="chamfer"], body.no-fillet [data-modify="fillet"] {
+body.many-selected :is([data-modify="chamfer"], [data-modify="fillet"], [data-modify="shell"], [data-modify="gusset"], [data-modify="text"], [data-action="orient"]) {
   opacity: 0.35; cursor: not-allowed;
 }

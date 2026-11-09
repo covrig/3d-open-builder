@@ -88,7 +88,7 @@ export function setupViewToggles(doc: SceneDocument, viewport: Viewport): void {
 const DRAWER = window.matchMedia('(max-width: 900px), (orientation: portrait) and (max-width: 1100px)');
 
 /**
- * The side panel opens from the Panel button at the top right of the view and
+ * The side panel opens from the Panel button at the bottom right of the view and
  * closes with the > button in the same spot (just left of the open panel). On wide screens it sits beside the view and
  * starts open; on narrow ones it slides over the view and starts closed.
  */

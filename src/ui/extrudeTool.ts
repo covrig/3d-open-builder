@@ -3,6 +3,7 @@ import type { Piece } from '../geometry/cut';
 import { bakeMesh } from '../geometry/meshData';
 import { runOp } from '../geometry/workerClient';
 import type { SceneDocument, SceneObject } from '../scene/document';
+import { AXIS_COLORS } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { previewMesh, type FeatureBar } from './featureBar';
 
@@ -49,7 +50,7 @@ export class ExtrudeTool {
     this.handleSvg.style.display = 'none';
     this.handle = document.createElementNS(SVG_NS, 'polygon');
     this.handle.setAttribute('points', '-20,0 -11,-7 -11,-2 11,-2 11,-7 20,0 11,7 11,2 -11,2 -11,7');
-    this.handle.setAttribute('fill', '#f2a33a');
+    this.handle.setAttribute('fill', AXIS_COLORS[2]); // up/down: the Z colour of the move handles, not the plane's orange
     this.handle.classList.add('handle');
     this.handleSvg.append(this.handle);
     viewport.element.append(this.handleSvg);
@@ -85,7 +86,7 @@ export class ExtrudeTool {
 
     this.bar.open<(Piece | null)[]>({
       title: 'Extrude down',
-      hint: 'Extrude down: drag the orange arrow or type a height. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
+      hint: 'Extrude down: drag the blue arrow or type a height. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
       fields: [
         {
           key: 'height', label: 'Plane height', type: 'number', value: round(start), min: 0, step: 0.5, unit: 'mm',

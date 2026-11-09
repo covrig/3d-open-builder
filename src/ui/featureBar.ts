@@ -71,6 +71,9 @@ export class FeatureBar {
   private readonly el: HTMLElement;
   private readonly fieldsEl: HTMLElement;
   private readonly mainEl: HTMLElement;
+  private readonly actions: HTMLElement;
+  /** The tool's own buttons, before Apply */
+  private readonly extraActions: HTMLElement;
   /** The targets' meshes when the bar opened, to notice replacements */
   private watched: [SceneObject, MeshData][] = [];
   private readonly info: HTMLElement;
@@ -85,6 +88,10 @@ export class FeatureBar {
     this.el = document.querySelector<HTMLElement>('#feature-bar')!;
     this.fieldsEl = this.el.querySelector<HTMLElement>('.feature-fields')!;
     this.mainEl = this.el.querySelector<HTMLElement>('.feature-main')!;
+    this.actions = this.el.querySelector<HTMLElement>('.bar-actions')!;
+    this.extraActions = document.createElement('div');
+    this.extraActions.className = 'extra-actions';
+    this.actions.prepend(this.extraActions);
     doc.addEventListener('change', () => this.checkTargets());
     this.info = this.el.querySelector<HTMLElement>('.feature-info')!;
     viewport.scene.add(this.group);
@@ -102,9 +109,14 @@ export class FeatureBar {
     this.values = Object.fromEntries(spec.fields.filter((f) => f.type !== 'button').map((f) => [f.key, f.value]));
     this.el.querySelector('.bar-title')!.textContent = spec.title;
     this.el.querySelector<HTMLButtonElement>('[data-feature="apply"]')!.disabled = false;
-    this.fieldsEl.replaceChildren(...spec.fields.filter((f) => !f.prominent).map((f) => this.fieldElement(f)));
+    // Buttons (e.g. "Center on face") act, so they sit with Apply and Cancel.
+    this.fieldsEl.replaceChildren(...spec.fields.filter((f) => !f.prominent && f.type !== 'button').map((f) => this.fieldElement(f)));
+    this.extraActions.replaceChildren(...spec.fields.filter((f) => f.type === 'button').map((f) => this.fieldElement(f)));
     this.mainEl.replaceChildren(...spec.fields.filter((f) => f.prominent).map((f) => this.fieldElement(f)));
     this.mainEl.hidden = !spec.fields.some((f) => f.prominent);
+    // Apply and Cancel sit beside the main field when there is one (one row less), else at the end.
+    if (this.mainEl.hidden) this.el.append(this.actions);
+    else this.mainEl.append(this.actions);
     this.watched = (spec.targets ?? spec.hide ?? []).map((o) => [o, o.data]);
     beginTool('feature', () => this.close());
     this.updateVisibility();

@@ -122,21 +122,21 @@
           </div>
         </noscript>
         <div id="loading">Loading geometry engine…</div>
-        <!-- Floating buttons, one under the other: side panel, Select several (touch screens), Delete.
-             The labels on their left show only while the side panel is closed. -->
+        <!-- Floating buttons at the bottom right, one under the other: panel, Delete and Select several
+             (both touch screens only). The labels on their left show only while the panel is closed. -->
         <div id="view-corner">
           <div class="corner-item">
-            <span class="corner-label">Side panel</span>
-            <button data-action="open-panel" class="panel-open" aria-label="Show the side panel" data-tip-title="Show the side panel" data-tip="View, arrange, measure and the list of objects."><i data-lucide="panel-right-open"></i></button>
-            <button data-action="close-panel" class="panel-close" aria-label="Hide the side panel" data-tip-title="Hide the side panel" data-tip="More room for the view. The same button brings it back."><i data-lucide="chevron-right"></i></button>
+            <span class="corner-label">Panel</span>
+            <button data-action="open-panel" class="panel-open" aria-label="Show the panel" data-tip-title="Show the panel" data-tip="View, arrange, measure and the list of objects."><i data-lucide="panel-right-open"></i></button>
+            <button data-action="close-panel" class="panel-close" aria-label="Hide the panel" data-tip-title="Hide the panel" data-tip="More room for the view. The same button brings it back."><i data-lucide="chevron-right"></i></button>
           </div>
-          <div class="corner-item multi-select-item">
+          <div class="corner-item touch-only">
+            <span class="corner-label">Delete</span>
+            <button data-action="delete-selection" aria-label="Delete the selected objects" data-tip-title="Delete" data-tip="Delete the selected objects. Undo brings them back."><i data-lucide="trash-2"></i></button>
+          </div>
+          <div class="corner-item touch-only">
             <span class="corner-label">Select several</span>
             <button data-action="multi-select" class="multi-select" aria-pressed="false" aria-label="Select several" data-tip-title="Select several" data-tip="While on, each tap on an object (or its row in the list) adds it to the selection or takes it out, like Ctrl+click."><i data-lucide="list-checks"></i></button>
-          </div>
-          <div class="corner-item">
-            <span class="corner-label">Delete selected</span>
-            <button data-action="delete-selection" aria-label="Delete the selected objects" data-tip-title="Delete" data-tip="Delete the selected objects. Undo brings them back."><i data-lucide="trash-2"></i></button>
           </div>
         </div>
         <div id="view-cube" aria-label="View cube: click a side to look at it"><div class="vc-stage"><div class="vc-cube"></div><div class="vc-ring"></div></div></div>
@@ -168,6 +168,7 @@
             <dt>Left drag</dt><dd>Turn the view</dd>
             <dt>Right drag</dt><dd>Pan</dd>
             <dt>Wheel</dt><dd>Zoom</dd>
+            <dt>Trackpad</dt><dd>Two fingers pan, pinch zooms, click-drag turns</dd>
             <dt>Ctrl+click</dt><dd>Add to selection</dd>
           </dl>
         </div>
@@ -406,7 +407,7 @@
           <label class="slider-setting"><span>Reflection depth</span><input type="range" name="reflectionDepth" min="5" max="200" step="5" /><output></output></label>
         </fieldset>
         <fieldset>
-          <legend>Side panel order</legend>
+          <legend>Panel order</legend>
           <ol id="panel-order" class="panel-order"></ol>
         </fieldset>
         <footer><button type="button" data-action="close-settings">Close</button></footer>

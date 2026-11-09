@@ -1,4 +1,4 @@
-import type { EdgeKind, SceneDocument, SceneObject } from '../scene/document';
+import type { SceneDocument } from '../scene/document';
 import { isLocked, onToolChange } from './toolLock';
 
 /**
@@ -43,38 +43,18 @@ export const SINGLE_ONLY = [
 export const SINGLE_ONLY_MESSAGE = 'Works on one object at a time. For a group, Merge it into one object first (or Ungroup and select one part).';
 let manySelected = false;
 
-/**
- * Edge bevel after Edge rounding (or the other way round) on the same object
- * is refused: the first leaves hundreds of short new edges, and treating all of
- * them again takes many seconds and builds huge meshes (a tube: 13 s, 212,000
- * triangles) that later steps struggle with.
- */
-export function edgeBlock(obj: SceneObject | undefined, kind: EdgeKind): string | null {
-  if (!obj?.edged || obj.edged === kind) return null;
-  return obj.edged === 'fillet'
-    ? 'Its edges are already rounded; bevelling on top is very slow and often fails. Undo the rounding to bevel instead, or round more edges.'
-    : 'Its edges are already bevelled; rounding on top is very slow and often fails. Undo the bevel to round instead, or bevel more edges.';
-}
-let selected: SceneObject | undefined;
-
 /** Why this control can't be used right now, or null if it can. */
 export function blockReason(el: Element): string | null {
   if (lockedNow(el)) return LOCKED_MESSAGE;
   if (manySelected && el.closest(SINGLE_ONLY)) return SINGLE_ONLY_MESSAGE;
-  const kind = el.closest<HTMLElement>('[data-modify="chamfer"], [data-modify="fillet"]')?.dataset.modify as EdgeKind | undefined;
-  return kind ? edgeBlock(selected, kind) : null;
+  return null;
 }
 
 export function setupToolGuard(toast: (msg: string) => void, doc: SceneDocument): void {
-  const onSelection = () => {
+  doc.addEventListener('selection', () => {
     manySelected = doc.selection.length > 1;
-    selected = doc.selection.length === 1 ? doc.selection[0] : undefined;
     document.body.classList.toggle('many-selected', manySelected);
-    // Dims the edge tool that would be refused (a bevel or rounding just applied changes it too).
-    for (const kind of ['chamfer', 'fillet'] as const) document.body.classList.toggle(`no-${kind}`, edgeBlock(selected, kind) !== null);
-  };
-  doc.addEventListener('selection', onSelection);
-  doc.addEventListener('change', onSelection);
+  });
   // The control last pressed: when it opens a tool, it is that tool's button.
   let pressed: HTMLElement | null = null;
   let current: HTMLElement | null = null;

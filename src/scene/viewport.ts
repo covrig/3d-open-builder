@@ -106,6 +106,7 @@ export class Viewport extends EventTarget {
     // every cursor in the stylesheet (turning, panning, zooming, measuring…).
     this.renderer.domElement.style.removeProperty('cursor');
     this.watchCameraCursor(container);
+    this.watchTrackpad(container);
 
     // A modest even light plus a strong directional one: enough contrast that
     // shallow detail (threads, holes, chamfers) reads clearly.
@@ -178,6 +179,51 @@ export class Viewport extends EventTarget {
       clearTimeout(wheelTimer);
       wheelTimer = window.setTimeout(() => set(null), 350);
     }, { passive: true });
+  }
+
+  /**
+   * Trackpads (a MacBook's, a Windows precision touchpad): a two-finger swipe
+   * pans, like two fingers on a phone; a pinch zooms (browsers send it as a
+   * wheel event with Ctrl held, which the orbit controls already zoom with).
+   * A mouse wheel keeps zooming. A swipe is told apart from a wheel by its
+   * sideways part or, in Chrome, Edge and Safari, by its fine-grained legacy
+   * value (a wheel moves in steps of 120); once a swipe starts, the rest of
+   * that gesture pans too, even the purely vertical events.
+   */
+  private watchTrackpad(container: HTMLElement): void {
+    let swipeUntil = 0;
+    let idle: number | undefined;
+    // Capture on the container runs before the orbit controls' own wheel handler on the canvas.
+    container.addEventListener('wheel', (e) => {
+      if (e.ctrlKey || e.target !== this.renderer.domElement) return;
+      const now = performance.now();
+      const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY ?? 0;
+      const swipe = now < swipeUntil
+        || (e.deltaMode === 0 && (e.deltaX !== 0 || (legacy !== 0 && Math.abs(legacy) === Math.abs(e.deltaY) * 3)));
+      if (!swipe) return;
+      swipeUntil = now + 200;
+      e.preventDefault();
+      e.stopPropagation();
+      this.panBy(e.deltaX, e.deltaY);
+      container.classList.add('panning');
+      clearTimeout(idle);
+      idle = window.setTimeout(() => container.classList.remove('panning'), 250);
+    }, { capture: true, passive: false });
+  }
+
+  /** Move the camera and what it looks at sideways by a distance in screen pixels. */
+  private panBy(dx: number, dy: number): void {
+    this.cameraRun++;
+    const distance = this.camera.position.distanceTo(this.orbit.target);
+    const perPixel = (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2))) / Math.max(1, this.height);
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1);
+    // Scrolled content follows the fingers, so the camera moves the other way.
+    const move = right.multiplyScalar(dx * perPixel).addScaledVector(up, -dy * perPixel);
+    this.camera.position.add(move);
+    this.orbit.target.add(move);
+    this.orbit.update();
+    this.invalidate();
   }
 
   /** Ask for one redraw on the next animation frame. Cheap to call often. */

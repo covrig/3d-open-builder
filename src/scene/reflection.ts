@@ -47,6 +47,9 @@ export class Reflection {
         this.group.add(copy);
       }
       copy.geometry = mesh.geometry;
+      // The renderer only refreshes mesh.matrix while drawing, after this runs:
+      // without this the copy shows the last frame's place and lags a move.
+      mesh.updateMatrix();
       copy.matrix.copy(mesh.matrix);
       copy.matrixWorldNeedsUpdate = true;
       copy.visible = mesh.visible;

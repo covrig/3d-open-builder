@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
 import { runOp } from '../geometry/workerClient';
 import type { SceneDocument, SceneObject } from '../scene/document';
-import type { Gizmo } from '../scene/gizmo';
+import { AXIS_COLORS, type Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { fromUnit, settings, toUnit } from '../settings';
 import { hideHint, showHint } from './hint';
@@ -86,7 +86,6 @@ export class SplitTool {
     this.handleSvg.style.display = 'none';
     this.handle = document.createElementNS(SVG_NS, 'polygon');
     this.handle.setAttribute('points', '-20,0 -11,-7 -11,-2 11,-2 11,-7 20,0 11,7 11,2 -11,2 -11,7');
-    this.handle.setAttribute('fill', '#f2a33a');
     this.handle.classList.add('handle');
     this.handleSvg.append(this.handle);
     viewport.element.append(this.handleSvg);
@@ -176,6 +175,8 @@ export class SplitTool {
 
   private setAxis(axis: Axis): void {
     this.axis = axis;
+    // The arrow takes its axis's colour (as on the move handles), so it stands out from the orange plane.
+    this.handle.setAttribute('fill', AXIS_COLORS[axis]);
     this.tiltA = this.tiltB = 0;
     this.tiltInputs.forEach((i) => (i.value = '0'));
     for (const b of this.bar.querySelectorAll<HTMLButtonElement>('[data-split-axis]')) {
@@ -347,7 +348,6 @@ export class SplitTool {
         // A cut object's second piece gets a new colour, so the two are easy to tell apart (when not in a group).
         const fresh = side === 'negative' && keep === 'both' && obj.groupId === undefined;
         const o = this.doc.add(obj.name.replace(/ \d+$/, ''), piece.mesh, fresh ? undefined : obj.color);
-        o.edged = obj.edged;
         o.mesh.position.set(...piece.center);
         add(side, obj, o);
       }

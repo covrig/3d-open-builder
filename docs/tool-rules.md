@@ -74,13 +74,10 @@ Selecting a part of a group selects the whole group.
 | Edge bevel, edge rounding, shell, brace, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
 | Best print orientation | No | Same: the orientation is worked out for one object |
 
-## Edge bevel and edge rounding on the same object
+## Edge bevel and edge rounding
 
-An object remembers whether it was bevelled or rounded. The other edge tool is
-then dimmed for it and says why: bevelling leaves hundreds of short new edges,
-and rounding them all again (or the other way round) takes many seconds and
-builds huge meshes (a tube: 13 s and 212,000 triangles) that later steps
-struggle with. More of the same tool is fine. Undo removes the mark with the
-shape; copies, split pieces and merged results keep it. Edges are always
-picked one by one; there is no "all sharp edges" choice, since on threads that
-means tens of thousands of edges.
+Edges are always picked one by one; there is no "all sharp edges" choice,
+since on threads that means tens of thousands of edges. Both tools can be used
+on the same object (bevel some edges, round others). Picking the many short
+edges a bevel or rounding leaves behind and treating them again works, but is
+slow and builds large meshes.

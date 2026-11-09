@@ -1013,42 +1013,52 @@ async function runChecks(b) {
     return 'one Working…, Cancel closed the bar and stopped the calculation';
   });
 
-  await check('Corner buttons: stacked, labelled, Delete works, never over a tool bar', async () => {
+  await check('Corner buttons: bottom right by the transform bar, labelled, Delete on touch only', async () => {
     await reset();
     const id = await addCube(0, 0, 20);
     await select([id]);
+    // Without a touch screen, Delete and Select several are hidden.
+    const touchOnly = await page.evaluate(() => [...document.querySelectorAll('#view-corner .touch-only')].map((e) => getComputedStyle(e).display));
+    if (touchOnly.some((d) => d !== 'none')) throw new Error(`touch-only buttons shown with a mouse: ${touchOnly}`);
     const out = [];
-    for (const [w, h] of [[1400, 900], [820, 1180], [390, 844]]) {
+    for (const [w, h] of [[1400, 900], [820, 1180], [600, 800], [390, 844]]) {
       await page.setViewport({ width: w, height: h });
-      await sleep(300);
+      await page.evaluate(() => { for (const e of document.querySelectorAll('#view-corner .touch-only')) e.style.display = 'flex'; });
+      await sleep(400);
       const r = await page.evaluate(async () => {
-        const several = document.querySelector('#view-corner .multi-select-item');
-        several.style.display = 'flex'; // shown on touch screens; measure it everywhere
         const corner = () => [...document.querySelectorAll('#view-corner button')]
           .filter((b) => b.offsetParent)
           .map((b) => ({ action: b.dataset.action, rect: b.getBoundingClientRect().toJSON() }));
-        const labels = () => [...document.querySelectorAll('#view-corner .corner-label')].filter((l) => l.offsetParent).length;
+        const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const labels = [...document.querySelectorAll('#view-corner .corner-label')].filter((l) => l.offsetParent).length;
         const closedPanel = document.body.classList.contains('panel-closed');
+        const bar = document.querySelector('#transform-bar').getBoundingClientRect();
+        const box = document.querySelector('#view-corner').getBoundingClientRect();
+        const buttons = corner();
         // Open a tool bar and see whether any corner button overlaps it.
         document.querySelector('[data-modify="pattern"]').click();
         await new Promise((res) => setTimeout(res, 200));
-        const bar = document.querySelector('#feature-bar').getBoundingClientRect();
-        const overlap = corner().some(({ rect: c }) => c.left < bar.right && c.right > bar.left && c.top < bar.bottom && c.bottom > bar.top);
-        const labelsWithBar = labels();
+        const toolBar = document.querySelector('#feature-bar').getBoundingClientRect();
+        const overTool = corner().some(({ rect }) => hit(rect, toolBar));
         document.querySelector('#feature-bar [data-feature="cancel"]').click();
-        const order = corner().map((c) => c.action);
-        const tops = corner().map((c) => Math.round(c.rect.top));
-        const r = { closedPanel, labels: labels(), labelsWithBar, overlap, order, stacked: tops.every((t, i) => i === 0 || t > tops[i - 1]) };
-        several.style.display = '';
-        return r;
+        const tops = buttons.map((c) => c.rect.top);
+        return {
+          closedPanel, labels, overTool,
+          overBar: hit(box, bar),
+          level: Math.abs(buttons.at(-1).rect.bottom - bar.bottom) <= 2,
+          above: box.bottom <= bar.top,
+          order: buttons.map((c) => c.action),
+          stacked: tops.every((t, i) => i === 0 || t > tops[i - 1]),
+        };
       });
-      if (r.overlap) throw new Error(`${w}px: a corner button covers the tool bar`);
+      if (r.overTool) throw new Error(`${w}px: a corner button covers the tool bar`);
+      if (r.overBar) throw new Error(`${w}px: the corner buttons cover the transform bar`);
+      if (!r.level && !r.above) throw new Error(`${w}px: neither level with the transform bar nor above it`);
       if (!r.stacked) throw new Error(`${w}px: buttons not one under the other`);
-      if (r.order.join() !== `${r.closedPanel ? 'open-panel' : 'close-panel'},multi-select,delete-selection`) throw new Error(`${w}px: order ${r.order}`);
+      if (r.order.join() !== `${r.closedPanel ? 'open-panel' : 'close-panel'},delete-selection,multi-select`) throw new Error(`${w}px: order ${r.order}`);
       if (r.closedPanel && r.labels !== 3) throw new Error(`${w}px: ${r.labels} labels with the panel closed`);
       if (!r.closedPanel && r.labels !== 0) throw new Error(`${w}px: labels shown with the panel open`);
-      if (r.labelsWithBar !== 0) throw new Error(`${w}px: labels shown next to an open tool bar`);
-      out.push(`${w}px ${r.closedPanel ? 'closed' : 'open'}`);
+      out.push(`${w}px ${r.level ? 'level' : 'above'}${r.closedPanel ? ', labelled' : ''}`);
     }
     await page.setViewport({ width: 1400, height: 900 });
     await sleep(300);
@@ -1058,10 +1068,10 @@ async function runChecks(b) {
     if (n !== 0) throw new Error('Delete did not remove the selected object');
     await page.click('[data-action="undo"]');
     const back = await page.evaluate(() => window.app.doc.objects.length);
+    await page.evaluate(() => { for (const e of document.querySelectorAll('#view-corner .touch-only')) e.style.display = ''; });
     if (back !== 1) throw new Error('Undo did not bring the object back');
-    return `${out.join(', ')}; Delete removed the object, Undo brought it back`;
+    return `${out.join('; ')}; Delete removed the object, Undo brought it back`;
   });
-
   await check('Groups: mirror, on plate, split, extrude; one-object tools say why', async () => {
     await reset();
     // Two cubes side by side, one higher than the other, grouped.
@@ -1120,49 +1130,153 @@ async function runChecks(b) {
     return 'mirror swapped sides, on plate kept heights, bevel refused, split into two groups, extrude reached the plate';
   });
 
-  await check('Edge rounding then bevel is refused (and the other way round)', async () => {
+  await check('Edge rounding and bevel on the same object', async () => {
     await reset();
     const id = await addCube(0, 0, 20);
     await select([id]);
+    const tris = () => page.evaluate(() => window.app.doc.objects[0].data.indices.length / 3);
+    /** Click the middle of one of the cube's top edges on screen (front: y min, back: y max). */
+    const pickTopEdge = async (side) => {
+      const at = await page.evaluate(([id, side]) => {
+        const { doc, viewport } = window.app;
+        const o = doc.objects.find((x) => x.id === id);
+        const b = doc.worldBox([o]);
+        const p = viewport.project(b.getCenter(o.mesh.position.clone()).setY(side === 'front' ? b.min.y : b.max.y).setZ(b.max.z));
+        const r = viewport.element.getBoundingClientRect();
+        return { x: r.left + p.x, y: r.top + p.y };
+      }, [id, side]);
+      await page.mouse.click(at.x, at.y);
+    };
+    const before = await tris();
     await page.evaluate(() => document.querySelector('[data-modify="fillet"]').click());
-    if (await page.$('#feature-bar [data-key="scope"], #feature-bar select[name="scope"]')) throw new Error('"All sharp edges" choice still there');
-    // Pick the cube's top front edge by clicking its middle on screen.
-    const at = await page.evaluate((id) => {
-      const { doc, viewport } = window.app;
-      const o = doc.objects.find((x) => x.id === id);
-      const b = doc.worldBox([o]);
-      const p = viewport.project(b.getCenter(o.mesh.position.clone()).setY(b.min.y).setZ(b.max.z));
-      const r = viewport.element.getBoundingClientRect();
-      return { x: r.left + p.x, y: r.top + p.y };
-    }, id);
-    await page.mouse.click(at.x, at.y);
+    if (await page.$('#feature-bar [data-key="scope"]')) throw new Error('"All sharp edges" choice still there');
+    await pickTopEdge('front');
     await applyFeature(page);
-    await page.waitForFunction(() => window.app.doc.objects[0]?.edged === 'fillet', { timeout: 15000 });
-    const state = () => page.evaluate(() => ({ dim: document.body.classList.contains('no-chamfer'), bar: !!document.querySelector('#feature-bar:not([hidden])') }));
-    if (!(await state()).dim) throw new Error('Edge bevel not dimmed after rounding');
+    await page.waitForFunction((n) => window.app.doc.objects[0].data.indices.length / 3 > n, { timeout: 15000 }, before);
+    const rounded = await tris();
+    // Then bevel a different edge of the same object.
     await page.evaluate(() => document.querySelector('[data-modify="chamfer"]').click());
-    const why = await page.$eval('#toast', (e) => e.textContent);
-    if ((await state()).bar || !why.includes('already rounded')) throw new Error(`bevel after rounding: "${why}"`);
-    // Rounding more edges is still allowed.
-    await page.evaluate(() => document.querySelector('[data-modify="fillet"]').click());
-    if (!(await visible(page, '#feature-bar'))) throw new Error('Edge rounding refused on a rounded object');
-    await page.keyboard.press('Escape');
-    // Undo drops the mark with the rounding.
-    await page.evaluate(() => window.app.doc.undo());
-    const after = await page.evaluate(() => ({ edged: window.app.doc.objects[0].edged, dim: document.body.classList.contains('no-chamfer') }));
-    if (after.edged || after.dim) throw new Error(`after undo: ${JSON.stringify(after)}`);
-    // A copy keeps the mark.
-    await page.evaluate(() => {
-      const { doc } = window.app;
-      doc.objects[0].edged = 'chamfer';
-      doc.setSelection([doc.objects[0]]);
-      document.querySelector('[data-action="duplicate"]').click();
-    });
-    const copy = await page.evaluate(() => window.app.doc.objects.at(-1).edged);
-    if (copy !== 'chamfer') throw new Error(`duplicate lost the mark: ${copy}`);
-    return 'no "All sharp edges"; rounded cube: bevel dimmed and refused with reason, rounding still opens; undo clears; duplicate keeps';
+    if (!(await visible(page, '#feature-bar'))) throw new Error('Edge bevel did not open on a rounded object');
+    await pickTopEdge('back');
+    await applyFeature(page);
+    await page.waitForFunction((n) => window.app.doc.objects[0].data.indices.length / 3 !== n, { timeout: 15000 }, rounded);
+    return `no "All sharp edges"; cube ${before} → rounded ${rounded} → also bevelled ${await tris()} triangles`;
   });
 
+  await check('Trackpad: two-finger swipe pans, mouse wheel still zooms', async () => {
+    const cam = () => page.evaluate(() => {
+      const { camera, orbit } = window.app.viewport;
+      return { target: orbit.target.toArray(), distance: camera.position.distanceTo(orbit.target) };
+    });
+    const wheel = (init) => page.evaluate((init) => {
+      const canvas = window.app.viewport.element.querySelector('canvas');
+      canvas.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaMode: 0, ...init }));
+    }, init);
+    const a = await cam();
+    await wheel({ deltaX: 40, deltaY: 10 }); // a swipe has a sideways part
+    await wheel({ deltaY: 30 }); // the same gesture going on straight down keeps panning
+    const b = await cam();
+    const moved = Math.hypot(...b.target.map((v, i) => v - a.target[i]));
+    if (moved < 1) throw new Error('the swipe did not pan');
+    if (Math.abs(b.distance - a.distance) > 0.01) throw new Error('the swipe zoomed');
+    await sleep(400); // gesture over
+    await wheel({ deltaY: 100 }); // a mouse wheel notch
+    const c = await cam();
+    if (Math.abs(c.distance - b.distance) < 0.5) throw new Error('the mouse wheel no longer zooms');
+    if (Math.hypot(...c.target.map((v, i) => v - b.target[i])) > 0.01) throw new Error('the mouse wheel panned');
+    await page.evaluate(() => window.app.viewport.home());
+    return `swipe panned ${moved.toFixed(1)} mm at the same distance; wheel zoomed ${(c.distance - b.distance).toFixed(1)} mm`;
+  });
+
+  await check('Reflection follows a move in the same frame', async () => {
+    await reset();
+    const id = await addCube(0, 0, 20);
+    const r = await page.evaluate(async (id) => {
+      const { doc, viewport } = window.app;
+      const o = doc.objects.find((x) => x.id === id);
+      viewport.reflection.set(true, 0.3, 60);
+      viewport.invalidate();
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
+      // A frame first syncs the mirror copies, then draws (which refreshes the objects' matrices).
+      // Moving and then syncing, as in one frame of a drag, must already put the copy in place.
+      o.mesh.position.x = 37;
+      viewport.reflection.sync();
+      const copyX = viewport.reflection.copies.get(o.mesh).matrix.elements[12];
+      viewport.reflection.set(false, 0.3, 60);
+      viewport.invalidate();
+      return copyX;
+    }, id);
+    if (Math.abs(r - 37) > 1e-6) throw new Error(`the reflection is at x ${r}, the object at 37`);
+    return 'mirror copy in place in the same frame as the move';
+  });
+
+  await check('Overhangs stay solid in X-ray', async () => {
+    await reset();
+    await addCube(0, 0, 40); // floating: its whole bottom is an overhang
+    const px = await page.evaluate(async () => {
+      const { doc, viewport: v, overhangs } = window.app;
+      doc.setSelection([]);
+      overhangs.open();
+      v.setGridVisible(false); // the plate would sit between the camera and the cube's underside
+      v.viewFrom(new v.camera.position.constructor(0, -0.05, -1)); // from below
+      await new Promise((res) => setTimeout(res, 500));
+      const gl = v.renderer.getContext();
+      const centre = () => {
+        v.composer.render();
+        const p = new Uint8Array(4);
+        gl.readPixels(gl.drawingBufferWidth >> 1, gl.drawingBufferHeight >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, p);
+        return [...p.slice(0, 3)];
+      };
+      doc.setView({ xray: false });
+      const solid = centre();
+      doc.setView({ xray: true });
+      const xray = centre();
+      doc.setView({ xray: false });
+      overhangs.close();
+      v.setGridVisible(true);
+      v.home();
+      return { solid, xray };
+    });
+    const diff = Math.max(...px.solid.map((c, i) => Math.abs(c - px.xray[i])));
+    if (diff > 12) throw new Error(`overhang colour changes in X-ray: ${px.solid} → ${px.xray}`);
+    return `overhang pixel ${px.solid} without X-ray, ${px.xray} with`;
+  });
+
+  await check('Tooltips in tool bars cover no other box', async () => {
+    await reset();
+    const a = await addCube(0, 0, 20);
+    await addCube(20, 10, 20);
+    const hits = [];
+    for (const [tool, selectAll, controls] of [
+      ['[data-action="split"]', false, ['[data-split-axis="0"]', '[data-split="apply"]']],
+      ['[data-modify="pattern"]', false, ['[data-key="count"]', '[data-feature="cancel"]']],
+      ['[data-boolean="intersection"]', true, ['[data-key="targets"]', '[data-feature="cancel"]']],
+    ]) {
+      await page.evaluate((all, id) => {
+        const { doc } = window.app;
+        doc.setSelection(all ? doc.objects : doc.objects.filter((o) => o.id === id));
+      }, selectAll, a);
+      await page.evaluate((s) => document.querySelector(s).click(), tool);
+      await sleep(400);
+      for (const c of controls) {
+        await page.mouse.move(0, 0);
+        await page.hover(c);
+        await sleep(300);
+        const r = await page.evaluate(() => {
+          const tip = document.querySelector('#tooltip');
+          if (tip.hidden) return 'no tooltip';
+          const t = tip.getBoundingClientRect();
+          return [...document.querySelectorAll('.top-bar:not([hidden]), #messages > :not([hidden])')]
+            .filter((b) => { const r = b.getBoundingClientRect(); return r.width && t.left < r.right && t.right > r.left && t.top < r.bottom && t.bottom > r.top; })
+            .map((b) => b.id).join() || null;
+        });
+        if (r) hits.push(`${c}: ${r}`);
+      }
+      await page.keyboard.press('Escape');
+    }
+    if (hits.length) throw new Error(hits.join('; '));
+    return 'Split, Pattern and Intersect tooltips open below the bars and the hint';
+  });
   await check('Top bar, brand and toolbar layout', async () => {
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));
@@ -1180,13 +1294,15 @@ async function runChecks(b) {
     const id = await page.evaluate(() => window.app.doc.objects[0].id);
     await select([id]);
     await page.click('[data-action="split"]');
-    const widths = await page.evaluate(() => [
-      document.querySelector('#split-bar').getBoundingClientRect().width,
-      document.querySelector('#messages').getBoundingClientRect().width,
-    ]);
+    // The bar and the hint are each as wide as their content (at most 760 px), centred on the same line.
+    const boxes = await page.evaluate(() => ['#split-bar', '#op-hint'].map((s) => {
+      const r = document.querySelector(s).getBoundingClientRect();
+      return { width: r.width, centre: r.left + r.width / 2 };
+    }));
     await page.keyboard.press('Escape');
-    if (Math.abs(widths[0] - widths[1]) > 2) throw new Error(`tool bar ${widths[0]} px vs hint ${widths[1]} px`);
-    return `bars ${widths[0].toFixed(0)} px wide`;
+    if (Math.abs(boxes[0].centre - boxes[1].centre) > 2) throw new Error(`tool bar centred at ${boxes[0].centre} px, hint at ${boxes[1].centre} px`);
+    if (boxes.some((b) => b.width > 761)) throw new Error(`wider than 760 px: ${boxes.map((b) => b.width)}`);
+    return `bar ${boxes[0].width.toFixed(0)} px and hint ${boxes[1].width.toFixed(0)} px wide, centred together`;
   });
   await check('Portrait layout keeps sidebar beside the view', async () => {
     await page.setViewport({ width: 820, height: 1180 });
@@ -1237,16 +1353,17 @@ async function runChecks(b) {
       win: innerWidth,
     }));
     if (closed.view < closed.win - 1) throw new Error(`view is ${closed.view} px of ${closed.win} px (empty strip beside it)`);
-    // The corner buttons (Select several shows on touch screens; force it here) stay clear of the app name.
-    const overlap = await page.evaluate(() => {
-      const several = document.querySelector('#view-corner .multi-select-item');
-      several.style.display = 'flex';
-      const name = document.querySelector('#brand-overlay').getBoundingClientRect();
+    // The corner buttons (Delete and Select several show on touch screens; force them here) stay clear of the transform bar.
+    const overlap = await page.evaluate(async () => {
+      const touch = document.querySelectorAll('#view-corner .touch-only');
+      for (const e of touch) e.style.display = 'flex';
+      await new Promise((res) => setTimeout(res, 100));
+      const bar = document.querySelector('#transform-bar').getBoundingClientRect();
       const corner = document.querySelector('#view-corner').getBoundingClientRect();
-      several.style.display = '';
-      return corner.left < name.right && corner.bottom > name.top;
+      for (const e of touch) e.style.display = '';
+      return corner.left < bar.right && corner.right > bar.left && corner.top < bar.bottom && corner.bottom > bar.top;
     });
-    if (overlap) throw new Error('corner buttons cover the app name');
+    if (overlap) throw new Error('corner buttons cover the transform bar');
     await clickSel(page, '#view-corner [data-action="open-panel"]');
     await sleep(400);
     const open = await page.evaluate(() => {
