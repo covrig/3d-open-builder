@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
 import type { BooleanOp } from './geometry/booleans';
-import type { RoleOp } from './geometry/booleans';
 import { loadManifold } from './geometry/loadManifold';
 import { cancelAll, onBusyChange, runOp } from './geometry/workerClient';
 import { Autosave, clearAutosave, fromSaved, loadAutosave, type SavedScene } from './app/autosave';
@@ -169,15 +168,16 @@ const crossSection = new CrossSection(viewport, doc, gizmo);
 measure.section = crossSection;
 // Show overhangs (Check menu): a view tool like the cross-section.
 const overhangs = new OverhangTool(viewport, gizmo);
-// Faint lines where overlapping objects cross: drawn in the Edges view, and snap targets while measuring.
+// Faint lines where overlapping objects cross: 45% in the Edges view, 5% in X-ray
+// without it, and snap targets while measuring.
 const overlaps = new OverlapLines(
   viewport, doc,
-  () => ({ draw: settings.ui.view.edges, snap: measure.active }),
+  () => ({ opacity: settings.ui.view.edges ? 0.45 : settings.ui.view.xray ? 0.05 : 0, snap: measure.active }),
   () => isLocked() && !onlyViewLocked(),
 );
 measure.overlaps = overlaps;
 onToolChange(() => overlaps.refresh());
-for (const b of $$('[data-view="edges"]')) b.addEventListener('click', () => overlaps.refresh());
+for (const b of $$('[data-view="edges"], [data-view="xray"]')) b.addEventListener('click', () => overlaps.refresh());
 setupViewCube(viewport);
 setupLookSettings(viewport);
 const colors = new ColorPopover(doc, (picking) => {
@@ -230,15 +230,14 @@ for (const btn of $$<HTMLButtonElement>('[data-insert]')) {
 
 // --- Combine --------------------------------------------------------------
 
-const combine = new CombineTool(viewport, doc, featureBar, toast);
-const ROLE_OPS: Partial<Record<BooleanOp, RoleOp>> = { difference: 'subtract', intersection: 'intersect' };
+const combine = new CombineTool(viewport, doc, featureBar, toast, heavy);
 
 for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
   btn.addEventListener('click', () => {
     const op = btn.dataset.boolean as BooleanOp;
-    // Subtract and Intersect open a step-by-step tool (which object is cut by which).
-    const roleOp = ROLE_OPS[op];
-    if (roleOp) return combine.start(roleOp);
+    // Subtract cuts the selection out of whatever it goes into; Intersect opens a step-by-step tool.
+    if (op === 'difference') return combine.subtract();
+    if (op === 'intersection') return combine.intersect();
     const selected = [...doc.selection];
     if (selected.length < 2) return toast('Select at least two objects (Ctrl+click adds to the selection)');
     void heavy(selected, () => runOp('boolean', { op, items: selected.map((o) => doc.placed(o)) }), (result) => {

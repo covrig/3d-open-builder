@@ -9,27 +9,10 @@ import { hideHint, showHint } from './hint';
 import { viewClicks } from './interaction';
 
 type Role = 'target' | 'tool';
+type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
 
-const WORDS: Record<RoleOp, {
-  title: string; targets: string; tools: string; steps: Record<Role, string>;
-  tips: Record<Role, string>;
-  /** Shown between the two buttons, so the bar reads as a sentence */
-  joiner?: string;
-}> = {
-  subtract: {
-    title: 'Subtract',
-    targets: '1 · Objects to cut',
-    tools: '2 · Cutters',
-    steps: {
-      target: 'Subtract, step 1: click the objects to cut into (green). Then press "2 · Cutters".',
-      tool: 'Subtract, step 2: click the objects to cut away (red). Click again to unmark. Apply when the preview looks right.',
-    },
-    tips: {
-      target: 'Then click the objects that should get holes or cuts.',
-      tool: 'Then click the objects to cut away. They disappear on Apply.',
-    },
-  },
-  intersect: {
+/** The Intersect tool's words; `joiner` sits between the two buttons, so the bar reads as a sentence. */
+const WORDS = {
     title: 'Intersect',
     targets: '1 · Objects A',
     tools: '2 · Objects B',
@@ -42,7 +25,6 @@ const WORDS: Record<RoleOp, {
       target: 'Then click Objects A: each keeps only its part inside Objects B, in its own colour (separate pieces become separate objects).',
       tool: 'Then click Objects B: together they form the shape Objects A are trimmed to. They are removed on Apply.',
     },
-  },
 };
 
 const targetLook = new THREE.MeshBasicMaterial({ color: 0x30a46c, wireframe: true, transparent: true, opacity: 0.45, depthWrite: false });
@@ -52,10 +34,12 @@ const toolFill = new THREE.MeshBasicMaterial({
 const toolWire = new THREE.MeshBasicMaterial({ color: 0xe5484d, wireframe: true, transparent: true, opacity: 0.5, depthWrite: false });
 
 /**
- * Subtract and Intersect in steps: mark the objects to change (green), then
- * the objects that act on them (red). Each marked object is cut by all the
- * red ones at once, so one cutter can go through several objects. A live
- * preview shows the result before Apply.
+ * Subtract in one step: the selected objects are cut out of every other
+ * object they go into, then removed.
+ *
+ * Intersect in steps: mark the objects to keep a part of (green), then the
+ * shapes they are trimmed to (red). Each green object is trimmed by all the
+ * red ones at once. A live preview shows the result before Apply.
  */
 export class CombineTool {
   private readonly overlay = new THREE.Group();
@@ -65,13 +49,31 @@ export class CombineTool {
     private readonly doc: SceneDocument,
     private readonly bar: FeatureBar,
     private readonly toast: (msg: string) => void,
+    private readonly heavy: Heavy,
   ) {
     this.overlay.raycast = () => {};
     viewport.scene.add(this.overlay);
   }
 
-  start(op: RoleOp): void {
-    const words = WORDS[op];
+  /**
+   * Cut the selected objects out of every other object (or group part) they
+   * go into, then remove them. No tool bar: one step, and Undo brings it all back.
+   */
+  subtract(): void {
+    const tools = [...this.doc.selection];
+    if (tools.length === 0) return this.toast('Select the objects to cut away');
+    const boxes = tools.map((t) => this.doc.worldBox([t]));
+    const targets = this.doc.objects.filter((o) => !o.hidden && !tools.includes(o)
+      && boxes.some((b) => b.intersectsBox(this.doc.worldBox([o]))));
+    if (targets.length === 0) return this.toast("The selected objects don't go into any other object");
+    const placed = (objs: SceneObject[]) => objs.map((o) => this.doc.placed(o));
+    void this.heavy([...targets, ...tools], () => runOp('combine', { op: 'subtract', targets: placed(targets), tools: placed(tools) }),
+      (pieces) => this.finish('subtract', targets, tools, pieces));
+  }
+
+  intersect(): void {
+    const op = 'intersect';
+    const words = WORDS;
     // Always start from nothing: the selection is cleared and both groups are empty.
     this.doc.setSelection([]);
     let targets: SceneObject[] = [];
@@ -127,7 +129,7 @@ export class CombineTool {
     };
     this.doc.addEventListener('change', onDocChange);
 
-    this.bar.open<Piece[][]>({
+    this.bar.open<(Piece[] | null)[]>({
       title: words.title,
       hint: words.steps[role],
       fields: [
@@ -149,7 +151,7 @@ export class CombineTool {
           op, targets: targets.map((o) => this.doc.placed(o)), tools: tools.map((o) => this.doc.placed(o)),
         });
       },
-      show: (pieces) => pieces.flat().map((p) => previewMesh(p.mesh, p.center)),
+      show: (pieces) => pieces.flatMap((p) => p ?? []).map((p) => previewMesh(p.mesh, p.center)),
       apply: (pieces) => this.finish(op, targets, tools, pieces),
       onClose: () => {
         this.doc.removeEventListener('change', onDocChange);
@@ -189,14 +191,16 @@ export class CombineTool {
   }
 
   /**
-   * Each target becomes what is left of it. Where that is several separate
+   * Each target becomes what is left of it (targets the tools didn't touch,
+   * null, stay as they are). Where that is several separate
    * pieces (a cut through the middle), the largest stays the target and each
    * other piece becomes its own object, so every object is one solid.
    */
-  private finish(op: RoleOp, targets: SceneObject[], tools: SceneObject[], pieces: Piece[][]): void {
+  private finish(op: RoleOp, targets: SceneObject[], tools: SceneObject[], pieces: (Piece[] | null)[]): void {
     const all = [...targets, ...tools];
     if (!all.every((o) => this.doc.objects.includes(o))) return;
-    if (pieces.every((p) => p.length === 0)) {
+    if (pieces.every((p) => p === null)) return this.toast("The selected objects don't go into any other object");
+    if (pieces.every((p) => p !== null && p.length === 0)) {
       return this.toast(op === 'subtract' ? 'Nothing would be left: the cutters cover the whole object' : 'Nothing is left: the objects do not overlap');
     }
     this.doc.checkpoint();
@@ -204,7 +208,9 @@ export class CombineTool {
     const emptied: SceneObject[] = [];
     let split = 0;
     targets.forEach((t, i) => {
-      const [first, ...rest] = pieces[i];
+      const result = pieces[i];
+      if (result === null) return; // not touched: stays exactly as it was
+      const [first, ...rest] = result;
       if (!first) return emptied.push(t);
       this.doc.setData(t, first.mesh);
       // A new shape gets a new name: half a sphere shouldn't stay called "Cube 1".

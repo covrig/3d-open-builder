@@ -128,9 +128,9 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
           : rowButton('eye', 'Hide', `Hide ${obj.name} from the view. It stays in the drawing and is still exported.`, () => actions.toggleHidden(obj));
         eye.classList.add('visibility');
         li.append(
-          eye,
           rowButton('copy-plus', 'Duplicate', `Make a copy of ${obj.name}.`, () => actions.duplicate(obj)),
           rowButton('trash-2', 'Delete', `Remove ${obj.name}.`, () => actions.remove(obj)),
+          eye,
         );
         li.addEventListener('click', (e) => doc.select(obj, e.ctrlKey || e.shiftKey || e.metaKey || multiSelect.on));
         rows.set(obj, li);

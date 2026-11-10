@@ -48,7 +48,7 @@ async function clickSel(page, selector) {
   await page.click(selector);
 }
 
-/** In the Subtract/Intersect tool: press a group's button, then click each object (its top) in the view. */
+/** In the Intersect tool: press a group's button, then click each object (its top) in the view. */
 async function markInView(page, role, ids) {
   await clickSel(page, `#feature-bar [data-key="${role}"]`);
   for (const id of ids) {
@@ -191,7 +191,7 @@ async function runChecks(b) {
     return `moved to x=${xs[xs.length - 1].toFixed(0)} mm, steady`;
   });
 
-  await check('Subtract in steps runs in the worker', async () => {
+  await check('Subtract cuts the selection out in one step (in the worker)', async () => {
     await page.evaluate(() => {
       const { doc, viewport } = window.app;
       document.querySelector('[data-insert="sphere"]').click();
@@ -199,18 +199,12 @@ async function runChecks(b) {
       s.mesh.position.copy(c.mesh.position).add({ x: 30, y: 0, z: 0 });
       doc.emit('transform');
       viewport.fit(doc.worldBox(doc.objects));
-      doc.setSelection([c, s]);
+      doc.setSelection([s]);
     });
     await page.click('[data-boolean="difference"]');
-    if (!(await visible(page, '#feature-bar'))) throw new Error('subtract bar did not open');
-    const selected = await page.evaluate(() => window.app.doc.selection.length);
-    if (selected !== 0) throw new Error('the selection was not cleared');
-    const [c, s] = await page.evaluate(() => window.app.doc.objects.map((o) => o.id));
-    await markInView(page, 'targets', [c]);
-    await markInView(page, 'tools', [s]);
-    await applyFeature(page);
+    if (await visible(page, '#feature-bar')) throw new Error('Subtract opened a tool bar');
     await page.waitForFunction(() => window.app.doc.objects.length === 1, { timeout: 15000 });
-    return 'started empty; cube minus sphere = 1 object';
+    return 'sphere selected: cube minus sphere = 1 object, no tool bar';
   });
   await page.screenshot({ path: `${SHOTS}/${b.name}-landscape.png` });
 
@@ -268,17 +262,17 @@ async function runChecks(b) {
     const a = await addCube(-30, 0, 20);
     const bId = await addCube(30, 0, 20);
     const bar = await addCube(0, 15, 37, [3, 0.2, 0.2]); // 120 × 8 × 8 mm bar through both, sticking out of their tops
-    await page.evaluate(() => window.app.viewport.fit(window.app.doc.worldBox(window.app.doc.objects)));
+    const away = await addCube(0, -120, 20); // nowhere near the bar: must stay exactly as it is
+    const before = await page.evaluate((id) => window.app.doc.objects.find((o) => o.id === id).data, away);
+    await select([bar]);
     await page.click('[data-boolean="difference"]');
-    await markInView(page, 'targets', [a, bId]);
-    await markInView(page, 'tools', [bar]);
-    const label = await page.$eval('#feature-bar [data-key="targets"]', (e) => e.textContent);
-    if (!label.includes('(2)')) throw new Error(`objects not marked: "${label}"`);
-    await applyFeature(page);
-    await page.waitForFunction(() => window.app.doc.objects.length === 2, { timeout: 15000 });
+    await page.waitForFunction(() => window.app.doc.objects.length === 3, { timeout: 15000 });
+    const same = await page.evaluate(([id, data]) => window.app.doc.objects.find((o) => o.id === id)?.data.indices.length === data.indices.length, [away, before]);
+    if (!same) throw new Error('an object the cutter does not touch was changed');
+    await page.evaluate((id) => window.app.doc.remove([window.app.doc.objects.find((o) => o.id === id)]), away);
     const tris = await page.evaluate(() => window.app.doc.objects.map((o) => o.data.indices.length / 3));
     if (tris.some((t) => t <= 12)) throw new Error(`an object was not cut (triangles ${tris})`);
-    return `both cubes cut (${tris.join(' / ')} triangles), cutter removed`;
+    return `both cubes cut (${tris.join(' / ')} triangles), cutter removed, a cube it doesn't touch unchanged`;
   });
 
   await check('Intersect with shapes that do not overlap each other', async () => {
@@ -886,7 +880,6 @@ async function runChecks(b) {
       ['Edge bevel', () => document.querySelector('[data-modify="chamfer"]').click(), '#feature-bar'],
       ['Edge rounding', () => document.querySelector('[data-modify="fillet"]').click(), '#feature-bar'],
       ['Shell', () => document.querySelector('[data-modify="shell"]').click(), '#feature-bar'],
-      ['Subtract', () => document.querySelector('[data-boolean="difference"]').click(), '#feature-bar'],
       ['Intersect', () => document.querySelector('[data-boolean="intersection"]').click(), '#feature-bar'],
       ['Bolt', () => document.querySelector('[data-thread="bolt"]').click(), '#feature-bar'],
       ['Threaded hole', () => document.querySelector('[data-thread="tap"]').click(), '#feature-bar'],

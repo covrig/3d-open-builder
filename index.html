@@ -73,7 +73,7 @@
 
       <div class="group" aria-label="Combine">
         <button data-boolean="union" data-tip-title="Merge" data-shortcut="M" data-tip="Join the selected objects into one object. Objects that don't touch become one object made of separate pieces."><i data-lucide="squares-unite"></i><span>Merge</span></button>
-        <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-shortcut="N" data-tip="Cut objects out of others in two steps: click the objects to cut into, then the cutters. One cutter can go through several objects."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
+        <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-shortcut="N" data-tip="Cut the selected objects out of every object or group part they go into, then remove them. Undo brings them back."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
         <button data-boolean="intersection" data-tip-title="Intersect" data-shortcut="I" data-tip="Keep only the parts of objects inside other shapes, in two steps: click the objects to trim, then the shapes."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
       </div>
 
@@ -278,7 +278,7 @@
           <div class="button-grid cols-3 tiles">
             <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
             <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
-            <button data-view="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge of every object."><i data-lucide="square-dashed"></i><span>Edges</span></button>
+            <button data-view="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge."><i data-lucide="square-dashed"></i><span>Edges</span></button>
             <button data-action="home" data-tip-title="Home view" data-shortcut="H" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
             <button data-action="fit" data-tip-title="Fit view" data-shortcut="F" data-tip="Zoom to the selection, or to everything when nothing is selected."><i data-lucide="focus"></i><span>Fit</span></button>
             <button data-view="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate."><i data-lucide="sun"></i><span>Shadows</span></button>
@@ -292,7 +292,7 @@
             <button data-action="lay-flat" data-tip-title="Lay flat" data-tip="Turn the object onto its largest flat side and rest it on the plate."><i data-lucide="panel-bottom"></i><span>Lay flat</span></button>
             <button data-action="center" data-tip-title="Center on plate" data-tip="Move the selection to the middle of the plate, keeping its height."><i data-lucide="locate-fixed"></i><span>Center</span></button>
             <button data-menu="align-menu" data-tip-title="Align" data-tip="Line up two or more objects by their left, right, front, back, top or bottom, or their centres."><i data-lucide="align-horizontal-justify-start"></i><span>Align</span></button>
-            <button data-menu="distribute-menu" data-tip-title="Distribute" data-tip="Space three or more objects evenly along X, Y or Z."><i data-lucide="align-horizontal-space-around"></i><span>Distribute</span></button>
+            <button data-menu="distribute-menu" data-tip-title="Distribute" data-tip="Distribute 3+ objects along X, Y, or Z."><i data-lucide="align-horizontal-space-around"></i><span>Distribute</span></button>
             <button data-action="pack" data-tip-title="Pack" data-tip="Lay the selected objects (or all of them) side by side on the plate without overlapping."><i data-lucide="layout-dashboard"></i><span>Pack</span></button>
           </div>
           <div id="align-menu" class="menu" role="menu" hidden>

@@ -11,10 +11,11 @@ export interface OverlapFeatures extends EdgeFeatures {
 
 /**
  * Faint lines where the surfaces of overlapping objects cross (two cubes
- * pushed into each other). Drawn in the Edges view, whatever the look (X-ray,
- * wireframe), and used as measuring snap targets. They are worked out in the
- * geometry worker once objects stop changing; while they move, the old lines
- * are hidden instead of hanging in the air.
+ * pushed into each other). Drawn in the Edges view whatever the look (X-ray,
+ * wireframe), very faint in X-ray without Edges, and used as measuring snap
+ * targets. They are worked out in the geometry worker once objects stop
+ * changing; while they move, the old lines are hidden instead of hanging in
+ * the air.
  */
 export class OverlapLines {
   private readonly lines = new THREE.LineSegments(new THREE.BufferGeometry(), overlapMaterial);
@@ -26,8 +27,8 @@ export class OverlapLines {
   constructor(
     private readonly viewport: Viewport,
     private readonly doc: SceneDocument,
-    /** Draw them (Edges view on), and/or offer them to measuring (a measuring tool open). */
-    private readonly wanted: () => { draw: boolean; snap: boolean },
+    /** How strongly to draw them (0: not at all), and whether to offer them to measuring. */
+    private readonly wanted: () => { opacity: number; snap: boolean },
     /** True while a tool with Apply/Cancel is open: its previews come first. */
     private readonly paused: () => boolean,
   ) {
@@ -56,7 +57,7 @@ export class OverlapLines {
   private async compute(): Promise<void> {
     const want = this.wanted();
     const objs = this.doc.objects.filter((o) => !o.hidden);
-    if ((!want.draw && !want.snap) || objs.length < 2 || this.paused()) return;
+    if ((!want.opacity && !want.snap) || objs.length < 2 || this.paused()) return;
     const run = this.run;
     let segs: Float32Array;
     try {
@@ -70,7 +71,9 @@ export class OverlapLines {
     this.lines.geometry.dispose();
     this.lines.geometry = g;
     this.found = { segs, ...edgeFeatures(segs) };
-    this.lines.visible = this.wanted().draw && segs.length > 0;
+    const { opacity } = this.wanted();
+    overlapMaterial.opacity = opacity;
+    this.lines.visible = opacity > 0 && segs.length > 0;
     this.viewport.invalidate();
   }
 }

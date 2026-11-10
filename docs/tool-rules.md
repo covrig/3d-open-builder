@@ -7,7 +7,7 @@ How tools start, end and share the app. The code follows this table
 
 | Kind | Tools | Locks the rest? |
 |---|---|---|
-| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Subtract, Intersect, Add bolt/nut/rod, Threaded hole, reference picture Calibrate/Straighten | Yes |
+| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Intersect, Add bolt/nut/rod, Threaded hole, reference picture Calibrate/Straighten | Yes |
 | Light | Measuring, colour picking (Copy from object) | No |
 | View tools | Section, Show overhangs | Yes, except measuring |
 
@@ -23,7 +23,7 @@ the other), and measuring works beside them.
   dropdown menu closes first, then the open tool, then a view tool; with
   nothing open, Esc clears the selection. Dialogs close themselves.
 - Clicks in the view that are not part of the tool's own work (picking a face,
-  an edge, the objects for Subtract) change nothing while an exclusive tool is
+  an edge, the objects for Intersect) change nothing while an exclusive tool is
   open: no selection change, no closing.
 - Ending an exclusive tool (Apply, Cancel or Esc) also stops its calculation,
   so Cancel and Esc are the single cancel path. "Working…" always shows in
@@ -74,7 +74,8 @@ Selecting a part of a group selects the whole group.
 | Split | Yes | One plane across the group; every part it crosses is split; the pieces on each side form their own group |
 | Extrude down | Yes | One plane across the group; every part it crosses is extended down; parts it misses stay as they are |
 | Merge | Yes | All parts become one object |
-| Subtract, intersect | Yes | Clicking a part puts the whole group in the role |
+| Subtract | Yes | One step: the selection (whole groups) is cut out of every object it goes into, then removed; objects it doesn't touch stay as they are |
+| Intersect | Yes | Clicking a part puts the whole group in the role |
 | Check and Repair | Yes | Each part is checked and repaired |
 | Colour | Yes | All parts, when the group is selected (a part's colour box in the list recolours just that part otherwise) |
 | Bevel, round, brace, shell, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |

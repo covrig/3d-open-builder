@@ -34,8 +34,8 @@ describe('subtract and intersect with roles', () => {
   it('cuts one cutter out of two objects', () => {
     const [a, b] = combineWithTools(wasm, 'subtract', [left(), right()], [bar()]);
     expect(a).toHaveLength(1);
-    expect(volume(a[0].mesh)).toBeCloseTo(1000 - 40, 3);
-    expect(volume(b[0].mesh)).toBeCloseTo(1000 - 40, 3);
+    expect(volume(a![0].mesh)).toBeCloseTo(1000 - 40, 3);
+    expect(volume(b![0].mesh)).toBeCloseTo(1000 - 40, 3);
   });
 
   it('gives the separate pieces of an intersect as separate results', () => {
@@ -44,7 +44,7 @@ describe('subtract and intersect with roles', () => {
     const shapeB = box([4, 10, 10], [8, 0, 0]);
     const [pieces] = combineWithTools(wasm, 'intersect', [left()], [shapeA, shapeB]);
     expect(pieces).toHaveLength(2);
-    for (const p of pieces) expect(volume(p.mesh)).toBeCloseTo(200, 3);
+    for (const p of pieces!) expect(volume(p.mesh)).toBeCloseTo(200, 3);
   });
 
   it('gives the separate pieces of a subtract as separate results, largest first', () => {
@@ -52,8 +52,14 @@ describe('subtract and intersect with roles', () => {
     const slab = box([12, 12, 2], [-1, -1, 6]);
     const [pieces] = combineWithTools(wasm, 'subtract', [left()], [slab]);
     expect(pieces).toHaveLength(2);
-    expect(volume(pieces[0].mesh)).toBeCloseTo(600, 3);
-    expect(volume(pieces[1].mesh)).toBeCloseTo(200, 3);
+    expect(volume(pieces![0].mesh)).toBeCloseTo(600, 3);
+    expect(volume(pieces![1].mesh)).toBeCloseTo(200, 3);
+  });
+
+  it('leaves an object that a subtract\'s cutters do not go into exactly as it is', () => {
+    const [touched, untouched] = combineWithTools(wasm, 'subtract', [left(), box([5, 5, 5], [50, 0, 0])], [bar()]);
+    expect(volume(touched![0].mesh)).toBeCloseTo(1000 - 40, 3);
+    expect(untouched).toBeNull();
   });
 
   it('returns no pieces where nothing is left', () => {
