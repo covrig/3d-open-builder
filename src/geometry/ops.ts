@@ -5,6 +5,7 @@ import type { MeshData, PlacedMesh } from './meshData';
 import { checkMesh, repairMesh } from './meshTools';
 import type { EdgeSegment } from './edges';
 import { edgeTreatment, gusset, shell, textOnFace } from './features';
+import { overlapLines } from './overlaps';
 import { makeThreaded, type ThreadInfo } from './threads';
 
 /**
@@ -28,6 +29,7 @@ export const ops = {
   union: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => booleanOp(wasm, 'union', a.items),
   threaded: (wasm: ManifoldToplevel, a: Parameters<typeof makeThreaded>[1]) => makeThreaded(wasm, a),
   text: (wasm: ManifoldToplevel, a: { item: PlacedMesh } & Parameters<typeof textOnFace>[2]) => textOnFace(wasm, a.item, a),
+  overlaps: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => overlapLines(wasm, a.items),
 };
 
 export type Ops = typeof ops;

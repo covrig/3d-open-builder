@@ -7,9 +7,9 @@ How tools start, end and share the app. The code follows this table
 
 | Kind | Tools | Locks the rest? |
 |---|---|---|
-| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Edge bevel, Edge rounding, Shell, Brace, Subtract, Intersect, Add bolt/nut/rod, Threaded hole, reference picture Calibrate/Straighten | Yes |
+| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Subtract, Intersect, Add bolt/nut/rod, Threaded hole, reference picture Calibrate/Straighten | Yes |
 | Light | Measuring, colour picking (Copy from object) | No |
-| View tools | Cross section, Show overhangs | Yes, except measuring |
+| View tools | Section, Show overhangs | Yes, except measuring |
 
 Only one tool (exclusive or light) is open at a time: opening one closes the
 other. View tools have a slot of their own: one at a time (opening one closes
@@ -26,9 +26,11 @@ the other), and measuring works beside them.
   an edge, the objects for Subtract) change nothing while an exclusive tool is
   open: no selection change, no closing.
 - Ending an exclusive tool (Apply, Cancel or Esc) also stops its calculation,
-  so Cancel and Esc are the single cancel path. The "Working…" box is not
-  shown next to a tool bar that already says "Working…"; inside Split it
-  shows without its own Cancel button.
+  so Cancel and Esc are the single cancel path. "Working…" always shows in
+  its own box under the tool bar (the bar never changes size for it); inside
+  a tool it has no Cancel button of its own.
+- With nothing selected and a single object in the drawing, the tools work on
+  that object instead of asking to select it first (not Delete or Cut).
 
 ## What works while an exclusive tool is open
 
@@ -75,10 +77,10 @@ Selecting a part of a group selects the whole group.
 | Subtract, intersect | Yes | Clicking a part puts the whole group in the role |
 | Check and Repair | Yes | Each part is checked and repaired |
 | Colour | Yes | All parts, when the group is selected (a part's colour box in the list recolours just that part otherwise) |
-| Edge bevel, edge rounding, shell, brace, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
+| Bevel, round, brace, shell, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
 | Best print orientation | No | Same: the orientation is worked out for one object |
 
-## Edge bevel and edge rounding
+## Bevel and round
 
 Edges are always picked one by one; there is no "all sharp edges" choice,
 since on threads that means tens of thousands of edges. Both tools can be used

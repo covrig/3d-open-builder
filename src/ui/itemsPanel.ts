@@ -6,6 +6,8 @@ import { icon } from './icons';
 export interface RowActions {
   duplicate(obj: SceneObject): void;
   remove(obj: SceneObject): void;
+  /** Hide the object from the view, or show it again. */
+  toggleHidden(obj: SceneObject): void;
 }
 
 /** Sidebar "Objects" section: selection buttons and the list of objects. */
@@ -89,8 +91,11 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
         const name = document.createElement('span');
         name.className = 'name';
         name.textContent = obj.name;
-        name.dataset.tipTitle = obj.name;
-        name.dataset.tip = 'Click to select (Ctrl+click adds). Double-click to rename.';
+        name.dataset.tipTitle = obj.hidden ? `${obj.name} (hidden)` : obj.name;
+        name.dataset.tip = obj.hidden
+          ? 'Hidden from the view. Click the eye to show it again. Double-click to rename.'
+          : 'Click to select (Ctrl+click adds). Double-click to rename.';
+        li.classList.toggle('hidden-object', obj.hidden === true);
         name.addEventListener('dblclick', (e) => {
           e.stopPropagation();
           startRename(obj, name);
@@ -118,7 +123,12 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
           });
           return b;
         };
+        const eye = obj.hidden
+          ? rowButton('eye-off', 'Show', `Show ${obj.name} in the view again.`, () => actions.toggleHidden(obj))
+          : rowButton('eye', 'Hide', `Hide ${obj.name} from the view. It stays in the drawing and is still exported.`, () => actions.toggleHidden(obj));
+        eye.classList.add('visibility');
         li.append(
+          eye,
           rowButton('copy-plus', 'Duplicate', `Make a copy of ${obj.name}.`, () => actions.duplicate(obj)),
           rowButton('trash-2', 'Delete', `Remove ${obj.name}.`, () => actions.remove(obj)),
         );

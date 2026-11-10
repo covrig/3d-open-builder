@@ -231,7 +231,8 @@ export class FeatureBar {
     const spec = this.spec;
     if (!spec) return;
     const seq = ++this.sequence;
-    this.info.textContent = 'Working…';
+    // "Working…" shows in its own box under the bar (main.ts), so this row never jumps.
+    this.info.textContent = '';
     try {
       const result = await spec.compute({ ...this.values });
       if (seq !== this.sequence || spec !== this.spec) return;
@@ -280,7 +281,7 @@ export class FeatureBar {
     this.watched = [];
     endTool('feature');
     this.clearPreview();
-    for (const o of spec.hide ?? []) o.mesh.visible = true;
+    for (const o of spec.hide ?? []) o.mesh.visible = !o.hidden;
     this.el.hidden = true;
     this.gizmo.enabled = true;
     hideHint('feature');

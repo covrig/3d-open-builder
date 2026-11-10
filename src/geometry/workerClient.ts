@@ -1,6 +1,6 @@
 import type { OpArgs, OpName, OpResult } from './ops';
 
-type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; quiet: boolean };
 
 let worker: Worker | undefined;
 let nextId = 1;
@@ -8,7 +8,9 @@ const pending = new Map<number, Pending>();
 const listeners = new Set<(busy: boolean) => void>();
 
 function notify(): void {
-  for (const l of listeners) l(pending.size > 0);
+  // Quiet work (e.g. the overlap lines) never shows "Working…".
+  const busy = [...pending.values()].some((p) => !p.quiet);
+  for (const l of listeners) l(busy);
 }
 
 function getWorker(): Worker {
@@ -35,11 +37,11 @@ function getWorker(): Worker {
   return worker;
 }
 
-/** Run a heavy geometry operation in the background worker. */
-export function runOp<K extends OpName>(op: K, args: OpArgs<K>): Promise<OpResult<K>> {
+/** Run a heavy geometry operation in the background worker; `quiet` ones don't show "Working…". */
+export function runOp<K extends OpName>(op: K, args: OpArgs<K>, quiet = false): Promise<OpResult<K>> {
   return new Promise((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+    pending.set(id, { resolve: resolve as (v: unknown) => void, reject, quiet });
     notify();
     getWorker().postMessage({ id, op, args });
   });

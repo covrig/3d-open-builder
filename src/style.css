@@ -282,7 +282,11 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border-strong);
 }
-#tooltip .tip-body { color: var(--muted); line-height: 1.4; }
+/* The text under the line matches the tool hints' size. */
+#tooltip .tip-body { color: var(--muted); line-height: 1.4; font-size: 12.5px; }
+/* A tooltip with only a title (e.g. "Hide the panel"): no line, no empty space. */
+#tooltip .tip-body:empty { display: none; }
+#tooltip .tip-title:has(+ .tip-body:empty) { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
 
 /* --- Sidebar ------------------------------------------------------------ */
 
@@ -582,6 +586,10 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 .items .row-action svg { width: 14px; height: 14px; }
 .items .row-action:hover { background: var(--panel-hover); border-color: var(--border-strong); }
 .items li:hover .row-action, .items li:focus-within .row-action { display: inline-flex; }
+/* Hidden objects: name dimmed and slanted, and the crossed-out eye always shown to bring them back. */
+.items li.hidden-object .name { color: var(--muted); font-style: italic; }
+.items li.hidden-object .color-box { opacity: 0.4; }
+.items li.hidden-object .row-action.visibility { display: inline-flex; }
 .items .group-tag { margin-left: 0; }
 
 /* Short screens: tiles show only their icon (the tooltip still names them),
@@ -780,6 +788,15 @@ dialog footer { gap: 8px; }
 
 /* Split, Pattern, Text and Extrude move into the More menu on phones. */
 .toolbar .row-break, .menu > .narrow-only { display: none; }
+/* The More menu's tools shown in the toolbar when it has room (toolbarFit.ts): one place at a time. */
+.toolbar .out-hidden, .toolbar .menu > .in-toolbar { display: none !important; }
+/* Copy, Cut and Paste can be hidden from Settings, on screens with a mouse and keyboard only. */
+@media (hover: hover) and (pointer: fine) {
+  body.hide-clipboard .toolbar .clipboard-group, body.hide-clipboard .toolbar .clipboard-group > button { display: none; }
+}
+@media (pointer: coarse) {
+  .mouse-only { display: none !important; }
+}
 
 /* Phones: Menu, Add object, Undo, Redo, Copy, Cut and Paste always share the
    first row (smaller labels and padding make them fit); the other buttons

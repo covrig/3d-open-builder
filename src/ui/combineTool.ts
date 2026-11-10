@@ -84,7 +84,7 @@ export class CombineTool {
       // Marked objects are drawn by their overlay instead (unmarked ones stay normal).
       for (const o of this.doc.objects) {
         const marked = targets.includes(o) || tools.includes(o);
-        o.mesh.visible = !marked;
+        o.mesh.visible = !marked && !o.hidden;
         if (marked) hidden.add(o);
       }
       const ghost = (o: SceneObject, material: THREE.Material) => {
@@ -154,7 +154,7 @@ export class CombineTool {
       onClose: () => {
         this.doc.removeEventListener('change', onDocChange);
         viewClicks.onClick = null;
-        for (const o of hidden) o.mesh.visible = true;
+        for (const o of hidden) o.mesh.visible = !o.hidden;
         for (const c of [...this.overlay.children]) this.overlay.remove(c);
         hideHint('feature');
         this.viewport.invalidate();

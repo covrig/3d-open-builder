@@ -43,7 +43,9 @@ import { setupMenus } from './ui/menu';
 import { setupSettingsDialog } from './ui/settingsDialog';
 import { SplitTool } from './ui/splitTool';
 import { setupTooltips } from './ui/tooltip';
-import { isLocked, isToolOpen, stopActiveTool } from './ui/toolLock';
+import { isLocked, isToolOpen, onlyViewLocked, onToolChange, stopActiveTool } from './ui/toolLock';
+import { OverlapLines } from './ui/overlapLines';
+import { setupToolbarFit } from './ui/toolbarFit';
 import { LOCKED_MESSAGE, setupToolGuard } from './ui/toolGuard';
 import { TransformBar } from './ui/transformBar';
 
@@ -57,6 +59,7 @@ const on = (sel: string, handler: () => void) => {
 renderIcons();
 setupTooltips();
 setupMenus();
+setupToolbarFit();
 restrictNumberInputs();
 setupPanelOrder();
 const wasm = await loadManifold();
@@ -92,6 +95,17 @@ setupArrange(doc, (msg) => toast(msg));
 setupPanelToggle();
 setupToolGuard((msg) => toast(msg), doc);
 setupMultiSelect();
+
+// With nothing selected and a single object in the drawing, the tools work on
+// that object instead of asking to select it first. (After the tool guard, so a
+// refused click changes nothing.) Delete and Cut are left out on purpose.
+const NEEDS_AN_OBJECT = '[data-modify], [data-action="split"], [data-action="extrude-down"], [data-mirror], [data-action="check"], '
+  + '[data-action="orient"], [data-action="duplicate"], [data-action="drop"], [data-action="lay-flat"], [data-action="center"]';
+document.addEventListener('click', (e) => {
+  if (doc.selection.length > 0 || !(e.target as Element).closest?.(NEEDS_AN_OBJECT)) return;
+  const shown = doc.objects.filter((o) => !o.hidden);
+  if (shown.length === 1) doc.setSelection(shown);
+}, true);
 const ruler = new Ruler();
 viewport.scene.add(ruler.group);
 watchTheme((dark) => {
@@ -155,6 +169,15 @@ const crossSection = new CrossSection(viewport, doc, gizmo);
 measure.section = crossSection;
 // Show overhangs (Check menu): a view tool like the cross-section.
 const overhangs = new OverhangTool(viewport, gizmo);
+// Faint lines where overlapping objects cross: drawn in the Edges view, and snap targets while measuring.
+const overlaps = new OverlapLines(
+  viewport, doc,
+  () => ({ draw: settings.ui.view.edges, snap: measure.active }),
+  () => isLocked() && !onlyViewLocked(),
+);
+measure.overlaps = overlaps;
+onToolChange(() => overlaps.refresh());
+for (const b of $$('[data-view="edges"]')) b.addEventListener('click', () => overlaps.refresh());
 setupViewCube(viewport);
 setupLookSettings(viewport);
 const colors = new ColorPopover(doc, (picking) => {
@@ -163,6 +186,10 @@ const colors = new ColorPopover(doc, (picking) => {
   else hideHint('eyedropper');
 });
 setupItemsPanel($('#sidebar'), doc, colors, {
+  toggleHidden: (obj) => {
+    doc.checkpoint();
+    doc.setHidden([obj], !obj.hidden);
+  },
   duplicate: (obj) => {
     doc.checkpoint();
     pasteStates([doc.capture(obj)], PASTE_OFFSET);
@@ -276,7 +303,6 @@ for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
   const el = $('#busy');
   let timer: number | undefined;
   const cancel = el.querySelector<HTMLElement>('[data-action="cancel-op"]')!;
-  const featureBarEl = $('#feature-bar');
   onBusyChange((working) => {
     clearTimeout(timer);
     if (!working) {
@@ -284,10 +310,9 @@ for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
       return;
     }
     timer = window.setTimeout(() => {
-      // One "Working…" and one Cancel: the tool bar shows its own (its Cancel
-      // also stops the calculation), and inside another tool (Split) that
-      // tool's Cancel does it.
-      el.hidden = !featureBarEl.hidden;
+      // Its own box under any tool bar, so nothing resizes. Inside a tool its
+      // Cancel is left out: the tool's Cancel also stops the calculation.
+      el.hidden = false;
       cancel.hidden = isLocked();
     }, 400);
   });
@@ -510,6 +535,13 @@ const autosave = new Autosave(doc, () => sceneName);
 const extraRestorers = new Map<string, (value: unknown) => void>();
 const reference = new ReferenceImage(viewport, doc, featureBar, toast, () => autosave.markDirty());
 autosave.extras.set('reference', () => reference.serialize());
+
+/** Save in the browser right away (Menu → Save, Ctrl+S); it also saves on its own every minute. */
+const saveNow = () => void autosave.saveNow().then(() => {
+  autosave.markClean();
+  toast('Saved in this browser. To keep a file, use Export 3MF.');
+});
+on('[data-action="save"]', saveNow);
 extraRestorers.set('reference', (v) => reference.restore(v));
 function restoreExtras(extras: Record<string, unknown>): void {
   for (const [key, restore] of extraRestorers) restore(extras[key]);
@@ -734,6 +766,7 @@ document.addEventListener('keydown', (e) => {
   const locked = isLocked() || busy;
   const refuse = () => run(() => toast(LOCKED_MESSAGE));
   if (ctrl && key === 'c') return run(actions.copy);
+  if (ctrl && key === 's') return run(saveNow);
   const editing = (ctrl && ['z', 'y', 'x', 'v', 'a'].includes(key)) || (!ctrl && (e.key === 'Delete' || e.key === 'Backspace'));
   if (editing && locked) return refuse();
   if (ctrl && key === 'z' && !e.shiftKey) return run(actions.undo);
@@ -891,4 +924,4 @@ updateShadows();
 void offerRestore();
 
 // Exposed for debugging in the browser console.
-Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection, overhangs } });
+Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection, overhangs, overlaps } });

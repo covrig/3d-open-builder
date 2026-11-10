@@ -20,10 +20,11 @@
         <button data-menu="file-menu" data-tip-title="Menu" data-tip="New drawing, import 3D objects, export 3MF or STL, settings, shortcuts, privacy and libraries."><i data-lucide="menu"></i><span>Menu</span></button>
         <div id="file-menu" class="menu" role="menu" hidden>
           <button data-action="new" role="menuitem"><i data-lucide="file-plus"></i>New drawing</button>
-          <button data-action="open" role="menuitem"><i data-lucide="folder-open"></i>Import 3D object… <small>3MF, STL, OBJ</small></button>
-          <button data-action="reference" role="menuitem"><i data-lucide="image"></i>Reference picture… <small>a drawing or photo to build on</small></button>
+          <button data-action="save" role="menuitem"><i data-lucide="save"></i>Save <small>in this browser now (it also saves on its own)</small></button>
+          <button data-action="open" role="menuitem"><i data-lucide="folder-open"></i>Import 3D object <small>3MF, STL, OBJ</small></button>
+          <button data-action="reference" role="menuitem"><i data-lucide="image"></i>Reference picture <small>a drawing or photo to build on</small></button>
           <hr />
-          <button data-action="export-3mf" role="menuitem"><i data-lucide="save"></i>Export 3MF <small>all objects and colours</small></button>
+          <button data-action="export-3mf" role="menuitem"><i data-lucide="download"></i>Export 3MF <small>all objects and colours</small></button>
           <button data-action="export-stl" role="menuitem"><i data-lucide="download"></i>Export STL <small>one mesh, no colours</small></button>
           <hr />
           <button data-action="settings" role="menuitem"><i data-lucide="settings"></i>Settings</button>
@@ -61,7 +62,7 @@
         <button data-action="redo" data-tip-title="Redo (Ctrl+Y)" data-tip="Bring back a change you undid."><i data-lucide="redo-2"></i><span>Redo</span></button>
       </div>
 
-      <div class="group">
+      <div class="group clipboard-group">
         <button data-action="copy" data-tip-title="Copy (Ctrl+C)" data-tip="Copy the selection. It stays available after closing the page."><i data-lucide="copy"></i><span>Copy</span></button>
         <button data-action="cut" data-tip-title="Cut (Ctrl+X)" data-tip="Remove the selection and keep it for pasting."><i data-lucide="scissors"></i><span>Cut</span></button>
         <button data-action="paste" data-tip-title="Paste (Ctrl+V)" data-tip="Add the copied objects to the drawing."><i data-lucide="clipboard-paste"></i><span>Paste</span></button>
@@ -88,17 +89,23 @@
           <button data-mirror="1" role="menuitem">Mirror Y</button>
           <button data-mirror="2" role="menuitem">Mirror Z</button>
         </div>
-        <button data-menu="modify-menu" data-tip-title="More" data-tip="Edge bevel, edge rounding, shell, brace and cross section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
+        <!-- The More menu's tools, shown here instead when the toolbar has room (toolbarFit.ts). -->
+        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply."><i data-lucide="triangle-right"></i><span>Bevel</span></button>
+        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply."><i data-lucide="squircle"></i><span>Round</span></button>
+        <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle"></i><span>Brace</span></button>
+        <button data-modify="shell" class="more-out" data-tip-title="Shell" data-tip="Hollow the object out, leaving walls as thick as you choose."><i data-lucide="box"></i><span>Shell</span></button>
+        <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cut the view open across X, Y or Z to see inside. Only the view changes; measuring works on the cut."><i data-lucide="scan-line"></i><span>Section</span></button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, brace, shell and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
           <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
           <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
-          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Edge bevel<kbd class="key-hint">B</kbd></button>
-          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Edge rounding<kbd class="key-hint">O</kbd></button>
+          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Bevel<kbd class="key-hint">B</kbd></button>
+          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Round<kbd class="key-hint">O</kbd></button>
           <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Brace</button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
-          <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Cross section</button>
+          <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Section</button>
         </div>
       </div>
 
@@ -122,17 +129,17 @@
           </div>
         </noscript>
         <div id="loading">Loading geometry engine…</div>
-        <!-- Floating buttons at the bottom right, one under the other: Home (touch screens only), panel,
-             Delete and Select several (both touch screens only). The labels on their left show only while the panel is closed. -->
+        <!-- Floating buttons at the bottom right, one under the other: panel, then Home, Delete and
+             Select several (all three touch screens only). The labels on their left show only while the panel is closed. -->
         <div id="view-corner">
-          <div class="corner-item touch-only">
-            <span class="corner-label">Home</span>
-            <button data-action="home" aria-label="Home view" data-tip-title="Home view" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i></button>
-          </div>
           <div class="corner-item">
             <span class="corner-label">Panel</span>
             <button data-action="open-panel" class="panel-open" aria-label="Show the panel" data-tip-title="Show the panel" data-tip="View, arrange, measure and the list of objects."><i data-lucide="panel-right-open"></i></button>
-            <button data-action="close-panel" class="panel-close" aria-label="Hide the panel" data-tip-title="Hide the panel" data-tip="More room for the view. The same button brings it back."><i data-lucide="chevron-right"></i></button>
+            <button data-action="close-panel" class="panel-close" aria-label="Hide the panel" data-tip-title="Hide the panel" data-tip=""><i data-lucide="chevron-right"></i></button>
+          </div>
+          <div class="corner-item touch-only">
+            <span class="corner-label">Home</span>
+            <button data-action="home" aria-label="Home view" data-tip-title="Home view" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i></button>
           </div>
           <div class="corner-item touch-only">
             <span class="corner-label">Delete</span>
@@ -160,9 +167,10 @@
             <dt class="single-key">1 / 2 / 3</dt><dd class="single-key">Add cube / cylinder / sphere</dd>
             <dt class="single-key">M / N / I</dt><dd class="single-key">Merge / subtract / intersect</dd>
             <dt class="single-key">S / E / P</dt><dd class="single-key">Split / extrude / pattern</dd>
-            <dt class="single-key">B / O</dt><dd class="single-key">Edge bevel / edge rounding</dd>
+            <dt class="single-key">B / O</dt><dd class="single-key">Bevel / round</dd>
             <dt>Del</dt><dd>Delete</dd>
             <dt>Ctrl+A</dt><dd>Select all</dd>
+            <dt>Ctrl+S</dt><dd>Save in this browser</dd>
             <dt>Esc</dt><dd>Select none / leave tool</dd>
             <dt>Arrow keys</dt><dd>Move selection (Shift: ×10)</dd>
             <dt>Page Up / Down</dt><dd>Move selection up / down</dd>
@@ -223,7 +231,7 @@
         </div>
 
         <div id="section-bar" class="floating-bar top-bar" hidden>
-          <span class="bar-title">Cross section</span>
+          <span class="bar-title">Section</span>
           <div class="segmented">
             <button data-section-axis="0" data-tip-title="Cut across X" data-tip="Look inside through a plane facing left and right.">X</button>
             <button data-section-axis="1" data-tip-title="Cut across Y" data-tip="Look inside through a plane facing front and back.">Y</button>
@@ -252,12 +260,12 @@
         </div>
 
         <div id="transform-bar" class="floating-bar disabled">
-          <button data-mode="translate" data-tip-title="Move" data-tip="Drag one of the arrows to move the object along that direction, or type a position."><i data-lucide="move"></i></button>
-          <button data-mode="rotate" data-tip-title="Rotate" data-tip="Drag an arrow on one of the rings to turn the object around its centre, or type an angle."><i data-lucide="rotate-cw"></i></button>
-          <button data-mode="scale" data-tip-title="Size" data-tip="Drag an arrow to stretch in one direction, or a corner dot to resize evenly. Or type a size."><i data-lucide="scan"></i></button>
-          <label class="field x" data-tip-title="X" data-tip="Left–right value. Type a number and press Enter."><span class="field-label">X</span><input type="number" step="any" /></label>
-          <label class="field y" data-tip-title="Y" data-tip="Front–back value. Type a number and press Enter."><span class="field-label">Y</span><input type="number" step="any" /></label>
-          <label class="field z" data-tip-title="Z" data-tip="Up–down value. Type a number and press Enter."><span class="field-label">Z</span><input type="number" step="any" /></label>
+          <button data-mode="translate" data-tip-title="Move" data-tip="Drag one of the arrows to move the object along that direction."><i data-lucide="move"></i></button>
+          <button data-mode="rotate" data-tip-title="Rotate" data-tip="Drag an arrow on one of the rings to turn the object around its centre."><i data-lucide="rotate-cw"></i></button>
+          <button data-mode="scale" data-tip-title="Size" data-tip="Drag an arrow to stretch in one direction, or a corner dot to resize evenly."><i data-lucide="scan"></i></button>
+          <label class="field x" data-tip-title="X" data-tip="Left–right."><span class="field-label">X</span><input type="number" step="any" /></label>
+          <label class="field y" data-tip-title="Y" data-tip="Front–back."><span class="field-label">Y</span><input type="number" step="any" /></label>
+          <label class="field z" data-tip-title="Z" data-tip="Up–down."><span class="field-label">Z</span><input type="number" step="any" /></label>
           <button data-action="unit" class="unit-button" data-tip-title="Units" data-tip="Click to switch units: mm, cm, in.">mm</button>
           <button data-action="lock" class="active" data-tip-title="Keep proportions" data-tip="When locked, dragging an arrow or typing one size resizes all three sides by the same factor. Click to unlock."><i data-lucide="lock"></i></button>
           <button data-action="reset-rotation" data-tip-title="Reset rotation" data-tip="Turn the object back to line up with the plate."><i data-lucide="axis-3d"></i></button>
@@ -401,6 +409,7 @@
         <fieldset>
           <legend>Keyboard</legend>
           <label><input type="checkbox" name="shortcuts" /> Enable shortcuts: single keys like 1 2 3 to add shapes, D duplicate, M merge, S split… (Ctrl+Z, Ctrl+C and Esc always work)</label>
+          <label class="mouse-only"><input type="checkbox" name="hideClipboard" /> Hide Copy, Cut and Paste in the toolbar (Ctrl+C, Ctrl+X and Ctrl+V still work), for more room</label>
         </fieldset>
         <fieldset>
           <legend>Plate</legend>

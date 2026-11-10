@@ -349,8 +349,9 @@ export class Viewport extends EventTarget {
    * cut, the ray's first hit is the inside of the far wall.
    */
   hitsOn(raycaster: THREE.Raycaster): THREE.Intersection[] {
-    if (!this.clipFilter) return raycaster.intersectObjects(this.objectRoot.children, false);
-    const meshes = this.objectRoot.children.filter((o): o is THREE.Mesh => (o as THREE.Mesh).isMesh);
+    // Objects hidden with the eye button can't be clicked (objects a tool hides for its preview still can).
+    const meshes = this.objectRoot.children.filter((o): o is THREE.Mesh => (o as THREE.Mesh).isMesh && !o.userData.userHidden);
+    if (!this.clipFilter) return raycaster.intersectObjects(meshes, false);
     const sides = meshes.map((m) => (m.material as THREE.Material).side);
     for (const m of meshes) (m.material as THREE.Material).side = THREE.DoubleSide;
     try {

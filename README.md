@@ -22,11 +22,11 @@ Nothing to install, no account, and your files never leave your computer.
 - **Shapes and threads:** basic shapes, plus bolts, nuts, threaded rods and threaded holes in metric and imperial sizes.
 - **Combine and edit:** merge, subtract and intersect (pieces that end up apart become separate objects), split, mirror, pattern, extrude down to the plate, shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces). Groups work with move, mirror, split, extrude and pattern.
 - **Place precisely:** move, rotate and size handles with snapping, put on the plate, lay flat, align, distribute and pack, and a reference picture to trace over.
-- **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges and edge middles; a cross section that cuts the view open, with measuring on the cut.
+- **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges, edge middles and the lines where objects overlap; a section view that cuts the view open, with measuring on the cut.
 - **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour (also through X-ray), best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.
-- **See it your way:** X-ray, wireframe, edges and shadows, a view cube, a see-through plate with an optional reflection, and light or dark colours.
+- **See it your way:** X-ray, wireframe, edges (with faint lines where objects overlap) and shadows, a view cube, hide objects you don't need right now, a see-through plate with an optional reflection, and light or dark colours.
 - **Any device:** mouse, trackpad (two fingers pan, pinch zooms) or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a key to repeat the last tool.
-- **Safe to use:** 100 undo steps and autosave; every tool ends with Apply or Cancel, and nothing else can change the model while one is open.
+- **Safe to use:** 100 undo steps, autosave and Save; every tool ends with Apply or Cancel, and nothing else can change the model while one is open.
 
 ## Private by design
 

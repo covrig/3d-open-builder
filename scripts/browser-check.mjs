@@ -744,7 +744,7 @@ async function runChecks(b) {
     await page.keyboard.press('d');
     if ((await count()) !== 4) throw new Error('D did not duplicate');
     const titles = {};
-    for (const [key, want] of [['b', 'Edge bevel'], ['o', 'Edge rounding'], ['p', 'Pattern'], ['e', 'Extrude down']]) {
+    for (const [key, want] of [['b', 'Bevel'], ['o', 'Round'], ['p', 'Pattern'], ['e', 'Extrude down']]) {
       await page.evaluate(() => window.app.doc.setSelection([window.app.doc.objects[0]]));
       await page.keyboard.press(key);
       await sleep(150);
@@ -1056,7 +1056,7 @@ async function runChecks(b) {
       if (r.overBar) throw new Error(`${w}px: the corner buttons cover the transform bar`);
       if (!r.level && !r.above) throw new Error(`${w}px: neither level with the transform bar nor above it`);
       if (!r.stacked) throw new Error(`${w}px: buttons not one under the other`);
-      if (r.order.join() !== `home,${r.closedPanel ? 'open-panel' : 'close-panel'},delete-selection,multi-select`) throw new Error(`${w}px: order ${r.order}`);
+      if (r.order.join() !== `${r.closedPanel ? 'open-panel' : 'close-panel'},home,delete-selection,multi-select`) throw new Error(`${w}px: order ${r.order}`);
       if (r.closedPanel && r.labels !== 4) throw new Error(`${w}px: ${r.labels} labels with the panel closed`);
       if (!r.closedPanel && r.labels !== 0) throw new Error(`${w}px: labels shown with the panel open`);
       out.push(`${w}px ${r.level ? 'level' : 'above'}${r.closedPanel ? ', labelled' : ''}`);

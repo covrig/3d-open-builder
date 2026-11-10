@@ -13,7 +13,7 @@ type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) =
 const AXES: Record<string, V3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
 
 /**
- * The More menu (edge bevel, edge rounding, shell, brace) and the Pattern button. Each opens
+ * The More menu (bevel, round, brace, shell) and the Pattern button. Each opens
  * the feature bar with its settings and a live preview.
  */
 export class ModifyTools {
@@ -66,14 +66,14 @@ export class ModifyTools {
     };
   }
 
-  // --- Edge bevel / Edge rounding (chamfer / fillet) --------------------------
+  // --- Bevel / Round (chamfer / fillet) --------------------------------------
 
   private edgeTool(kind: 'chamfer' | 'fillet'): void {
     const obj = this.one();
     if (!obj) return;
     const set = findEdges(bakeMesh(this.doc.placed(obj)));
     if (set.segments.length === 0) return this.toast(`${obj.name} has no sharp edges to ${kind === 'chamfer' ? 'bevel' : 'round'}`);
-    const name = kind === 'chamfer' ? 'Edge bevel' : 'Edge rounding';
+    const name = kind === 'chamfer' ? 'Bevel' : 'Round';
     this.bar.open<Piece>({
       title: name,
       hint: `${name}: click edges to pick them (blue; click again to drop). The result shows in orange.`,

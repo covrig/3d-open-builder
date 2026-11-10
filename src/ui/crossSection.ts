@@ -55,7 +55,8 @@ export class CrossSection {
     viewport.beforeFrame(() => this.update());
     for (const type of ['change', 'transform'] as const) doc.addEventListener(type, () => this.markDirty());
 
-    document.querySelector('[data-action="cross-section"]')!.addEventListener('click', () => (this.on ? this.close() : this.open()));
+    // The More menu item and, when there is room, its toolbar button.
+    for (const b of document.querySelectorAll('[data-action="cross-section"]')) b.addEventListener('click', () => (this.on ? this.close() : this.open()));
     for (const b of this.bar.querySelectorAll<HTMLButtonElement>('[data-section-axis]')) {
       b.addEventListener('click', () => this.setAxis(Number(b.dataset.sectionAxis) as Axis));
     }

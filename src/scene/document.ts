@@ -29,6 +29,8 @@ export interface SceneObject {
   groupId?: number;
   /** Set on bolts, nuts and rods from Add object; dropped when the shape changes. */
   thread?: ThreadInfo;
+  /** Hidden from the view (eye button in the Objects list): not drawn, picked or selected. */
+  hidden?: boolean;
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 }
 
@@ -41,6 +43,7 @@ export interface ObjectState {
   defaultColor?: string;
   groupId?: number;
   thread?: ThreadInfo;
+  hidden?: boolean;
   position: [number, number, number];
   quaternion: [number, number, number, number];
   scale: [number, number, number];
@@ -93,9 +96,12 @@ export interface ViewMode {
 const EDGE_ANGLE = 25;
 /** Sharp-edge lines (Edges view); the cross-section draws its cut outline with it too. */
 export const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
+/** Fainter lines where the surfaces of overlapping objects cross (see OverlapLines). */
+export const overlapMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5, transparent: true, opacity: 0.45 });
 
 export function setEdgeColor(hex: number): void {
   edgeMaterial.color.setHex(hex);
+  overlapMaterial.color.setHex(hex);
 }
 
 type DocEvent = 'change' | 'selection' | 'transform' | 'history';
@@ -210,6 +216,8 @@ export class SceneDocument extends EventTarget {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.add(overhangLayer(mesh.geometry));
+    mesh.visible = !state.hidden;
+    mesh.userData.userHidden = state.hidden === true;
     mesh.position.fromArray(state.position);
     mesh.quaternion.fromArray(state.quaternion);
     mesh.scale.fromArray(state.scale);
@@ -221,6 +229,7 @@ export class SceneDocument extends EventTarget {
       defaultColor: state.defaultColor ?? state.color,
       groupId: state.groupId,
       thread: state.thread,
+      hidden: state.hidden,
       mesh,
     };
     if (state.groupId !== undefined) this.nextGroupId = Math.max(this.nextGroupId, state.groupId + 1);
@@ -292,6 +301,7 @@ export class SceneDocument extends EventTarget {
       defaultColor: obj.defaultColor,
       groupId: obj.groupId,
       thread: obj.thread,
+      hidden: obj.hidden,
       position: m.position.toArray() as [number, number, number],
       quaternion: m.quaternion.toArray() as [number, number, number, number],
       scale: m.scale.toArray() as [number, number, number],
@@ -300,8 +310,20 @@ export class SceneDocument extends EventTarget {
 
   // --- Selection ----------------------------------------------------------
 
+  /** Hide objects from the view or show them again (callers checkpoint first). Hidden objects leave the selection. */
+  setHidden(objs: SceneObject[], hidden: boolean): void {
+    for (const o of objs) {
+      o.hidden = hidden || undefined;
+      o.mesh.visible = !hidden;
+      o.mesh.userData.userHidden = hidden;
+    }
+    this.emit('change');
+    if (hidden && this.selection.some((o) => objs.includes(o))) this.setSelection(this.selection);
+  }
+
   setSelection(objs: SceneObject[]): void {
-    this.selection = [...objs];
+    // Hidden objects can't be selected (the eye button shows them again).
+    this.selection = objs.filter((o) => !o.hidden);
     for (const o of this.objects) {
       o.mesh.material.emissive.setHex(this.selection.includes(o) ? SELECTED_EMISSIVE : 0x000000);
     }
@@ -374,7 +396,7 @@ export class SceneDocument extends EventTarget {
       o.mesh.material.clippingPlanes = planes;
       o.mesh.material.needsUpdate = true;
     }
-    for (const m of [edgeMaterial, overhangMaterial]) {
+    for (const m of [edgeMaterial, overlapMaterial, overhangMaterial]) {
       m.clippingPlanes = planes;
       m.needsUpdate = true;
     }

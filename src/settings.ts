@@ -8,6 +8,8 @@ export interface UiState {
   measure: { snap: boolean; dotted: boolean; deltas: boolean };
   keepProportions: boolean;
   shortcuts: boolean;
+  /** Copy, Cut and Paste left out of the toolbar (mouse and keyboard screens only) */
+  hideClipboard: boolean;
   /** Thinnest wall (mm) the print check accepts */
   minWall: number;
   /** Order of the side panel sections (ids from PANELS) */
@@ -53,10 +55,11 @@ const DEFAULTS: Settings = {
   collision: false,
   shortcuts: false,
   ui: {
-    view: { xray: false, wireframe: false, edges: false, grid: true, shadows: true },
+    view: { xray: false, wireframe: false, edges: true, grid: true, shadows: true },
     measure: { snap: true, dotted: true, deltas: false },
     keepProportions: true,
     shortcuts: false,
+    hideClipboard: false,
     minWall: 0.8,
     panelOrder: PANELS.map(([id]) => id),
     hiddenPanels: [],

@@ -182,6 +182,8 @@ export class MeasureTool {
 
   /** The cross-section, when on: measuring then works on what is still shown and on the cut. */
   section: { active: boolean; plane: THREE.Plane; cutOf(obj: SceneObject): SectionCut | null } | null = null;
+  /** Lines where overlapping objects cross (world space), also snap targets. */
+  overlaps: { readonly features: { segs: Float32Array; corners: Float32Array; mids: Float32Array } | null } | null = null;
 
   /**
    * Point under the cursor: on an object (snapped, when close, to a corner,
@@ -234,6 +236,9 @@ export class MeasureTool {
       return out;
     };
     const cutLocal = cut ? { corners: toLocalList(cut.corners), mids: toLocalList(cut.mids), segs: toLocalList(cut.segs) } : null;
+    // And the lines where this object crosses others it overlaps.
+    const seam = this.overlaps?.features;
+    const seamLocal = seam?.segs.length ? { corners: toLocalList(seam.corners), mids: toLocalList(seam.mids), segs: toLocalList(seam.segs) } : null;
 
     // 1. Real corners, then 2. middles of straight edges. (Not the points of the
     // triangles: on a sphere or a cylinder's rim those are only where the
@@ -264,16 +269,16 @@ export class MeasureTool {
       }
       return found.length === 1 ? found[0].at : null;
     };
-    const corner = single(own.corners, cutLocal?.corners);
+    const corner = single(own.corners, cutLocal?.corners, seamLocal?.corners);
     if (corner) return snapped(corner, 'corner');
-    const middle = single(own.mids, cutLocal?.mids);
+    const middle = single(own.mids, cutLocal?.mids, seamLocal?.mids);
     if (middle) return snapped(middle, 'middle');
 
-    // 3. The nearest sharp edge (cube edges, hole rims, the cut's outline...), never a flat face's diagonal.
+    // 3. The nearest sharp edge (cube edges, hole rims, the cut's outline, overlap lines...), never a flat face's diagonal.
     const localRay = raycaster.ray.clone().applyMatrix4(inverse);
     const a = new THREE.Vector3(), b = new THREE.Vector3(), onSeg = new THREE.Vector3();
     const seg = new THREE.Line3();
-    for (const segs of [own.segs, cutLocal?.segs]) {
+    for (const segs of [own.segs, cutLocal?.segs, seamLocal?.segs]) {
       if (!segs) continue;
       for (let i = 0; i < segs.length; i += 6) {
         a.set(segs[i], segs[i + 1], segs[i + 2]);
@@ -298,11 +303,7 @@ export class MeasureTool {
     const svg: string[] = [];
     const html: string[] = [];
     const P = (v: THREE.Vector3) => this.viewport.project(v);
-    const num = (mm: number, signed = false) => {
-      const v = Math.round(toUnit(mm) * 100) / 100;
-      const s = v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      return signed && v > 0 ? `+${s}` : s.replace('-', '−');
-    };
+    const num = (mm: number) => (Math.round(toUnit(mm) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const unit = settings.unit;
     const line = (a: THREE.Vector3, b: THREE.Vector3) => {
       const pa = P(a), pb = P(b);
@@ -328,7 +329,8 @@ export class MeasureTool {
         label(
           pts[0].clone().lerp(pts[1], 0.5),
           `${num(d.length())} ${unit}`,
-          this.options.deltas ? `ΔX ${num(d.x, true)}   ΔY ${num(d.y, true)}   ΔZ ${num(d.z, true)}` : undefined,
+          // Sizes along each axis: always positive, whichever point was picked first.
+          this.options.deltas ? `ΔX ${num(Math.abs(d.x))}   ΔY ${num(Math.abs(d.y))}   ΔZ ${num(Math.abs(d.z))}` : undefined,
         );
       }
       if (kind === 'angle') {
