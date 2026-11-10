@@ -1,6 +1,7 @@
 import type { Manifold, ManifoldToplevel } from 'manifold-3d';
 import { toPiece, type Piece } from './cut';
 import { manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
+import { solidPieces } from './pieces';
 
 /** union = Merge, difference = Subtract, intersection = Intersect */
 export type BooleanOp = 'union' | 'difference' | 'intersection';
@@ -90,12 +91,10 @@ export function combineWithTools(
       const result = keep(op === 'subtract' ? solid.subtract(cutter) : solid.intersect(cutter));
       const status = result.status();
       if (status !== 'NoError') throw new Error(`Operation failed (${status})`);
-      const parts = result.decompose();
+      // Separate pieces become separate objects; a hollow stays inside its piece.
+      const parts = solidPieces(result);
       owned.push(...parts);
-      return parts
-        .sort((x, y) => y.volume() - x.volume())
-        .map(toPiece)
-        .filter((p): p is Piece => p !== null);
+      return parts.map(toPiece).filter((p): p is Piece => p !== null);
     });
   } finally {
     for (const m of owned) m.delete();

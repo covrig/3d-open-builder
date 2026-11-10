@@ -61,7 +61,12 @@ export function gentleWeld(mesh: MeshData): { mesh: MeshData; report: MeshReport
   return best!;
 }
 
-/** Number of separate pieces (groups of triangles connected through shared vertices). */
+/**
+ * Number of separate pieces: groups of triangles connected through shared
+ * vertices that enclose some volume. The inside surface of a hollow (a sphere
+ * subtracted from inside a cube) faces inward, so its volume is negative and
+ * it is part of the piece around it, not a piece of its own.
+ */
 export function countPieces(mesh: MeshData): number {
   const n = mesh.positions.length / 3;
   const parent = new Int32Array(n).map((_, i) => i);
@@ -75,9 +80,18 @@ export function countPieces(mesh: MeshData): number {
     parent[find(idx[t + 1])] = a;
     parent[find(idx[t + 2])] = a;
   }
-  const roots = new Set<number>();
-  for (let t = 0; t < idx.length; t++) roots.add(find(idx[t]));
-  return roots.size;
+  // Signed volume of each connected surface (tetrahedra against the origin).
+  const volume = new Map<number, number>();
+  const p = mesh.positions;
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const v = p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1])
+      - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c])
+      + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
+    const root = find(idx[t]);
+    volume.set(root, (volume.get(root) ?? 0) + v);
+  }
+  return [...volume.values()].filter((v) => v > 0).length;
 }
 
 export interface MeshReport {

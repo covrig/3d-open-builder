@@ -1,7 +1,7 @@
 import Module, { type ManifoldToplevel } from 'manifold-3d';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { applyH, invertH, solveH } from '../src/geometry/homography';
-import { analyze, fillHoles, orient, weld } from '../src/geometry/meshCheck';
+import { analyze, countPieces, fillHoles, orient, weld } from '../src/geometry/meshCheck';
 import { meshDataToManifold, type MeshData } from '../src/geometry/meshData';
 import { checkMesh, repairMesh } from '../src/geometry/meshTools';
 import { findEdges } from '../src/geometry/edges';
@@ -41,6 +41,21 @@ const flipTriangles = (mesh: MeshData, which: number[]): MeshData => {
 };
 
 describe('mesh checks', () => {
+  it('treats a hollow object (like a shelled one) as one valid solid', () => {
+    const outer = wasm.Manifold.cube([20, 20, 20], true);
+    const inner = wasm.Manifold.cube([10, 10, 10], true);
+    const hollow = outer.subtract(inner);
+    const m = hollow.getMesh();
+    const mesh: MeshData = { positions: m.vertProperties.slice(), indices: m.triVerts.slice() };
+    for (const x of [outer, inner, hollow]) x.delete();
+    expect(countPieces(mesh)).toBe(1);
+    expect(repairMesh(wasm, mesh).actions).toEqual(['Nothing needed repairing']);
+    const check = checkMesh(wasm, { mesh, matrix: IDENTITY }, 0.8);
+    for (const id of ['overlaps', 'normals', 'watertight'] as const) {
+      expect(check.items.find((i) => i.id === id)?.status).toBe('pass');
+    }
+  });
+
   it('reports a clean cube as closed, manifold and outward', () => {
     const r = analyze(weld(createPrimitive(wasm, 'cube')));
     expect(r).toMatchObject({ openEdges: 0, nonManifoldEdges: 0, flippedEdges: 0 });

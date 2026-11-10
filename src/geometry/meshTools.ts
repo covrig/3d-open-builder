@@ -1,6 +1,7 @@
 import type { Manifold, ManifoldToplevel, Vec3 } from 'manifold-3d';
 import { analyze, fillHoles, gentleWeld, orient, type MeshReport } from './meshCheck';
 import { bakeMesh, manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
+import { solidPieces } from './pieces';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail';
 export interface CheckItem {
@@ -156,8 +157,9 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
     items.push({ id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: skip, fixable: false });
     items.push({ id: 'thickness', label: 'Wall thickness', status: 'warn', detail: skip, fixable: false });
   } else {
-    // Separate shells that overlap each other leave internal faces inside the print.
-    const parts = solid.decompose();
+    // Separate pieces that overlap each other leave internal faces inside the print.
+    // (A hollow belongs to its piece: a shelled object is one piece, not two overlapping ones.)
+    const parts = solidPieces(solid);
     let overlapping = 0;
     for (let i = 0; i < parts.length; i++) {
       for (let j = i + 1; j < parts.length; j++) {
@@ -208,7 +210,8 @@ function tryManifold(wasm: ManifoldToplevel, mesh: MeshData): Manifold | null {
   } catch {
     return null;
   }
-  const parts = solid.decompose();
+  // Each piece with its hollows: a hollow on its own is inside out, but a shelled object is fine.
+  const parts = solidPieces(solid);
   const outward = parts.every((p) => p.volume() > 0);
   for (const p of parts) p.delete();
   if (outward) return solid;
@@ -243,8 +246,8 @@ export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: Mesh
     solid = tryManifold(wasm, m);
     if (!solid) throw new Error(repairFailure(analyze(m), actions));
   }
-  // Union of the separate parts removes faces where parts overlap.
-  const parts = solid.decompose();
+  // Union of the separate pieces removes faces where pieces overlap.
+  const parts = solidPieces(solid);
   if (parts.length > 1) {
     const merged = wasm.Manifold.union(parts);
     const before = solid.numTri();

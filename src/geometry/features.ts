@@ -3,6 +3,7 @@ import type { Piece } from './cut';
 import { edgeFrame, type EdgeSegment, type V3 } from './edges';
 import { manifoldToMeshData, meshDataToManifold, type PlacedMesh } from './meshData';
 import { recenter } from './meshOps';
+import { solidPieces } from './pieces';
 import { threadStandIn, type ThreadInfo } from './threads';
 
 const add = (a: V3, b: V3, s = 1): V3 => [a[0] + b[0] * s, a[1] + b[1] * s, a[2] + b[2] * s];
@@ -217,8 +218,9 @@ function dropSlivers(
   result: Manifold,
   original: Manifold,
 ): Manifold {
-  const before = original.decompose().map(keep).length;
-  const parts = result.decompose().map(keep);
+  // Pieces with their hollows (a shelled object's inside is not a piece of its own).
+  const before = solidPieces(original).map(keep).length;
+  const parts = solidPieces(result).map(keep);
   if (parts.length <= before) return result;
   const total = original.volume();
   const sized = parts.map((m) => ({ m, v: m.volume() })).sort((x, y) => y.v - x.v);

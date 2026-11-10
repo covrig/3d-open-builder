@@ -62,6 +62,14 @@ describe('subtract and intersect with roles', () => {
     expect(untouched).toBeNull();
   });
 
+  it('keeps a hollow inside its object: a box subtracted from inside a cube gives one object', () => {
+    // The hollow's inside surface used to come back as a separate, inside-out object.
+    const inner = box([4, 4, 4], [3, 3, 3]);
+    const [pieces] = combineWithTools(wasm, 'subtract', [left()], [inner]);
+    expect(pieces).toHaveLength(1);
+    expect(volume(pieces![0].mesh)).toBeCloseTo(1000 - 64, 3);
+  });
+
   it('returns no pieces where nothing is left', () => {
     const [a] = combineWithTools(wasm, 'intersect', [left()], [box([5, 5, 5], [50, 0, 0])]);
     expect(a).toEqual([]);
