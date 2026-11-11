@@ -46,3 +46,6 @@ export function makeLabel(text: string, color: string, height: number): THREE.Me
   mesh.renderOrder = 1;
   return mesh;
 }
+
+/** Height (mm) of the numbers along the plate's axis lines; the rulers use the same size. */
+export const GRID_NUMBER_HEIGHT = 3.5;

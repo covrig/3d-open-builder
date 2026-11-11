@@ -5,7 +5,7 @@ import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Ground, type GroundColors } from './ground';
-import { makeLabel } from './labels';
+import { GRID_NUMBER_HEIGHT, makeLabel } from './labels';
 import { Reflection } from './reflection';
 import { MM_PER_UNIT, settings, settingsEvents, type Unit } from '../settings';
 
@@ -17,7 +17,6 @@ const GRID_STEPS: Record<Unit, { minor: number; major: number }> = {
 };
 /** Height (mm) of the "0" at the origin, and of the numbers along the axis lines: smaller, and not growing with the step. */
 const ORIGIN_HEIGHT = 5;
-const GRID_NUMBER_HEIGHT = ORIGIN_HEIGHT * 0.7;
 /** Least distance (px) between two numbers along an axis line */
 const GRID_NUMBER_GAP = 60;
 

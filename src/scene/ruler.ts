@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fromUnit, settings, toUnit } from '../settings';
-import { makeLabel, makeSprite } from './labels';
+import { GRID_NUMBER_HEIGHT, makeLabel, makeSprite } from './labels';
 import type { Palette } from './viewport';
 
 /** 1, 2 or 5 times a power of ten, close to `rough`. */
@@ -39,8 +39,8 @@ export class Ruler {
     }
 
     const size = box.getSize(new THREE.Vector3());
-    // Text scales with the footprint (small for small parts), within limits.
-    const textHeight = THREE.MathUtils.clamp(1.2 + Math.max(size.x, size.y) * 0.04, 1.5, 5);
+    // Same size as the numbers along the plate's axis lines.
+    const textHeight = GRID_NUMBER_HEIGHT;
     const gap = textHeight * 2;
     const color = new THREE.Color(p.label);
     const z = 0.06;
@@ -53,18 +53,23 @@ export class Ruler {
         axis === 0
           ? new THREE.Vector3(box.min.x + t, box.min.y - off, z)
           : new THREE.Vector3(box.min.x - off, box.min.y + t, z);
-      const pts: THREE.Vector3[] = [at(0, gap), at(length, gap)];
-      // About five ticks, but never so close that the numbers would overlap
-      // (a label is roughly 2.5 text-heights wide).
-      const step = fromUnit(niceStep(Math.max(toUnit(length) / 5, toUnit(textHeight * 2.5))));
-      for (let t = 0; t <= length + 1e-6; t += step) pts.push(at(t, gap * 0.5), at(t, gap * 1.4));
-      pts.push(at(length, gap * 0.5), at(length, gap * 1.4));
       this.group.add(new THREE.LineSegments(
-        new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.BufferGeometry().setFromPoints([at(0, gap), at(length, gap)]),
         new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false }),
       ));
+      // About five marks, thinned out rather than shrunk so the numbers never
+      // overlap (a label is roughly 2.5 text-heights wide).
+      const step = fromUnit(niceStep(Math.max(toUnit(length) / 5, toUnit(textHeight * 2.5))));
+      // Small dots on the ruler line mark the gradation.
+      const dots: THREE.Vector3[] = [];
+      for (let t = 0; t <= length + 1e-6; t += step) dots.push(at(t, gap));
+      dots.push(at(length, gap));
+      this.group.add(new THREE.Points(
+        new THREE.BufferGeometry().setFromPoints(dots),
+        new THREE.PointsMaterial({ color, size: 4, sizeAttenuation: false, transparent: true, opacity: 0.9, depthWrite: false }),
+      ));
 
-      const labelOff = gap * 1.4 + textHeight * (axis === 0 ? 0.7 : 1.4);
+      const labelOff = gap + textHeight * (axis === 0 ? 1.1 : 1.6);
       const put = (text: string, t: number, h = textHeight) => {
         const label = makeLabel(text, p.label, h);
         label.position.copy(at(t, labelOff));

@@ -40,17 +40,6 @@ export function mirrorMesh(data: MeshData, axis: 0 | 1 | 2): MeshData {
   return bakeMesh({ mesh: data, matrix: m });
 }
 
-/** Unit normal of the plane through three points, or null when they lie in a line. */
-export function planeNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
-  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-  const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-  const n: Vec3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-  const len = Math.hypot(...n);
-  // Tolerance relative to the edge lengths: (nearly) collinear points have no plane.
-  if (len < 1e-6 * Math.max(1, Math.hypot(...u) * Math.hypot(...v))) return null;
-  return [n[0] / len, n[1] / len, n[2] / len];
-}
-
 /**
  * Normal of the plane that mirrors across the line a-b: the plane containing
  * the line and the Z (up) direction. When the line is (nearly) vertical, that

@@ -2,7 +2,7 @@ import Module, { type ManifoldToplevel } from 'manifold-3d';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { analyze } from '../src/geometry/meshCheck';
 import { manifoldToMeshData, meshDataToManifold } from '../src/geometry/meshData';
-import { bounds, lineMirrorNormal, planeNormal, recenter, reflectMesh, reflectPoint, type Vec3 } from '../src/geometry/meshOps';
+import { bounds, lineMirrorNormal, recenter, reflectMesh, reflectPoint, type Vec3 } from '../src/geometry/meshOps';
 
 let wasm: ManifoldToplevel;
 beforeAll(async () => {
@@ -19,7 +19,7 @@ describe('mirroring across a plane', () => {
     const mesh = manifoldToMeshData(solid);
     const volume = solid.volume();
 
-    const n = planeNormal([0, 0, 0], [1, 0, 1], [0, 1, 0]) as Vec3; // slanted plane through the origin
+    const n = lineMirrorNormal([0, 0, 0], [1, 0, 1], [0, -50, 20]) as Vec3; // slanted plane through the origin
     expect(n).not.toBeNull();
     const reflected = reflectMesh(mesh, n);
     const m = meshDataToManifold(wasm, reflected);
@@ -44,8 +44,8 @@ describe('mirroring across a plane', () => {
     const cube = wasm.Manifold.cube([2, 2, 2], true);
     const mesh = manifoldToMeshData(cube);
     cube.delete();
-    // Plane x = 10 (three points on it): a cube centred at x = 4 ends up centred at x = 16.
-    const n = planeNormal([10, 0, 0], [10, 1, 0], [10, 0, 1]) as Vec3;
+    // Plane x = 10 (a line along Y on it): a cube centred at x = 4 ends up centred at x = 16.
+    const n = lineMirrorNormal([10, 0, 0], [10, 1, 0], [-50, 0, 20]) as Vec3;
     const centre = reflectPoint([4, 3, 5], [10, 0, 0], n);
     expect(centre[0]).toBeCloseTo(16, 6);
     expect(centre[1]).toBeCloseTo(3, 6);
@@ -56,8 +56,8 @@ describe('mirroring across a plane', () => {
     expect(b.max[0] - b.min[0]).toBeCloseTo(2, 6);
   });
 
-  it('rejects collinear points and builds line planes', () => {
-    expect(planeNormal([0, 0, 0], [1, 1, 1], [2, 2, 2])).toBeNull();
+  it('builds line planes', () => {
+    expect(lineMirrorNormal([1, 1, 1], [1, 1, 1], [0, -50, 20])).toBeNull();
     // A line along X: the plane containing it and the vertical has a normal along Y.
     const n = lineMirrorNormal([0, 0, 0], [5, 0, 0], [0, -50, 20]) as Vec3;
     expect(Math.abs(n[1])).toBeCloseTo(1, 6);

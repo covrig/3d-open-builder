@@ -104,9 +104,12 @@ that object, and R repeats it.
 
 ## Mirror
 
-A toolbar button that opens a bar with the axis (X, Y or Z; X to start with)
-and an orange preview of the flipped selection. Apply is one undo step; Cancel
-changes nothing. R repeats it.
+A toolbar button that opens a bar with the mirror mode: Axis (X, Y or Z; X to
+start with) or Line (click two points; the mirror is the vertical plane through
+them), and an orange preview of the flipped selection. "Keep the original"
+(off to start with) leaves the selection as it is and adds the mirrored copies
+instead, selected, and copies of a group form a group of their own. Apply is
+one undo step; Cancel changes nothing. R repeats it.
 
 ## Tools that need two objects
 
