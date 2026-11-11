@@ -5,7 +5,7 @@ import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Ground, type GroundColors } from './ground';
-import { GRID_NUMBER_HEIGHT, makeLabel } from './labels';
+import { GRID_NUMBER_HEIGHT, labelScale, labelWidth, makeLabel, ORIGIN_HEIGHT } from './labels';
 import { Reflection } from './reflection';
 import { MM_PER_UNIT, settings, settingsEvents, type Unit } from '../settings';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
@@ -38,8 +38,6 @@ const GRID_STEPS: Record<Unit, { minor: number; major: number }> = {
   cm: { minor: 10, major: 50 },
   in: { minor: 6.35, major: 25.4 },
 };
-/** Height (mm) of the "0" at the origin, and of the numbers along the axis lines: smaller, and not growing with the step. */
-const ORIGIN_HEIGHT = 5;
 /** Least distance (px) between two numbers along an axis line */
 const GRID_NUMBER_GAP = 60;
 
@@ -108,9 +106,15 @@ export class Viewport extends EventTarget {
   private readonly shadowFocus = new THREE.Sphere(new THREE.Vector3(), 100);
   private frameRequested = false;
   private originLabel?: THREE.Mesh;
+  /**
+   * How much bigger than in the home view the labels on the plate are drawn
+   * (see labelScale): they keep their size on screen at any zoom. A
+   * 'labelscale' event tells the rulers when it changes.
+   */
+  labelFactor = 1;
   /** Numbers along the plate's X and Y axis lines (Plate popover: "Grid values"), rebuilt when the step changes */
   private gridValues = false;
-  private gridLabels: { group: THREE.Group; step: number; unit: Unit; dark: boolean; cx: number; cy: number; radius: number } | null = null;
+  private gridLabels: { group: THREE.Group; step: number; unit: Unit; dark: boolean; cx: number; cy: number; radius: number; scale: number } | null = null;
   /** Mirror image of the objects in the plate (Settings; off by default) */
   readonly reflection: Reflection;
   /** The plate fill's see-through value from Settings (null: the colour theme's own) */
@@ -316,6 +320,12 @@ export class Viewport extends EventTarget {
     const view = this.camera.position.clone().sub(t);
     const distance = view.length();
     this.ground.follow(t, distance);
+    const scale = labelScale(distance);
+    if (scale !== this.labelFactor) {
+      this.labelFactor = scale;
+      this.placeOriginLabel();
+      this.dispatchEvent(new Event('labelscale'));
+    }
     this.updateGridValues(t, distance);
     // Near and far planes follow the zoom. A fixed 1 mm near plane wastes the
     // depth precision when zoomed far out, and the grid starts to show
@@ -422,19 +432,21 @@ export class Viewport extends EventTarget {
     this.palette = dark ? DARK : LIGHT;
     this.scene.background = new THREE.Color(this.palette.background);
     this.ground.setColors({ ...this.palette, fillOpacity: this.plateOpacity ?? this.palette.fillOpacity });
-    // "0" where the red X and green Y axis lines cross: the origin.
-    if (this.originLabel) {
-      this.ground.group.remove(this.originLabel);
-      this.originLabel.geometry.dispose();
-      (this.originLabel.material as THREE.Material).dispose();
-    }
-    this.originLabel = makeLabel('0', this.palette.label, ORIGIN_HEIGHT);
-    this.originLabel.position.set(-3.5, -4, 0.05);
-    this.ground.group.add(this.originLabel);
+    this.placeOriginLabel();
     this.outline.visibleEdgeColor.setHex(this.palette.outline);
     this.outline.hiddenEdgeColor.setHex(this.palette.outline);
     this.dispatchEvent(new Event('theme'));
     this.invalidate();
+  }
+
+  /** "0" where the red X and green Y axis lines cross: the origin, in the theme's colour and sized for the zoom. */
+  private placeOriginLabel(): void {
+    // Its geometry and material are shared with other labels: removed, never disposed.
+    if (this.originLabel) this.ground.group.remove(this.originLabel);
+    const s = this.labelFactor;
+    this.originLabel = makeLabel('0', this.palette.label, ORIGIN_HEIGHT * s);
+    this.originLabel.position.set(-3.5 * s, -4 * s, 0.05);
+    this.ground.group.add(this.originLabel);
   }
 
   /** The grid lines follow the unit setting. */
@@ -461,11 +473,8 @@ export class Viewport extends EventTarget {
     if (!old) return;
     this.gridLabels = null;
     this.ground.group.remove(old.group);
-    for (const child of old.group.children) {
-      const m = child as THREE.Mesh;
-      m.geometry.dispose();
-      (m.material as THREE.Material).dispose(); // the text texture is shared and stays cached
-    }
+    // Each number has its own material (it fades); the geometry and the text texture are shared and stay.
+    for (const child of old.group.children) ((child as THREE.Mesh).material as THREE.Material).dispose();
   }
 
   /**
@@ -489,7 +498,7 @@ export class Viewport extends EventTarget {
     const fits = (step: number) => {
       const t = text(step);
       const decimals = t.includes('.') ? t.length - t.indexOf('.') : 0;
-      const width = GRID_NUMBER_HEIGHT * ((digits + decimals + 1) * 0.5 + 0.3);
+      const width = GRID_NUMBER_HEIGHT * this.labelFactor * ((digits + decimals + 1) * 0.5 + 0.3);
       return step * pxPerMm >= Math.max(GRID_NUMBER_GAP, width * pxPerMm * 1.3);
     };
     let step = minor;
@@ -500,33 +509,30 @@ export class Viewport extends EventTarget {
       }
     }
     const cur = this.gridLabels;
-    if (cur && cur.step === step && cur.unit === unit && cur.dark === this.palette.dark
+    if (cur && cur.step === step && cur.unit === unit && cur.dark === this.palette.dark && cur.scale === this.labelFactor
       && Math.hypot(target.x - cur.cx, target.y - cur.cy) < cur.radius * 0.25
       && radius < cur.radius * 1.3 && radius > cur.radius * 0.6) return;
     this.clearGridValues();
     const group = new THREE.Group();
-    const height = GRID_NUMBER_HEIGHT;
+    const height = GRID_NUMBER_HEIGHT * this.labelFactor;
     const fadeAt = Math.max(400, distance * 3);
     const add = (index: number, x: number, y: number, alongX: boolean) => {
       if (index === 0) return; // the "0" label is already there
-      const label = makeLabel(text(index * step), this.palette.label, height);
-      const w = (label.geometry as THREE.PlaneGeometry).parameters.width;
+      const label = makeLabel(text(index * step), this.palette.label, height, { own: true });
+      const w = labelWidth(label);
       // Under the X axis line, left of the Y axis line; clear of the "0" at the origin.
       label.position.set(alongX ? x : -w / 2 - height * 0.2, alongX ? -height * 0.8 : y, 0.05);
       const d = Math.hypot(x - target.x, y - target.y) / fadeAt;
       const fade = 1 - THREE.MathUtils.smoothstep(d, 0.35, 1);
       (label.material as THREE.MeshBasicMaterial).opacity = fade;
       if (fade > 0.02) group.add(label);
-      else {
-        label.geometry.dispose();
-        (label.material as THREE.Material).dispose();
-      }
+      else (label.material as THREE.Material).dispose(); // its own; the geometry is shared
     };
     const from = (c: number) => Math.ceil((c - radius) / step);
     for (let k = from(target.x); k * step <= target.x + radius; k++) add(k, k * step, 0, true);
     for (let k = from(target.y); k * step <= target.y + radius; k++) add(k, 0, k * step, false);
     this.ground.group.add(group);
-    this.gridLabels = { group, step, unit, dark: this.palette.dark, cx: target.x, cy: target.y, radius };
+    this.gridLabels = { group, step, unit, dark: this.palette.dark, cx: target.x, cy: target.y, radius, scale: this.labelFactor };
   }
 
   setGridVisible(visible: boolean): void {

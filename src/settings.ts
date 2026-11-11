@@ -1,9 +1,9 @@
 /** User preferences and UI choices, remembered in this browser (localStorage). */
 
 export type Unit = 'mm' | 'cm' | 'in';
-/** What an imported STL or OBJ file's numbers mean */
-export type ImportUnit = 'mm' | 'cm' | 'm' | 'in';
-export const IMPORT_UNITS: Record<ImportUnit, number> = { mm: 1, cm: 10, m: 1000, in: 25.4 };
+/** What an imported STL or OBJ file's numbers mean: one of the page's own units (the page switches to it) */
+export type ImportUnit = Unit;
+export const IMPORT_UNITS: Record<ImportUnit, number> = { mm: 1, cm: 10, in: 25.4 };
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
 export interface UiState {

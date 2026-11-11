@@ -52,6 +52,8 @@ export class Ruler {
   private box: THREE.Box3 | null = null;
   private palette: Palette | null = null;
   private facing: Facing | null = null;
+  /** How much bigger than in the home view the text and spacing are (Viewport.labelFactor): the same size on screen at any zoom */
+  private scale = 1;
 
   constructor() {
     this.lines = [0, 1].map(() => new THREE.LineSegments(new THREE.BufferGeometry(), this.lineMaterial));
@@ -80,8 +82,10 @@ export class Ruler {
     if (!sameFacing(this.facing, this.facingOf(this.box, camera))) this.update(this.box, this.palette, camera);
   }
 
-  update(box: THREE.Box3 | null, p: Palette, camera: THREE.Camera): void {
+  update(box: THREE.Box3 | null, p: Palette, camera: THREE.Camera, scale = this.scale): void {
     this.palette = p;
+    this.scale = scale;
+    const s = scale;
     this.labels.clear();
     this.lineMaterial.color.set(p.label);
     this.pointsMaterial.color.set(p.label);
@@ -89,7 +93,7 @@ export class Ruler {
     if (!box || box.isEmpty()) {
       this.box = null;
       this.facing = null;
-      this.placeAxes(new THREE.Vector3(0, 0, 0.05), 15);
+      this.placeAxes(new THREE.Vector3(0, 0, 0.05), 15 * s);
       return;
     }
     this.box = box.clone();
@@ -97,7 +101,7 @@ export class Ruler {
 
     const size = box.getSize(new THREE.Vector3());
     // Same size as the numbers along the plate's axis lines.
-    const textHeight = GRID_NUMBER_HEIGHT;
+    const textHeight = GRID_NUMBER_HEIGHT * s;
     const gap = textHeight * 2;
     const z = 0.06;
     // Which way is outwards from the footprint on each ruler's side.
@@ -145,7 +149,7 @@ export class Ruler {
     side(0);
     side(1);
 
-    const axisLength = THREE.MathUtils.clamp(Math.max(size.x, size.y) * 0.25, 6, 15);
+    const axisLength = THREE.MathUtils.clamp(Math.max(size.x, size.y) * 0.25, 6 * s, 15 * s);
     this.placeAxes(new THREE.Vector3(edgeX + outX * gap * 2.6, edgeY + outY * gap * 2.6, z), axisLength);
   }
 

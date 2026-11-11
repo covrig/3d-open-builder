@@ -16,7 +16,7 @@ import { OBJECT_COLORS, SceneDocument, setEdgeColor, type ObjectState, type Scen
 import { Gizmo } from './scene/gizmo';
 import { Ruler } from './scene/ruler';
 import { Viewport } from './scene/viewport';
-import { IMPORT_UNITS, MM_PER_UNIT, settings, settingsEvents, toUnit, updateUi, watchTheme, type ImportUnit } from './settings';
+import { IMPORT_UNITS, MM_PER_UNIT, settings, settingsEvents, toUnit, updateSettings, updateUi, watchTheme, type ImportUnit } from './settings';
 import { loadClipboard, saveClipboard } from './ui/clipboardStore';
 import { ColorPopover } from './ui/colorPopover';
 import { CombineTool } from './ui/combineTool';
@@ -120,11 +120,13 @@ $('#loading').remove();
 /** Rulers along the selection's footprint, or everything's when nothing is selected. */
 function updateRuler(): void {
   const objs = doc.selection.length ? doc.selection : doc.objects.filter((o) => !o.hidden);
-  ruler.update(objs.length ? doc.worldBox(objs) : null, viewport.palette, viewport.camera);
+  ruler.update(objs.length ? doc.worldBox(objs) : null, viewport.palette, viewport.camera, viewport.labelFactor);
   viewport.invalidate();
 }
 // The rulers sit on the sides facing the camera: move them when it goes round to the other side.
 viewport.beforeFrame(() => ruler.follow(viewport.camera));
+// Their text keeps its size on screen: redo them when the zoom changes the label size.
+viewport.addEventListener('labelscale', updateRuler);
 
 // --- Messages -------------------------------------------------------------
 
@@ -640,6 +642,8 @@ async function openFiles(all: File[]): Promise<void> {
   const factor = IMPORT_UNITS[choice.unit];
   const added: SceneObject[] = [];
   let checkpointed = false;
+  /** An STL or OBJ file was opened in the chosen unit */
+  let unitFromFile = false;
   for (const file of files) {
     let parts;
     try {
@@ -679,7 +683,11 @@ async function openFiles(all: File[]): Promise<void> {
     }
     sceneName = file.name.replace(/\.[^.]+$/, '');
     lastExportName = null;
+    if (!is3mf(file)) unitFromFile = true;
   }
+  // The unit the file was made in is most likely the one to work in: the page
+  // switches to it (rulers, grid, sizes and tool bars). 3MF files store their size, so they don't.
+  if (unitFromFile && settings.unit !== choice.unit) updateSettings({ unit: choice.unit });
   if (added.length) {
     doc.setSelection(added);
     viewport.fit(doc.worldBox(added));

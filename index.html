@@ -484,13 +484,12 @@
     <dialog id="import-dialog">
       <form method="dialog">
         <header><h2>Import units</h2></header>
-        <p class="muted">STL and OBJ files don't store a unit. What is one unit in the file you are opening?</p>
+        <p class="muted">STL and OBJ files don't store a unit. What is one unit in the file you are opening? The page then works in that unit too.</p>
         <fieldset>
           <legend>The file's unit</legend>
           <div class="radio-grid">
             <label><input type="radio" name="import-unit" value="mm" /> mm</label>
             <label><input type="radio" name="import-unit" value="cm" /> cm</label>
-            <label><input type="radio" name="import-unit" value="m" /> m</label>
             <label><input type="radio" name="import-unit" value="in" /> inch</label>
           </div>
           <p class="muted" id="import-unit-note" hidden>3MF files store their size.</p>
