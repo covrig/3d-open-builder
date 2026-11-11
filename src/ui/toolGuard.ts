@@ -46,10 +46,19 @@ export const SINGLE_ONLY = [
 export const SINGLE_ONLY_MESSAGE = 'Works on one object at a time. For a group, Merge it into one object first (or Ungroup and select one part).';
 let manySelected = false;
 
+/** Tools that need two or more objects in the drawing: dimmed while only one is shown. */
+export const NEEDS_TWO = [
+  '[data-boolean]', '[data-action="group"]', '[data-menu="align-menu"]', '[data-menu="distribute-menu"]',
+  '#align-menu button', '#distribute-menu button',
+].join(', ');
+export const NEEDS_TWO_MESSAGE = 'Needs at least two objects in the drawing';
+let singleObject = false;
+
 /** Why this control can't be used right now, or null if it can. */
 export function blockReason(el: Element): string | null {
   if (lockedNow(el)) return LOCKED_MESSAGE;
   if (manySelected && el.closest(SINGLE_ONLY)) return SINGLE_ONLY_MESSAGE;
+  if (singleObject && el.closest(NEEDS_TWO)) return NEEDS_TWO_MESSAGE;
   return null;
 }
 
@@ -58,6 +67,13 @@ export function setupToolGuard(toast: (msg: string) => void, doc: SceneDocument)
     manySelected = doc.selection.length > 1;
     document.body.classList.toggle('many-selected', manySelected);
   });
+  // Exactly one visible object in the drawing: the two-object tools have nothing to work on.
+  const countObjects = () => {
+    singleObject = doc.objects.filter((o) => !o.hidden).length === 1;
+    document.body.classList.toggle('single-object', singleObject);
+  };
+  for (const type of ['change', 'selection', 'history'] as const) doc.addEventListener(type, countObjects);
+  countObjects();
   // The control last pressed: when it opens a tool, it is that tool's button.
   let pressed: HTMLElement | null = null;
   let current: HTMLElement | null = null;

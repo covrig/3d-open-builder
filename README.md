@@ -19,12 +19,12 @@ Nothing to install, no account, and your files never leave your computer.
 
 ## What you can do
 
-- **Shapes and threads:** basic shapes with their measurements set before they are added, plus bolts, nuts and threads (also for cutting threaded holes) in metric and imperial sizes.
-- **Combine and edit:** merge, subtract and intersect (pieces that end up apart become separate objects), split, mirror, pattern, extrude down to the plate, shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces). Groups work with move, mirror, split, extrude and pattern.
+- **Shapes and threads:** basic shapes with their measurements set before they are added (they appear at the origin, on the plate), plus bolts, nuts and threads (also for cutting threaded holes) in metric and imperial sizes.
+- **Combine and edit:** merge, subtract and intersect (pieces that end up apart become separate objects), split, mirror, rotate 90° about X, Y or Z, pattern, extrude down to the plate (the plane can be tilted), shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces). Groups work with move, mirror, split, extrude and pattern.
 - **Place precisely:** move, rotate and size handles with snapping, put on the plate, lay flat, align, distribute and pack, and a reference picture to trace over.
 - **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges, edge middles and the lines where objects overlap; a section view that cuts the view open, with measuring on the cut.
 - **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour (also through X-ray), best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.
-- **See it your way:** X-ray, wireframe, edges (with faint lines where objects overlap) and shadows, a view cube, hide objects you don't need right now, a see-through plate with an optional reflection, and light or dark colours.
+- **See it your way:** X-ray, wireframe, edges (with faint lines where objects overlap) and shadows, rulers, a view cube, hide objects you don't need right now, and light or dark colours. Rulers, Reflection and Plate are buttons in the View section: Reflection and Plate open sliders for the reflection's strength and depth and the plate's see-through.
 - **Any device:** mouse, trackpad (two fingers pan, pinch zooms) or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a key to repeat the last tool.
 - **Safe to use:** 100 undo steps, autosave and Save; every tool ends with Apply or Cancel, and nothing else can change the model while one is open.
 

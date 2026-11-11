@@ -69,6 +69,8 @@ export class FeatureBar {
   private spec: FeatureSpec<unknown> | null = null;
   private values: Values = {};
   private result: unknown = null;
+  /** The values the latest compute was started with (as text), to tell whether Enter finds newer ones */
+  private computedValues = '';
   private sequence = 0;
   private timer: number | undefined;
   /** A compute for the latest values is running */
@@ -186,10 +188,7 @@ export class FeatureBar {
       input = i;
     }
     input.addEventListener(f.type === 'text' ? 'input' : 'change', () => {
-      this.values[f.key] =
-        f.type === 'number' ? Number((input as HTMLInputElement).value)
-          : f.type === 'checkbox' ? (input as HTMLInputElement).checked
-            : input.value;
+      this.values[f.key] = FeatureBar.read(f, input);
       this.updateVisibility();
       this.refresh();
     });
@@ -203,6 +202,23 @@ export class FeatureBar {
       label.append(u);
     }
     return label;
+  }
+
+  /** A field's value as its input shows it right now. */
+  private static read(f: Field, input: HTMLInputElement | HTMLSelectElement): number | string | boolean {
+    return f.type === 'number' ? Number((input as HTMLInputElement).value)
+      : f.type === 'checkbox' ? (input as HTMLInputElement).checked
+        : input.value;
+  }
+
+  /** Take what the inputs show into the values, as their change handlers would (Enter can come before 'change' fires). */
+  private readInputs(): void {
+    for (const f of this.spec?.fields ?? []) {
+      if (f.type === 'button') continue;
+      const input = this.el.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${f.key}"] input, [data-key="${f.key}"] select`);
+      if (input) this.values[f.key] = FeatureBar.read(f, input);
+    }
+    this.updateVisibility();
   }
 
   /** Change a field from outside (e.g. dragging a handle in the view) and recompute the preview soon (delay null: don't). */
@@ -251,6 +267,13 @@ export class FeatureBar {
   /** Apply (like the Apply button) as soon as the preview for the current values is ready. For the Enter key. */
   applyWhenReady(): void {
     if (!this.spec || this.applyButton.disabled) return;
+    // Typed values count even if no 'change' event came: compute again when they differ from the last result's.
+    this.readInputs();
+    if (JSON.stringify(this.values) !== this.computedValues) {
+      this.applyAfter = true;
+      this.refresh(0);
+      return;
+    }
     if (this.timer === undefined && !this.computing) return this.apply();
     this.applyAfter = true;
   }
@@ -260,6 +283,7 @@ export class FeatureBar {
     if (!spec) return;
     const seq = ++this.sequence;
     this.computing = true;
+    this.computedValues = JSON.stringify(this.values);
     // "Working…" shows in its own box under the bar (main.ts), so this row never jumps.
     this.info.textContent = '';
     try {
@@ -314,6 +338,7 @@ export class FeatureBar {
     this.computing = false;
     this.applyAfter = false;
     this.sequence++;
+    this.computedValues = '';
     this.spec = null;
     this.result = null;
     this.watched = [];

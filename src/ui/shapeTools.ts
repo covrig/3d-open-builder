@@ -89,7 +89,7 @@ const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
 
 /**
  * The shapes of the Add object menu. Each opens a bar for its measurements
- * with a live preview beside the existing objects; Apply adds it.
+ * with a live preview at the origin; Apply adds it.
  */
 export class ShapeTools {
   constructor(
@@ -104,12 +104,8 @@ export class ShapeTools {
 
   private open(kind: PrimitiveKind): void {
     const { hint, fields } = SHAPES[kind];
-    // Put the new shape beside whatever is already there, resting on the plate.
-    const box = this.doc.objects.length ? this.doc.worldBox(this.doc.objects) : null;
-    const place = (mesh: MeshData): [number, number, number] => {
-      const b = bounds(mesh);
-      return [box ? box.max.x + 10 - b.min[0] : 0, 0, -b.min[2]];
-    };
+    // The new shape goes at the origin, resting on the plate (even if it overlaps other objects).
+    const place = (mesh: MeshData): [number, number, number] => [0, 0, -bounds(mesh).min[2]];
     this.bar.open<MeshData>({
       focusFirst: true,
       title: `Add ${PRIMITIVE_NAMES[kind].toLowerCase()}`,

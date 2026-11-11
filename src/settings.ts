@@ -7,7 +7,7 @@ export const IMPORT_UNITS: Record<ImportUnit, number> = { mm: 1, cm: 10, m: 1000
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
 export interface UiState {
-  view: { xray: boolean; wireframe: boolean; edges: boolean; grid: boolean; shadows: boolean };
+  view: { xray: boolean; wireframe: boolean; edges: boolean; grid: boolean; shadows: boolean; rulers: boolean };
   measure: { snap: boolean; dotted: boolean; deltas: boolean };
   keepProportions: boolean;
   shortcuts: boolean;
@@ -60,7 +60,7 @@ const DEFAULTS: Settings = {
   collision: false,
   shortcuts: true,
   ui: {
-    view: { xray: false, wireframe: false, edges: true, grid: true, shadows: true },
+    view: { xray: false, wireframe: false, edges: true, grid: true, shadows: true, rulers: true },
     measure: { snap: true, dotted: true, deltas: false },
     keepProportions: true,
     shortcuts: true,

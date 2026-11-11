@@ -20,7 +20,7 @@ the other), and measuring works beside them.
 - An exclusive tool ends only with **Apply**, **Cancel** or **Esc**.
 - **Esc** always works, wherever the keyboard focus is (a tool's own fields
   included) and whether single-key shortcuts are on or not. Order: an open
-  dropdown menu closes first, then the open tool, then a view tool; with
+  dropdown menu (or the View popover) closes first, then the open tool, then a view tool; with
   nothing open, Esc clears the selection. Dialogs close themselves.
 - Clicks in the view that are not part of the tool's own work (picking a face,
   an edge, the objects for Intersect) change nothing while an exclusive tool is
@@ -31,13 +31,21 @@ the other), and measuring works beside them.
   a tool it has no Cancel button of its own.
 - With nothing selected and a single object in the drawing, the tools work on
   that object instead of asking to select it first (not Delete or Cut).
+- New shapes, bolts, nuts and threads appear at the origin (x = 0, y = 0),
+  resting on the plate, even where that overlaps other objects.
+- **Enter** reads every field of the open bar first, so the values typed so
+  far count even if the field was never left; the preview is worked out again
+  if they changed, and Apply follows.
+- The Reflection and Plate tiles of the View section open a small popover with
+  sliders when switched on (and from the ▾ in the tile while on). It closes on a
+  click elsewhere or Esc; that Esc does nothing else (like an open menu).
 
 ## What works while an exclusive tool is open
 
 | Action | Allowed | Why |
 |---|---|---|
 | The tool's own bar, fields, handles and view clicks | Yes | It is the tool |
-| Camera (turn, pan, zoom), view cube, Home, Fit, View toggles (X-ray, wireframe, edges, shadows) | Yes | Only the view changes |
+| Camera (turn, pan, zoom), view cube, Home, Fit, View toggles (X-ray, wireframe, edges, shadows, rulers, reflection, plate) | Yes | Only the view changes |
 | Side panel open/close, Settings, Export, About, Privacy, keyboard shortcuts panel | Yes | Nothing in the drawing changes |
 | Copy (button, Ctrl+C) | Yes | Reads only |
 | Measuring tools, Clear measurements | No | Opening another tool would end this one |
@@ -80,6 +88,22 @@ Selecting a part of a group selects the whole group.
 | Colour | Yes | All parts, when the group is selected (a part's colour box in the list recolours just that part otherwise) |
 | Bevel, round, brace, shell, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
 | Best print orientation | No | Same: the orientation is worked out for one object |
+
+## Rotate 90°
+
+More menu: Rotate 90° X, Y and Z. They turn the selection a quarter turn
+clockwise as seen from the positive end of the axis, as one piece about the
+selection's centre (groups and several objects too), and keep the lowest point
+at the same height, so things on the plate stay on it. One undo step. Like the
+other toolbar items they are locked while a tool is open, and with nothing
+selected and a single object in the drawing they work on that object.
+
+## Tools that need two objects
+
+With exactly one visible object in the drawing, Merge, Subtract, Intersect,
+Group, Align and Distribute are dimmed, and their tooltip and the message say
+"Needs at least two objects in the drawing". Keyboard shortcuts for them go
+through the same check.
 
 ## Bevel and round
 

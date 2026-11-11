@@ -127,12 +127,10 @@ export class PartsTools {
   // --- Bolts, nuts, threads ------------------------------------------------------
 
   private part(kind: Exclude<ThreadKind, 'tap'>): void {
-    // Place the new part beside whatever is already there.
-    const box = this.doc.objects.length ? this.doc.worldBox(this.doc.objects) : null;
-    const x = box ? box.max.x + 20 : 0;
+    // The new part goes at the origin, resting on the plate (even if it overlaps other objects).
     const place = (p: Piece): [number, number, number] => {
       const b = new THREE.Box3().setFromBufferAttribute(new THREE.BufferAttribute(p.mesh.positions, 3));
-      return [x, 0, -b.min.z]; // resting on the plate
+      return [0, 0, -b.min.z];
     };
     /** A thread can be made as a cutter for a hole ("For a hole"): it is then built as kind 'tap', with clearance. */
     const forHole = (v: Values) => kind === 'rod' && v.hole === true;

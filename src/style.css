@@ -1054,6 +1054,31 @@ body.tool-locked .toolbar button.tool-current {
 }
 #overhang-bar input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
 
+/* Tools that need two or more objects while the drawing has only one (NEEDS_TWO in src/ui/toolGuard.ts). */
+body.single-object :is([data-boolean], [data-action="group"], [data-menu="align-menu"], [data-menu="distribute-menu"], #align-menu button, #distribute-menu button) {
+  opacity: 0.35; cursor: not-allowed;
+}
+
+/* Reflection and Plate tiles of the View section: the small ▾ (only while on) reopens the sliders. */
+.button-grid.tiles > button[data-pop] { position: relative; }
+.tile-more {
+  display: none; position: absolute; top: 0; right: 0; width: 30px; height: 26px; padding: 3px 3px 0 0;
+  align-items: flex-start; justify-content: flex-end; font-style: normal; border-radius: 0 6px 0 6px; color: var(--muted);
+}
+button.active > .tile-more { display: flex; }
+.tile-more:hover { background: var(--hover); color: var(--text); }
+.tile-more svg { width: 12px !important; height: 12px !important; }
+@media (pointer: coarse) { .tile-more { width: 40px; height: 40px; } }
+.view-popover {
+  position: fixed; z-index: 55; width: min(260px, calc(100vw - 12px)); padding: 10px; display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow);
+}
+.view-popover[hidden] { display: none; }
+.view-popover .pop-row { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.view-popover .pop-row > span { flex: none; min-width: 64px; }
+.view-popover .pop-row input[type='range'] { flex: 1; min-width: 0; height: 40px; accent-color: var(--accent); }
+.view-popover .pop-row output { flex: none; min-width: 44px; text-align: right; color: var(--muted); font-size: 12.5px; }
+
 /* Single-object tools while a group or several objects are selected (SINGLE_ONLY in src/ui/toolGuard.ts). */
 body.many-selected :is([data-modify="chamfer"], [data-modify="fillet"], [data-modify="shell"], [data-modify="gusset"], [data-modify="text"], [data-action="orient"]) {
   opacity: 0.35; cursor: not-allowed;

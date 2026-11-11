@@ -137,6 +137,61 @@ async function runChecks(b) {
     await applyFeature(page);
     const n = await page.evaluate(() => window.app.doc.objects.length);
     if (n !== 1) throw new Error(`expected 1 object, got ${n}`);
+    // A second shape goes to the origin too, on the plate, even though it overlaps the first.
+    await addShape(page, 'cube');
+    const second = await page.evaluate(() => {
+      const { doc } = window.app;
+      const o = doc.objects.at(-1);
+      const r = { n: doc.objects.length, x: o.mesh.position.x, y: o.mesh.position.y, minZ: doc.worldBox([o]).min.z };
+      doc.remove([o]);
+      return r;
+    });
+    if (second.n !== 2) throw new Error(`expected 2 objects, got ${second.n}`);
+    if (Math.abs(second.x) > 1e-6 || Math.abs(second.y) > 1e-6 || Math.abs(second.minZ) > 1e-6) {
+      throw new Error(`second cube at x ${second.x}, y ${second.y}, bottom ${second.minZ}`);
+    }
+    return 'new shapes at the origin, on the plate';
+  });
+
+  await check('Enter registers typed values in every shape bar', async () => {
+    const kinds = await page.$$eval('[data-insert]', (els) => els.map((e) => e.dataset.insert));
+    /** Open the bar of a shape; optionally type a first value; press Enter; return the new object's X size. */
+    const run = async (kind, typed) => {
+      await page.evaluate(() => {
+        window.app.doc.clear();
+        window.app.doc.setSelection([]);
+      });
+      await page.evaluate((k) => document.querySelector(`[data-insert="${k}"]`).click(), kind);
+      await page.waitForSelector('#feature-bar:not([hidden])');
+      const field = '#feature-bar .feature-fields input[type="number"]';
+      if (typed !== null) {
+        await page.focus(field);
+        await page.keyboard.down('Control');
+        await page.keyboard.press('a');
+        await page.keyboard.up('Control');
+        await page.keyboard.type(String(typed));
+      }
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => window.app.doc.objects.length === 1, { timeout: 15000 });
+      return page.evaluate(() => {
+        const { doc } = window.app;
+        const b = doc.worldBox(doc.objects);
+        const m = doc.objects[0].mesh.position;
+        return { x: b.max.x - b.min.x, px: m.x, py: m.y, minZ: b.min.z };
+      });
+    };
+    const bad = [];
+    for (const kind of kinds) {
+      const before = await run(kind, null);
+      const after = await run(kind, 50);
+      if (Math.abs(after.x - before.x) < 1) bad.push(`${kind}: X size ${before.x.toFixed(1)} -> ${after.x.toFixed(1)}`);
+      if (Math.abs(after.px) > 1e-6 || Math.abs(after.py) > 1e-6 || Math.abs(after.minZ) > 1e-6) bad.push(`${kind}: not at the origin on the plate`);
+    }
+    // Later checks go on with the one cube.
+    await page.evaluate(() => window.app.doc.clear());
+    await addShape(page, 'cube');
+    if (bad.length) throw new Error(bad.join('; '));
+    return `${kinds.length} shapes: the typed first value was used on Enter`;
   });
 
   await check('Object row hover buttons', async () => {
@@ -818,28 +873,45 @@ async function runChecks(b) {
       const on = item.getAttribute('aria-checked');
       const panel = !document.querySelector('#overhang-bar').hidden;
       const angleField = document.querySelector('#overhang-angle').value;
-      const refl = document.querySelector('input[name="reflection"]');
-      refl.checked = true;
-      refl.dispatchEvent(new Event('change'));
-      const plate = document.querySelector('input[name="plateOpacity"]');
+      // Reflection and Plate are View tiles: a click switches on and opens the sliders.
+      const refl = document.querySelector('[data-pop="reflection"]');
+      refl.click();
+      const pop = document.querySelector('#view-popover');
+      const reflSliders = pop.hidden ? 0 : pop.querySelectorAll('input[type="range"]').length;
+      // The plate is on already: its tile's arrow opens the see-through slider.
+      document.querySelector('[data-pop="plate"] .tile-more').click();
+      const plate = pop.querySelector('input[type="range"]');
       plate.value = '0.1';
       plate.dispatchEvent(new Event('input'));
+      const seeThrough = pop.querySelector('output').textContent;
       window.app.viewport.invalidate();
       await new Promise((res) => setTimeout(res, 300));
       const shown = window.app.viewport.reflection.group.visible;
+      // Esc closes the popover only: the open view tool and the selection stay.
+      const selected = window.app.doc.selection.length;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      const escClosedPopover = pop.hidden;
+      const escKept = !document.querySelector('#overhang-bar').hidden && window.app.doc.selection.length === selected;
       // The toolbar is locked while a view tool is open: close with the panel's own button.
       document.querySelector('#overhang-bar [data-overhang="close"]').click();
-      refl.checked = false;
-      refl.dispatchEvent(new Event('change'));
-      plate.value = '0.35';
-      plate.dispatchEvent(new Event('input'));
-      return { on, panel, angleField, shown, seeThrough: plate.parentElement.querySelector('output').textContent };
+      refl.click();
+      document.querySelector('[data-pop="plate"] .tile-more').click();
+      const plateAgain = pop.querySelector('input[type="range"]');
+      plateAgain.value = '0.35';
+      plateAgain.dispatchEvent(new Event('input'));
+      pop.hidden = true;
+      const settingsHasPlate = !!document.querySelector('#settings-dialog input[name="plateOpacity"], #settings-dialog input[name="reflection"]');
+      return { on, panel, angleField, shown, seeThrough, reflSliders, escClosedPopover, escKept, settingsHasPlate };
     });
     await page.screenshot({ path: `${SHOTS}/${b.name}-overhangs.png` });
     if (errors.length > before) throw new Error(errors.slice(before).join(' | '));
     if (r.on !== 'true') throw new Error('Show overhangs did not switch on');
     if (!r.panel || r.angleField !== '45') throw new Error(`overhang panel shown: ${r.panel}, angle field "${r.angleField}"`);
     if (!r.shown) throw new Error('reflection not shown');
+    if (r.reflSliders !== 2) throw new Error(`the Reflection popover had ${r.reflSliders} sliders`);
+    if (r.seeThrough !== '90%') throw new Error(`plate see-through shows "${r.seeThrough}"`);
+    if (!r.escClosedPopover || !r.escKept) throw new Error(`Esc: popover closed ${r.escClosedPopover}, tool and selection kept ${r.escKept}`);
+    if (r.settingsHasPlate) throw new Error('Settings still has plate or reflection inputs');
     return `overhangs on, reflection shown, plate see-through ${r.seeThrough}, no errors`;
   });
 

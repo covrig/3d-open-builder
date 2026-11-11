@@ -23,6 +23,7 @@ import { CombineTool } from './ui/combineTool';
 import { CrossSection } from './ui/crossSection';
 import { ExtrudeTool } from './ui/extrudeTool';
 import { setupLookSettings } from './ui/lookSettings';
+import { setupViewPopovers } from './ui/viewPopovers';
 import { OverhangTool } from './ui/overhangTool';
 import { setupViewCube } from './ui/viewCube';
 import { renderIcons } from './ui/icons';
@@ -99,7 +100,7 @@ setupMultiSelect();
 // With nothing selected and a single object in the drawing, the tools work on
 // that object instead of asking to select it first. (After the tool guard, so a
 // refused click changes nothing.) Delete and Cut are left out on purpose.
-const NEEDS_AN_OBJECT = '[data-modify], [data-action="split"], [data-action="extrude-down"], [data-mirror], [data-action="check"], '
+const NEEDS_AN_OBJECT = '[data-modify], [data-action="split"], [data-action="extrude-down"], [data-mirror], [data-rotate], [data-action="check"], '
   + '[data-action="orient"], [data-action="duplicate"], [data-action="drop"], [data-action="lay-flat"], [data-action="center"]';
 document.addEventListener('click', (e) => {
   if (doc.selection.length > 0 || !(e.target as Element).closest?.(NEEDS_AN_OBJECT)) return;
@@ -181,7 +182,8 @@ measure.overlaps = overlaps;
 onToolChange(() => overlaps.refresh());
 for (const b of $$('[data-view="edges"], [data-view="xray"]')) b.addEventListener('click', () => overlaps.refresh());
 setupViewCube(viewport);
-setupLookSettings(viewport);
+setupLookSettings();
+setupViewPopovers(viewport);
 const colors = new ColorPopover(doc, (picking) => {
   $('#viewport').classList.toggle('picking', picking);
   if (picking) showHint('eyedropper', 'Copy colour: click the object whose colour you want.');
@@ -284,6 +286,26 @@ for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
           m.scale.set(1, 1, 1);
         }
       }
+    }),
+  );
+}
+
+// Rotate 90°: a quarter turn clockwise seen from the positive end of the axis (so -90° by the
+// right-hand rule). The whole selection turns as one about its centre, and keeps its lowest
+// point where it was, so things resting on the plate stay on it.
+for (const btn of $$<HTMLButtonElement>('[data-rotate]')) {
+  btn.addEventListener('click', () =>
+    withSelection((objs) => {
+      const axis = new THREE.Vector3().setComponent(Number(btn.dataset.rotate), 1);
+      const turn = new THREE.Quaternion().setFromAxisAngle(axis, -Math.PI / 2);
+      const before = doc.worldBox(objs);
+      const centre = before.getCenter(new THREE.Vector3());
+      for (const o of objs) {
+        o.mesh.quaternion.premultiply(turn);
+        o.mesh.position.sub(centre).applyQuaternion(turn).add(centre);
+      }
+      const lift = before.min.z - doc.worldBox(objs).min.z;
+      for (const o of objs) o.mesh.position.z += lift;
     }),
   );
 }
@@ -412,7 +434,7 @@ on('[data-action="lay-flat"]', () =>
 
 // --- View -----------------------------------------------------------------
 
-setupViewToggles(doc, viewport);
+setupViewToggles(doc, viewport, ruler.group);
 function fitView(): void {
   viewport.fit(doc.worldBox(doc.selection.length ? doc.selection : doc.objects));
 }
@@ -704,7 +726,7 @@ updateHistory();
 // --- Repeat the last tool (R) ------------------------------------------------
 
 /** Buttons whose tool can be run again with R (e.g. a second brace): edit, combine, add and mirror tools. */
-const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-mirror], [data-action="split"], [data-action="extrude-down"]';
+const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-mirror], [data-rotate], [data-action="split"], [data-action="extrude-down"]';
 let lastTool: HTMLElement | null = null;
 document.addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>(REPEATABLE);
@@ -763,7 +785,7 @@ function nudgeSelection(e: KeyboardEvent): void {
 // else the selection clears. Dialogs close themselves.
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
-  if (document.querySelector('.menu:not([hidden]), .select-list')) return; // the menu or list closes itself
+  if (document.querySelector('.menu:not([hidden]), .select-list, .view-popover:not([hidden])')) return; // the menu, list or popover closes itself
   if (stopActiveTool() || crossSection.close() || overhangs.close()) {
     e.preventDefault();
     e.stopPropagation();

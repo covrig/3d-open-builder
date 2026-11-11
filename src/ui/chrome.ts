@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import libraries from '../libraries.json';
 import type { SceneDocument } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
@@ -47,8 +48,11 @@ export function setupShortcutsPanel(): void {
   }
 }
 
-/** View toggles (X-ray, wireframe, edges, ground, shadows), restored from the last visit. */
-export function setupViewToggles(doc: SceneDocument, viewport: Viewport): void {
+/**
+ * View toggles (X-ray, wireframe, edges, shadows, rulers), restored from the last visit.
+ * Reflection and Plate have their own tiles with settings: see viewPopovers.ts.
+ */
+export function setupViewToggles(doc: SceneDocument, viewport: Viewport, rulers: THREE.Object3D): void {
   const apply = (key: keyof typeof settings.ui.view, on: boolean) => {
     switch (key) {
       case 'wireframe': doc.setView({ wireframe: on }); break;
@@ -59,6 +63,7 @@ export function setupViewToggles(doc: SceneDocument, viewport: Viewport): void {
         document.body.classList.toggle('edges-on', on);
         break;
       case 'grid': viewport.setGridVisible(on); break;
+      case 'rulers': rulers.visible = on; break;
       case 'shadows': viewport.setShadows(on); break;
     }
     viewport.invalidate();
@@ -74,14 +79,6 @@ export function setupViewToggles(doc: SceneDocument, viewport: Viewport): void {
       apply(key, on);
     });
   }
-  // The build plate is switched in Settings.
-  const plate = document.querySelector<HTMLInputElement>('#settings-dialog input[name="plate"]')!;
-  plate.checked = settings.ui.view.grid;
-  apply('grid', settings.ui.view.grid);
-  plate.addEventListener('change', () => {
-    updateUi((ui) => (ui.view.grid = plate.checked));
-    apply('grid', plate.checked);
-  });
 }
 
 /** Same condition as the stylesheet's: the side panel is a drawer over the view. */
