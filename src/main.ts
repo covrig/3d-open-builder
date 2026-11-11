@@ -8,7 +8,7 @@ import { installErrorHandlers, watchGraphicsContext } from './app/errors';
 import { bakeMesh, meshDataToManifold, type MeshData } from './geometry/meshData';
 import { bounds, largestFlatFaceNormal, mirrorMesh, recenter } from './geometry/meshOps';
 import { countPieces } from './geometry/meshCheck';
-import { createPrimitive, PRIMITIVE_NAMES, type PrimitiveKind } from './geometry/primitives';
+import { createPrimitive, PRIMITIVE_NAMES } from './geometry/primitives';
 import { IMPORT_EXTENSIONS, importFile } from './io/importFile';
 import { exportStl } from './io/stl';
 import { export3mf } from './io/threemf';
@@ -16,7 +16,7 @@ import { OBJECT_COLORS, SceneDocument, setEdgeColor, type ObjectState, type Scen
 import { Gizmo } from './scene/gizmo';
 import { Ruler } from './scene/ruler';
 import { Viewport } from './scene/viewport';
-import { MM_PER_UNIT, settings, settingsEvents, toUnit, watchTheme } from './settings';
+import { IMPORT_UNITS, MM_PER_UNIT, settings, settingsEvents, toUnit, updateUi, watchTheme, type ImportUnit } from './settings';
 import { loadClipboard, saveClipboard } from './ui/clipboardStore';
 import { ColorPopover } from './ui/colorPopover';
 import { CombineTool } from './ui/combineTool';
@@ -37,6 +37,7 @@ import { FeatureBar } from './ui/featureBar';
 import { viewClicks } from './ui/interaction';
 import { ModifyTools } from './ui/modifyTools';
 import { PartsTools } from './ui/partsTools';
+import { ShapeTools } from './ui/shapeTools';
 import { ReferenceImage } from './ui/referenceImage';
 import { setupMenus } from './ui/menu';
 import { setupSettingsDialog } from './ui/settingsDialog';
@@ -161,7 +162,8 @@ const splitTool = new SplitTool(viewport, doc, gizmo, heavy, toast);
 new CheckTools(doc, toast);
 const featureBar = new FeatureBar(viewport, gizmo, doc, toast);
 new ModifyTools(viewport, doc, featureBar, heavy, toast);
-new PartsTools(viewport, doc, gizmo, featureBar, heavy, toast);
+new PartsTools(viewport, doc, featureBar, toast);
+new ShapeTools(wasm, doc, featureBar);
 const measure = new MeasureTool(viewport, doc, toast);
 // Cross-section view (More menu); measuring works on the cut.
 const crossSection = new CrossSection(viewport, doc, gizmo);
@@ -218,15 +220,7 @@ function drop(obj: SceneObject): void {
   obj.mesh.position.z -= doc.worldBox([obj]).min.z;
 }
 
-for (const btn of $$<HTMLButtonElement>('[data-insert]')) {
-  btn.addEventListener('click', () => {
-    doc.checkpoint();
-    const kind = btn.dataset.insert as PrimitiveKind;
-    const obj = doc.add(PRIMITIVE_NAMES[kind], createPrimitive(wasm, kind));
-    drop(obj);
-    doc.setSelection([obj]);
-  });
-}
+// The shapes of the Add object menu ([data-insert]) open their own bar: see ShapeTools.
 
 // --- Combine --------------------------------------------------------------
 
@@ -597,6 +591,25 @@ async function offerRestore(): Promise<void> {
 
 const supported = (f: File) => IMPORT_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext));
 
+/** Ask which unit an imported file's numbers are in; null if cancelled. */
+async function askImportUnit(): Promise<ImportUnit | null> {
+  const dialog = $<HTMLDialogElement>('#import-dialog');
+  for (const r of [...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')]) r.checked = r.value === settings.ui.importUnit;
+  dialog.returnValue = '';
+  dialog.showModal();
+  await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
+  if (dialog.returnValue !== 'import') return null;
+  const unit = ([...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')].find((r) => r.checked)?.value ?? 'mm') as ImportUnit;
+  updateUi((ui) => (ui.importUnit = unit));
+  return unit;
+}
+{
+  const dialog = $<HTMLDialogElement>('#import-dialog');
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close('cancel');
+  });
+}
+
 async function openFiles(all: File[]): Promise<void> {
   const files = all.filter(supported);
   const rejected = all.filter((f) => !supported(f));
@@ -604,6 +617,10 @@ async function openFiles(all: File[]): Promise<void> {
     const names = rejected.map((f) => f.name).join(', ');
     toast(`File not supported: ${names}. Open 3MF, STL or OBJ files.`);
   }
+  if (files.length === 0) return;
+  const unit = await askImportUnit();
+  if (!unit) return;
+  const factor = IMPORT_UNITS[unit];
   const added: SceneObject[] = [];
   let checkpointed = false;
   for (const file of files) {
@@ -621,6 +638,13 @@ async function openFiles(all: File[]): Promise<void> {
     if (!checkpointed) {
       doc.checkpoint();
       checkpointed = true;
+    }
+    // The file's numbers are in its own unit; everything here is in mm.
+    if (factor !== 1) {
+      for (const p of parts) {
+        const pos = p.data.positions;
+        for (let i = 0; i < pos.length; i++) pos[i] *= factor;
+      }
     }
     // Keep the parts' layout relative to each other, but centre the whole
     // file on the plate and rest it on the plate surface.
@@ -808,7 +832,7 @@ document.addEventListener('keydown', (e) => {
       el.click();
     });
   }
-  // Arrow keys: an open tool (text, threaded hole) may use them to nudge;
+  // Arrow keys: an open tool (text) may use them to nudge;
   // with no tool open they move the selection.
   if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {
     if (viewClicks.onKey?.(e)) return e.preventDefault();

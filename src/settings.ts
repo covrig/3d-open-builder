@@ -1,6 +1,9 @@
 /** User preferences and UI choices, remembered in this browser (localStorage). */
 
 export type Unit = 'mm' | 'cm' | 'in';
+/** What an imported STL or OBJ file's numbers mean */
+export type ImportUnit = 'mm' | 'cm' | 'm' | 'in';
+export const IMPORT_UNITS: Record<ImportUnit, number> = { mm: 1, cm: 10, m: 1000, in: 25.4 };
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
 export interface UiState {
@@ -22,6 +25,8 @@ export interface UiState {
   reflection: { on: boolean; strength: number; depth: number };
   /** Overhang view: surfaces steeper than ngle degrees from vertical get color */
   overhang: { angle: number; color: string };
+  /** The unit picked last time files were imported */
+  importUnit: ImportUnit;
 }
 
 export const PANELS = [
@@ -66,6 +71,7 @@ const DEFAULTS: Settings = {
     plateOpacity: 0.35,
     reflection: { on: false, strength: 0.3, depth: 60 },
     overhang: { angle: 45, color: '#e5484d' },
+    importUnit: 'mm',
   },
 };
 const KEY = '3d-open-builder.settings';
@@ -96,6 +102,7 @@ function load(): Settings {
   const saved = Array.isArray(s.ui.panelOrder) ? s.ui.panelOrder.filter((id) => known.includes(id)) : [];
   s.ui.panelOrder = [...new Set([...saved, ...known])];
   s.ui.hiddenPanels = Array.isArray(s.ui.hiddenPanels) ? s.ui.hiddenPanels.filter((id) => known.includes(id)) : [];
+  if (!(s.ui.importUnit in IMPORT_UNITS)) s.ui.importUnit = 'mm';
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
   s.ui.measure.snap = true;
   return s;

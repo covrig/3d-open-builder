@@ -76,6 +76,12 @@ async function applyFeature(page) {
   throw new Error('the preview never became ready');
 }
 
+/** Add a shape from the Add object menu: its bar opens, so press Apply once the preview is ready. */
+async function addShape(page, kind) {
+  await page.evaluate((kind) => document.querySelector(`[data-insert="${kind}"]`).click(), kind);
+  await applyFeature(page);
+}
+
 async function runChecks(b) {
   const results = [];
   const check = async (name, fn) => {
@@ -127,6 +133,8 @@ async function runChecks(b) {
   await check('Add object from menu', async () => {
     await clickSel(page, '[data-menu="add-menu"]');
     await clickSel(page, '[data-insert="cube"]');
+    if (!(await visible(page, '#feature-bar'))) throw new Error('the cube bar did not open');
+    await applyFeature(page);
     const n = await page.evaluate(() => window.app.doc.objects.length);
     if (n !== 1) throw new Error(`expected 1 object, got ${n}`);
   });
@@ -192,9 +200,9 @@ async function runChecks(b) {
   });
 
   await check('Subtract cuts the selection out in one step (in the worker)', async () => {
+    await addShape(page, 'sphere');
     await page.evaluate(() => {
       const { doc, viewport } = window.app;
-      document.querySelector('[data-insert="sphere"]').click();
       const [c, s] = doc.objects;
       s.mesh.position.copy(c.mesh.position).add({ x: 30, y: 0, z: 0 });
       doc.emit('transform');
@@ -232,14 +240,16 @@ async function runChecks(b) {
     window.app.doc.setSelection([]);
   });
   /** Add a 40 mm cube centred at (x, y, z), scaled by s; returns its id. */
-  const addCube = (x, y, z, s = [1, 1, 1]) => page.evaluate(([x, y, z, s]) => {
-    document.querySelector('[data-insert="cube"]').click();
+  const addCube = async (x, y, z, s = [1, 1, 1]) => {
+    await addShape(page, 'cube');
+    return page.evaluate(([x, y, z, s]) => {
     const o = window.app.doc.objects.at(-1);
     o.mesh.position.set(x, y, z);
     o.mesh.scale.set(...s);
     window.app.doc.emit('transform');
     return o.id;
   }, [x, y, z, s]);
+  };
   const select = (ids) => page.evaluate((ids) => {
     const { doc } = window.app;
     doc.setSelection(ids.map((id) => doc.objects.find((o) => o.id === id)));
@@ -618,8 +628,8 @@ async function runChecks(b) {
     const curved = {};
     for (const kind of ['cylinder', 'sphere']) {
       await reset();
+      await addShape(page, kind);
       const box = await page.evaluate((kind) => {
-        document.querySelector(`[data-insert="${kind}"]`).click();
         const { doc, viewport } = window.app;
         viewport.fit(doc.worldBox(doc.objects));
         const b = doc.worldBox(doc.objects);
@@ -634,8 +644,8 @@ async function runChecks(b) {
     }
     // A torus cut through its middle (where a ring of mesh points lies): its rim is only "on edge".
     await reset();
+    await addShape(page, 'torus');
     const rim = await page.evaluate(async () => {
-      document.querySelector('[data-insert="torus"]').click();
       const { doc, viewport } = window.app;
       viewport.home(doc.worldBox(doc.objects));
       document.querySelector('[data-action="cross-section"]').click();
@@ -795,8 +805,8 @@ async function runChecks(b) {
 
   await check('Overhangs, reflection and plate settings apply', async () => {
     await reset();
+    await addShape(page, 'sphere');
     await page.evaluate(() => {
-      document.querySelector('[data-insert="sphere"]').click();
       const { doc } = window.app;
       doc.objects[0].mesh.position.z += 15;
       doc.emit('transform');
@@ -882,7 +892,7 @@ async function runChecks(b) {
       ['Shell', () => document.querySelector('[data-modify="shell"]').click(), '#feature-bar'],
       ['Intersect', () => document.querySelector('[data-boolean="intersection"]').click(), '#feature-bar'],
       ['Bolt', () => document.querySelector('[data-thread="bolt"]').click(), '#feature-bar'],
-      ['Threaded hole', () => document.querySelector('[data-thread="tap"]').click(), '#feature-bar'],
+      ['Add shape', () => document.querySelector('[data-insert="cube"]').click(), '#feature-bar'],
       ['Measuring', () => document.querySelector('[data-measure="distance"]').click(), '#op-hint'],
       ['Cross section', () => document.querySelector('[data-action="cross-section"]').click(), '#section-bar'],
       ['Overhangs', () => document.querySelector('[data-action="overhangs"]').click(), '#overhang-bar'],
@@ -983,8 +993,8 @@ async function runChecks(b) {
 
   await check('One Cancel stops a slow preview', async () => {
     await reset();
+    await addShape(page, 'sphere');
     await page.evaluate(() => {
-      document.querySelector('[data-insert="sphere"]').click();
       const { doc } = window.app;
       doc.setSelection(doc.objects);
     });

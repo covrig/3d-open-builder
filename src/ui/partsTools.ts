@@ -7,15 +7,12 @@ import { FONTS, loadFont, textOutlines, type FontName } from '../geometry/text';
 import { ISO_THREADS, threadLabel, type ThreadKind, type ThreadSize } from '../geometry/threads';
 import { runOp } from '../geometry/workerClient';
 import { buildGeometry, type SceneDocument, type SceneObject } from '../scene/document';
-import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { settings } from '../settings';
-import { previewMesh, type FeatureBar } from './featureBar';
+import { previewMesh, type FeatureBar, type Values } from './featureBar';
 import { viewClicks } from './interaction';
 
-type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
-
-const KIND_NAMES: Record<Exclude<ThreadKind, 'tap'>, string> = { bolt: 'bolt', nut: 'nut', rod: 'threaded rod' };
+const KIND_NAMES: Record<Exclude<ThreadKind, 'tap'>, string> = { bolt: 'bolt', nut: 'nut', rod: 'thread' };
 /** The letters while the text is being placed: strong blue, drawn just in front of the surface they sit on. */
 const letterMaterial = new THREE.MeshStandardMaterial({
   color: 0x4aa8ff, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -25,7 +22,7 @@ const SIZES = Object.keys(ISO_THREADS).map((s) => [s, threadLabel(s as ThreadSiz
 /**
  * Where something sits on a face: the clicked object, a base point on its
  * surface, the face direction, and an offset within the face that the arrow
- * keys change. Shared by text on a face and threaded holes.
+ * keys change. Used by text on a face.
  */
 class FacePlacement {
   obj: SceneObject | null = null;
@@ -83,30 +80,23 @@ class FacePlacement {
 }
 
 /**
- * Threaded parts (Add object menu) and text on a face (Text button). A
- * threaded hole is placed by clicking a face and is cut into that object on
- * Apply, so no separate cutter object is ever left behind.
+ * Threaded parts (Add object menu) and text on a face (Text button). A thread
+ * for a hole is added as an object like the others; Subtract cuts it out.
  */
 export class PartsTools {
   constructor(
     private readonly viewport: Viewport,
     private readonly doc: SceneDocument,
-    private readonly gizmo: Gizmo,
     private readonly bar: FeatureBar,
-    private readonly heavy: Heavy,
     private readonly toast: (msg: string) => void,
   ) {
     for (const b of document.querySelectorAll<HTMLElement>('[data-thread]')) {
-      b.addEventListener('click', () => {
-        const kind = b.dataset.thread as ThreadKind;
-        if (kind === 'tap') this.hole();
-        else this.part(kind);
-      });
+      b.addEventListener('click', () => this.part(b.dataset.thread as Exclude<ThreadKind, 'tap'>));
     }
     for (const b of document.querySelectorAll('[data-modify="text"]')) b.addEventListener('click', () => this.text());
   }
 
-  /** Clicks on any object's face place `p`; arrow keys nudge it. */
+  /** Clicks on an object's face place `p`; arrow keys nudge it. */
   private capture(p: FacePlacement, onlyObj: SceneObject | null, changed: () => void): void {
     viewClicks.onClick = (e) => {
       const ray = this.viewport.rayAt(e.clientX, e.clientY);
@@ -134,7 +124,7 @@ export class PartsTools {
     if (b) b.disabled = !enabled;
   }
 
-  // --- Bolts, nuts, rods ---------------------------------------------------------
+  // --- Bolts, nuts, threads ------------------------------------------------------
 
   private part(kind: Exclude<ThreadKind, 'tap'>): void {
     // Place the new part beside whatever is already there.
@@ -144,157 +134,48 @@ export class PartsTools {
       const b = new THREE.Box3().setFromBufferAttribute(new THREE.BufferAttribute(p.mesh.positions, 3));
       return [x, 0, -b.min.z]; // resting on the plate
     };
+    /** A thread can be made as a cutter for a hole ("For a hole"): it is then built as kind 'tap', with clearance. */
+    const forHole = (v: Values) => kind === 'rod' && v.hole === true;
+    const clearanceOf = (v: Values) => (kind === 'nut' || forHole(v) ? Number(v.clearance ?? 0) : 0);
     this.bar.open<Piece>({
       focusFirst: true,
       title: `Add ${KIND_NAMES[kind]}`,
-      hint: `${KIND_NAMES[kind][0].toUpperCase()}${KIND_NAMES[kind].slice(1)}: choose the size${kind === 'nut' ? '' : ' and length'}, then Apply.`,
+      hint: kind === 'rod'
+        ? 'Thread: choose the size and length, then Apply. To make a threaded hole, tick "For a hole", place the thread where the hole should go, select it and press Subtract.'
+        : `${KIND_NAMES[kind][0].toUpperCase()}${KIND_NAMES[kind].slice(1)}: choose the size${kind === 'nut' ? '' : ' and length'}, then Apply.`,
       fields: [
         { key: 'size', label: 'Size', type: 'select', value: 'M6', options: SIZES, tip: 'Metric (M6 = 6 mm) or imperial UNC (1/4″-20 = ¼ inch, 20 threads per inch).' },
         ...(kind !== 'nut' ? [{
           key: 'length', label: 'Length', type: 'number' as const, value: 20, min: 1, step: 1, unit: 'mm',
           tip: kind === 'bolt' ? 'Length of the threaded part under the head.' : 'Length of the thread.',
         }] : []),
-        ...(kind === 'nut' ? [{
+        ...(kind === 'rod' ? [{
+          key: 'hole', label: 'For a hole', type: 'checkbox' as const, value: false,
+          tip: 'Make a thread to cut a threaded hole: place it where the hole should go, then select it and press Subtract. It is a little wider, so a bolt fits.',
+        }] : []),
+        ...(kind === 'nut' || kind === 'rod' ? [{
           key: 'clearance', label: 'Clearance', type: 'number' as const, value: 0.2, min: 0, max: 1, step: 0.05, unit: 'mm',
           tip: 'Extra room all round the thread so a bolt fits. About 0.2 mm suits most FDM printers.',
+          ...(kind === 'rod' ? { showIf: ['hole', 'true'] as [string, string] } : {}),
         }] : []),
       ],
       compute: (v) => runOp('threaded', {
-        kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: Number(v.clearance ?? 0),
+        kind: forHole(v) ? 'tap' : kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v),
       }),
       show: (p) => [previewMesh(p.mesh, place(p))],
       apply: (p, v) => {
         this.doc.checkpoint();
-        const obj = this.doc.add(`${threadLabel(v.size as ThreadSize)} ${KIND_NAMES[kind]}`, p.mesh);
+        const label = threadLabel(v.size as ThreadSize);
+        const obj = this.doc.add(forHole(v) ? `${label} thread for a hole` : `${label} ${KIND_NAMES[kind]}`, p.mesh);
         // Remember how it was made, so Shell can hollow it from a plain stand-in.
-        obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: Number(v.clearance ?? 0), origin: p.center };
+        // (A thread for a hole is only a cutter, not a solid to hollow, so it gets none.)
+        if (!forHole(v)) {
+          obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v), origin: p.center };
+        }
         obj.mesh.position.set(...place(p));
         this.doc.setSelection([obj]);
       },
     });
-  }
-
-  // --- Threaded hole --------------------------------------------------------------
-
-  /**
-   * A threaded hole is placed by clicking a face; after that the Move and
-   * Rotate handles (not Size) work on the hole itself, and the arrow keys
-   * nudge it across the face. Apply cuts it into every object it reaches.
-   */
-  private hole(): void {
-    const at = new FacePlacement();
-    // The hole's frame: origin where it opens, local +Z pointing out of the face.
-    const anchor = new THREE.Group();
-    anchor.visible = false;
-    this.viewport.scene.add(anchor);
-    const Z = new THREE.Vector3(0, 0, 1);
-    /** Cutter placement in the hole's frame: its top sticks 1 mm out of the face so the hole opens cleanly. */
-    const local = (depth: number) => new THREE.Matrix4().makeTranslation(0, 0, 1 - (depth + 1) / 2);
-    const clearAnchor = () => {
-      for (const child of [...anchor.children]) {
-        anchor.remove(child);
-        (child as THREE.Mesh).geometry?.dispose();
-      }
-    };
-    const placeAnchor = () => {
-      anchor.position.copy(at.point());
-      anchor.quaternion.setFromUnitVectors(Z, at.normal.clone().normalize());
-      anchor.visible = true;
-      if (!this.gizmo.hasProxy) {
-        this.gizmo.enabled = true;
-        this.gizmo.setProxy({ object: anchor, changed: () => this.viewport.invalidate() });
-      }
-    };
-    this.bar.open<{ cutter: Piece; depth: number }>({
-      title: 'Threaded hole',
-      hint: 'Threaded hole: click the face of an object where the hole should go. Then drag the Move or Rotate handles, or use the arrow keys, to adjust it; Apply cuts it.',
-      fields: [
-        { key: 'size', label: 'Size', type: 'select', value: 'M6', options: SIZES, tip: 'Thread size of the bolt that goes in.' },
-        { key: 'depth', label: 'Depth', type: 'number', value: 10, min: 1, step: 1, unit: 'mm', tip: 'How deep the threaded hole goes.' },
-        {
-          key: 'clearance', label: 'Clearance', type: 'number', value: 0.2, min: 0, max: 1, step: 0.05, unit: 'mm',
-          tip: 'Extra room all round so the bolt fits. About 0.2 mm suits most FDM printers.',
-        },
-        {
-          key: 'centre', label: 'Center on face', type: 'button', value: '',
-          tip: 'Move the hole to the middle of the flat face you clicked.',
-          onClick: () => {
-            if (!at.placed) return;
-            at.centre();
-            placeAnchor();
-            this.viewport.invalidate();
-          },
-        },
-      ],
-      hide: [],
-      compute: async (v) => {
-        this.setApplyEnabled(at.placed);
-        if (!at.placed) return null;
-        const depth = Number(v.depth);
-        const cutter = await runOp('threaded', { kind: 'tap', size: v.size as ThreadSize, length: depth + 1, clearance: Number(v.clearance) });
-        return { cutter, depth };
-      },
-      // The preview hangs on the hole's frame (which the handles move), not in the bar's own preview group.
-      show: ({ cutter, depth }) => {
-        clearAnchor();
-        const m = previewMesh(cutter.mesh, [0, 0, 0]);
-        m.applyMatrix4(local(depth));
-        anchor.add(m);
-        return [];
-      },
-      apply: ({ cutter, depth }) => {
-        anchor.updateMatrixWorld(true);
-        const matrix = anchor.matrixWorld.clone().multiply(local(depth));
-        // Cut every object the hole reaches (it may have been moved off the clicked one).
-        const reach = new THREE.Box3().setFromBufferAttribute(new THREE.BufferAttribute(cutter.mesh.positions, 3)).applyMatrix4(matrix);
-        const targets = this.doc.objects.filter((o) => this.doc.worldBox([o]).intersectsBox(reach));
-        if (targets.length === 0) return this.toast('The hole does not reach any object, so nothing was cut');
-        const tool = { mesh: cutter.mesh, matrix: matrix.elements };
-        void this.heavy(
-          targets,
-          () => Promise.all(targets.map((t) => runOp('boolean', { op: 'difference', items: [this.doc.placed(t), tool] }))),
-          (results) => {
-            this.doc.checkpoint();
-            const emptied: SceneObject[] = [];
-            results.forEach((r, i) => {
-              const target = targets[i];
-              if (r.empty) return emptied.push(target);
-              this.doc.setData(target, r.mesh);
-              target.mesh.position.set(...r.center);
-              target.mesh.quaternion.identity();
-              target.mesh.scale.set(1, 1, 1);
-            });
-            if (emptied.length) {
-              this.doc.remove(emptied);
-              this.toast(`${emptied.map((o) => o.name).join(', ')}: nothing was left, so ${emptied.length > 1 ? 'they were' : 'it was'} removed`);
-            }
-            this.doc.emit('transform');
-          },
-        );
-      },
-      onClose: () => {
-        this.release();
-        this.gizmo.setProxy(null);
-        clearAnchor();
-        this.viewport.scene.remove(anchor);
-      },
-    });
-    this.setApplyEnabled(false);
-    this.capture(at, null, () => {
-      placeAnchor();
-      this.bar.refresh(0);
-    });
-    // Arrow keys nudge the hole across its face (1 mm with snapping on, 0.1 mm off, Shift ×10).
-    viewClicks.onKey = (e) => {
-      if (!at.placed || !e.key.startsWith('Arrow')) return false;
-      const step = (settings.snapping ? 1 : 0.1) * (e.shiftKey ? 10 : 1);
-      const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
-      const dy = e.key === 'ArrowUp' ? step : e.key === 'ArrowDown' ? -step : 0;
-      anchor.translateX(dx);
-      anchor.translateY(dy);
-      this.viewport.invalidate();
-      return true;
-    };
   }
 
   // --- Text on a face -------------------------------------------------------------

@@ -75,13 +75,6 @@ interface Handle {
   touch?: SVGElement;
 }
 
-/** Something a tool lets the handles move and turn (see Gizmo.setProxy). */
-export interface GizmoProxy {
-  object: THREE.Object3D;
-  /** Called after each change the handles make */
-  changed: () => void;
-}
-
 interface DragState {
   handle: Handle;
   pointerId: number;
@@ -158,40 +151,16 @@ export class Gizmo {
 
   private readonly rings = new THREE.Group();
 
-  /**
-   * A tool can hand the handles something of its own to move and turn instead
-   * of the selection (the threaded hole while it is being placed). Size is not
-   * offered for it. Listeners hear when a proxy comes or goes.
-   */
-  private proxy: GizmoProxy | null = null;
-  readonly proxyListeners = new Set<(proxy: GizmoProxy | null) => void>();
-
-  setProxy(proxy: GizmoProxy | null): void {
-    this.proxy = proxy;
-    for (const l of this.proxyListeners) l(proxy);
-    this.build();
-    this.viewport.invalidate();
-  }
-
-  get hasProxy(): boolean {
-    return this.proxy !== null;
-  }
-
   private targetMeshes(): THREE.Object3D[] {
-    return this.proxy ? [this.proxy.object] : this.doc.selection.map((o) => o.mesh);
+    return this.doc.selection.map((o) => o.mesh);
   }
 
   private targetBox(): THREE.Box3 {
-    return this.proxy ? new THREE.Box3().setFromObject(this.proxy.object) : this.doc.worldBox(this.doc.selection);
+    return this.doc.worldBox(this.doc.selection);
   }
 
   private changed(): void {
-    if (this.proxy) {
-      this.proxy.changed();
-      this.viewport.invalidate();
-    } else {
-      this.doc.emit('transform');
-    }
+    this.doc.emit('transform');
   }
 
   /** Put the 3D rings around the selection (before each frame is drawn). */
@@ -474,8 +443,7 @@ export class Gizmo {
     if (!d.checkpointed) {
       if (p.distanceTo(d.start) < 2) return;
       // Nothing has moved yet, so this saves the pre-drag state for undo.
-      // (A tool's own handle, like a threaded hole being placed, isn't part of the drawing.)
-      if (!this.proxy) this.doc.checkpoint();
+      this.doc.checkpoint();
       d.checkpointed = true;
     }
     const along = p.clone().sub(d.start).dot(d.u) / d.pxPerMm; // mm, in the handle's direction

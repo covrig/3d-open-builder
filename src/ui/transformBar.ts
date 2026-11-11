@@ -79,13 +79,6 @@ export class TransformBar {
       this.doc.emit('transform');
     });
 
-    // While a tool hands the handles its own object (a threaded hole being
-    // placed), only Move and Rotate are offered and the fields don't apply.
-    gizmo.proxyListeners.add((proxy) => {
-      this.modeButtons.scale.disabled = proxy !== null;
-      if (proxy && this.mode === 'scale') this.setMode('translate');
-      else this.refresh();
-    });
     doc.addEventListener('selection', () => this.refresh());
     doc.addEventListener('transform', () => this.refresh());
     settingsEvents.addEventListener('change', () => this.setMode(this.mode));
@@ -122,14 +115,6 @@ export class TransformBar {
   }
 
   private refresh(): void {
-    if (this.gizmo.hasProxy) {
-      this.el.classList.remove('disabled');
-      this.inputs.forEach((i) => {
-        i.disabled = true;
-        i.value = '';
-      });
-      return;
-    }
     const objs = this.targets;
     const rotateMany = this.mode === 'rotate' && objs.length > 1;
     this.el.classList.toggle('disabled', objs.length === 0);

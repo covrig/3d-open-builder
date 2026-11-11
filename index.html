@@ -49,11 +49,11 @@
           <button data-insert="tube" role="menuitem"><i data-lucide="circle-dot"></i>Tube</button>
           <button data-insert="torus" role="menuitem"><i data-lucide="torus"></i>Torus</button>
           <button data-insert="hexagon" role="menuitem"><i data-lucide="hexagon"></i>Hexagon</button>
+          <button data-insert="tetrahedron" role="menuitem"><i data-lucide="triangle"></i>Tetrahedron</button>
           <div class="menu-heading">Threaded parts</div>
           <button data-thread="bolt" role="menuitem"><i data-lucide="bolt"></i>Bolt</button>
           <button data-thread="nut" role="menuitem"><i data-lucide="hexagon"></i>Nut</button>
-          <button data-thread="rod" role="menuitem"><i data-lucide="cylinder"></i>Threaded rod</button>
-          <button data-thread="tap" role="menuitem"><i data-lucide="circle-dot"></i>Threaded hole</button>
+          <button data-thread="rod" role="menuitem"><i data-lucide="cylinder"></i>Thread</button>
         </div>
       </div>
 
@@ -481,6 +481,26 @@
         <footer>
           <button type="submit" value="cancel" class="cancel">Cancel</button>
           <button type="submit" value="export" class="primary">Export</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog id="import-dialog">
+      <form method="dialog">
+        <header><h2>Import units</h2></header>
+        <p class="muted">STL and OBJ files don't store a unit. What is one unit in the file you are opening?</p>
+        <fieldset>
+          <legend>The file's unit</legend>
+          <div class="radio-grid">
+            <label><input type="radio" name="import-unit" value="mm" /> mm</label>
+            <label><input type="radio" name="import-unit" value="cm" /> cm</label>
+            <label><input type="radio" name="import-unit" value="m" /> m</label>
+            <label><input type="radio" name="import-unit" value="in" /> inch</label>
+          </div>
+        </fieldset>
+        <footer>
+          <button type="submit" value="cancel" class="cancel">Cancel</button>
+          <button type="submit" value="import" class="primary">Import</button>
         </footer>
       </form>
     </dialog>

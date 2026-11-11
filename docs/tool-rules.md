@@ -7,7 +7,7 @@ How tools start, end and share the app. The code follows this table
 
 | Kind | Tools | Locks the rest? |
 |---|---|---|
-| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Intersect, Add bolt/nut/rod, Threaded hole, reference picture Calibrate/Straighten | Yes |
+| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Intersect, Add shape (cube, cylinder…), Add bolt/nut/thread, reference picture Calibrate/Straighten | Yes |
 | Light | Measuring, colour picking (Copy from object) | No |
 | View tools | Section, Show overhangs | Yes, except measuring |
 
@@ -45,7 +45,7 @@ the other), and measuring works beside them.
 | Cut, paste, delete, duplicate, select all/none/invert, group, ungroup, the object list | No | They change or remove what the tool works on |
 | Other toolbar tools and menus (add, combine, edit, mirror, more, check) | No | One tool at a time |
 | Arrange (on plate, lay flat, center, align, distribute, pack) | No | They move what the tool works on |
-| Transform bar values, reset rotation, proportions lock | No | Same; the Move/Rotate handles stay available where the tool itself uses them (Threaded hole) |
+| Transform bar values, reset rotation, proportions lock | No | Same; the Move/Rotate handles stay available where the tool itself uses them |
 | New drawing, Import, Reference picture | No | They replace or add to the drawing |
 | Select several, Delete (corner buttons) | No | Selection and deleting |
 
