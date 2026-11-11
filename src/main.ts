@@ -748,6 +748,25 @@ document.addEventListener('keydown', (e) => {
   if (!(e.target as HTMLElement).closest('input, textarea, select')) doc.setSelection([]);
 }, true);
 
+// Enter applies the open tool, like its Apply button. A field being typed in
+// commits its value first (blur fires "change"); the feature bar then waits
+// for the preview of the new value before applying.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.isComposing || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (document.querySelector('dialog[open], .select-list')) return;
+  const t = e.target as HTMLElement;
+  // Enter on a button or dropdown does that control's own thing.
+  if (t.closest('button, select, textarea, a, [contenteditable]')) return;
+  const inBar = t.closest('#feature-bar, #split-bar');
+  if (t.closest('input') && !inBar) return;
+  if (!featureBar.active && !splitTool.active) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (t instanceof HTMLInputElement && inBar) t.blur();
+  if (featureBar.active) featureBar.applyWhenReady();
+  else splitTool.applyIfOpen();
+}, true);
+
 document.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement;
   // Leave typing in fields and dialogs alone.

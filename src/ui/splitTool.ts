@@ -127,6 +127,8 @@ export class SplitTool {
     beginTool('split', () => this.stop());
     this.targets = [...this.doc.selection];
     this.gizmo.enabled = false;
+    // Everything not being split fades back, so the split objects stand out.
+    this.doc.setFaded(this.doc.objects.filter((o) => !this.targets.includes(o) && !o.hidden));
     this.bar.hidden = false;
     this.plane.visible = true;
     showHint('split', 'Split: slide or drag the orange plane, choose what to keep, then Apply.');
@@ -134,7 +136,15 @@ export class SplitTool {
     this.setAxis(this.axis);
   }
 
+  /** Apply, if the tool is open and Apply is enabled (for the Enter key). */
+  applyIfOpen(): void {
+    if (!this.active || this.bar.querySelector<HTMLButtonElement>('[data-split="apply"]')?.disabled) return;
+    this.apply();
+  }
+
   stop(): void {
+    // Only an open Split may clear the fading (stop() is also called when it isn't open).
+    if (this.active) this.doc.setFaded(null);
     endTool('split');
     this.showDropped(false);
     this.targets = [];

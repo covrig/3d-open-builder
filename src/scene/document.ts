@@ -94,6 +94,9 @@ export interface ViewMode {
 
 /** Edges sharper than this get a line in the Edges view. */
 const EDGE_ANGLE = 25;
+/** Look of objects faded out while a tool works on others */
+const FADED_OPACITY = 0.08;
+const FADED_COLOR = 0x8f98a3;
 /** Sharp-edge lines (Edges view); the cross-section draws its cut outline with it too. */
 export const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
 /** Fainter lines where the surfaces of overlapping objects cross (see OverlapLines). */
@@ -127,6 +130,8 @@ export class SceneDocument extends EventTarget {
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
   private readonly extras = new Map<string, UndoExtra>();
+  /** Objects drawn faintly while a tool works on others (see setFaded) */
+  private readonly faded = new Set<SceneObject>();
 
   constructor(private readonly root: THREE.Group) {
     super();
@@ -246,6 +251,7 @@ export class SceneDocument extends EventTarget {
       const i = this.objects.indexOf(obj);
       if (i < 0) continue;
       this.objects.splice(i, 1);
+      this.faded.delete(obj);
       this.root.remove(obj.mesh);
       (obj.mesh.userData.edges as THREE.LineSegments | undefined)?.geometry.dispose();
       obj.mesh.geometry.dispose();
@@ -282,7 +288,7 @@ export class SceneDocument extends EventTarget {
   setColor(objs: SceneObject[], color: string): void {
     for (const obj of objs) {
       obj.color = color;
-      obj.mesh.material.color.set(color);
+      if (!this.faded.has(obj)) obj.mesh.material.color.set(color);
     }
     this.emit('change');
   }
@@ -426,6 +432,35 @@ export class SceneDocument extends EventTarget {
       existing.geometry.dispose();
       delete obj.mesh.userData.edges;
     }
+
+    // Faded bystanders (see setFaded): very faint plain grey, no lines.
+    const faded = this.faded.has(obj);
+    if (faded) {
+      m.transparent = true;
+      m.opacity = FADED_OPACITY;
+      m.depthWrite = false;
+      m.color.set(FADED_COLOR);
+    }
+    const lines = obj.mesh.userData.edges as THREE.LineSegments | undefined;
+    if (lines) lines.visible = !faded;
+    for (const c of obj.mesh.children) if (c.userData.overhangLayer) c.visible = !faded;
+  }
+
+  /**
+   * Draw these objects very faintly (plain grey, no edge or overhang lines) so
+   * a tool's own objects stand out; null puts everything back. Survives view
+   * changes made meanwhile, and an object's own colour is never lost.
+   */
+  setFaded(objs: SceneObject[] | null): void {
+    const before = [...this.faded];
+    this.faded.clear();
+    for (const o of objs ?? []) this.faded.add(o);
+    for (const o of before) {
+      if (this.faded.has(o)) continue;
+      o.mesh.material.color.set(o.color);
+      this.applyView(o);
+    }
+    for (const o of this.faded) this.applyView(o);
   }
 
   rename(obj: SceneObject, name: string): void {

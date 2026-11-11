@@ -39,6 +39,8 @@ export interface FeatureSpec<R> {
    * or its shape is replaced (e.g. by undo), the tool closes.
    */
   targets?: SceneObject[];
+  /** On open, focus the first number or text field and select its contents, so a value can be typed straight away. */
+  focusFirst?: boolean;
   /** Compute the result for the current values (usually in the worker). Return null for "nothing yet". */
   compute(values: Values): Promise<R | null>;
   /** Objects to show as the preview. */
@@ -69,6 +71,10 @@ export class FeatureBar {
   private result: unknown = null;
   private sequence = 0;
   private timer: number | undefined;
+  /** A compute for the latest values is running */
+  private computing = false;
+  /** Enter was pressed while the preview was still being worked out: apply once it is ready */
+  private applyAfter = false;
   private readonly el: HTMLElement;
   private readonly fieldsEl: HTMLElement;
   private readonly mainEl: HTMLElement;
@@ -78,6 +84,7 @@ export class FeatureBar {
   /** The targets' meshes when the bar opened, to notice replacements */
   private watched: [SceneObject, MeshData][] = [];
   private readonly info: HTMLElement;
+  private readonly applyButton: HTMLButtonElement;
   private readonly group = new THREE.Group();
 
   constructor(
@@ -97,6 +104,7 @@ export class FeatureBar {
     this.info = this.el.querySelector<HTMLElement>('.feature-info')!;
     viewport.scene.add(this.group);
     this.el.querySelector('[data-feature="apply"]')!.addEventListener('click', () => this.apply());
+    this.applyButton = this.el.querySelector<HTMLButtonElement>('[data-feature="apply"]')!;
     this.el.querySelector('[data-feature="cancel"]')!.addEventListener('click', () => this.close());
   }
 
@@ -124,8 +132,18 @@ export class FeatureBar {
     this.el.hidden = false;
     this.gizmo.enabled = false;
     for (const o of spec.hide ?? []) o.mesh.visible = false;
+    // Everything the tool does not work on fades back, so its own objects stand out.
+    const mine = new Set([...(spec.targets ?? []), ...(spec.hide ?? [])]);
+    if (mine.size) this.doc.setFaded(this.doc.objects.filter((o) => !mine.has(o) && !o.hidden));
     showHint('feature', spec.hint);
     this.refresh(0);
+    if (spec.focusFirst && !matchMedia('(pointer: coarse)').matches) {
+      // (not on touch screens: the keyboard would cover the view)
+      const first = this.el.querySelector<HTMLInputElement>('input[type="number"], input[type="text"]');
+      first?.focus();
+      first?.select();
+    }
+    this.viewport.invalidate();
   }
 
   private fieldElement(f: Field): HTMLElement {
@@ -224,13 +242,24 @@ export class FeatureBar {
   /** Recompute the preview soon (call when something outside the fields changed, e.g. picked edges). */
   refresh(delay = 250): void {
     clearTimeout(this.timer);
-    this.timer = window.setTimeout(() => void this.compute(), delay);
+    this.timer = window.setTimeout(() => {
+      this.timer = undefined;
+      void this.compute();
+    }, delay);
+  }
+
+  /** Apply (like the Apply button) as soon as the preview for the current values is ready. For the Enter key. */
+  applyWhenReady(): void {
+    if (!this.spec || this.applyButton.disabled) return;
+    if (this.timer === undefined && !this.computing) return this.apply();
+    this.applyAfter = true;
   }
 
   private async compute(): Promise<void> {
     const spec = this.spec;
     if (!spec) return;
     const seq = ++this.sequence;
+    this.computing = true;
     // "Working…" shows in its own box under the bar (main.ts), so this row never jumps.
     this.info.textContent = '';
     try {
@@ -246,7 +275,13 @@ export class FeatureBar {
       this.clearPreview();
       this.info.textContent = err instanceof Error ? err.message : String(err);
     }
+    this.computing = false;
     this.viewport.invalidate();
+    // Enter was pressed meanwhile: apply now (or show why there is nothing to apply).
+    if (this.applyAfter) {
+      this.applyAfter = false;
+      if (!this.applyButton.disabled) this.apply();
+    }
   }
 
   private clearPreview(): void {
@@ -275,6 +310,9 @@ export class FeatureBar {
     const spec = this.spec;
     if (!spec) return;
     clearTimeout(this.timer);
+    this.timer = undefined;
+    this.computing = false;
+    this.applyAfter = false;
     this.sequence++;
     this.spec = null;
     this.result = null;
@@ -282,6 +320,7 @@ export class FeatureBar {
     endTool('feature');
     this.clearPreview();
     for (const o of spec.hide ?? []) o.mesh.visible = !o.hidden;
+    this.doc.setFaded(null);
     this.el.hidden = true;
     this.gizmo.enabled = true;
     hideHint('feature');

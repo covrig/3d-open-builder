@@ -1,7 +1,7 @@
 import type { Manifold, ManifoldToplevel, Mat4, Vec3 } from 'manifold-3d';
 import type { Piece } from './cut';
 import { edgeFrame, type EdgeSegment, type V3 } from './edges';
-import { manifoldToMeshData, meshDataToManifold, type PlacedMesh } from './meshData';
+import { manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
 import { recenter } from './meshOps';
 import { solidPieces } from './pieces';
 import { threadStandIn, type ThreadInfo } from './threads';
@@ -323,7 +323,7 @@ export function textOnFace(
   wasm: ManifoldToplevel,
   item: PlacedMesh,
   o: { polygons: [number, number][][]; depth: number; mode: 'emboss' | 'deboss'; frame: Mat4 },
-): Piece {
+): Piece & { letters: MeshData } {
   if (o.polygons.length === 0) throw new Error('Type some text');
   if (!(o.depth > 0)) throw new Error('The height or depth must be more than 0');
   const { Manifold, CrossSection } = wasm;
@@ -347,12 +347,17 @@ export function textOnFace(
       const columns = keep(keep(keep(Manifold.extrude(section, 2 * reach)).translate([0, 0, -reach])).transform(o.frame));
       const n: Vec3 = [o.frame[8], o.frame[9], o.frame[10]];
       const shift = (d: number) => keep(solid.translate([n[0] * d, n[1] * d, n[2] * d]));
+      // The letters' own solid (world space) is returned too, so the tool can
+      // draw it in a strong colour while the text is being placed.
+      const lettersOf = (m: Manifold) => manifoldToMeshData(m);
       if (o.mode === 'emboss') {
         // Material within `depth` outside the surface, under the letters.
-        return toPiece(keep(solid.add(keep(columns.intersect(shift(o.depth))))));
+        const letters = keep(columns.intersect(shift(o.depth)));
+        return { ...toPiece(keep(solid.add(letters))), letters: lettersOf(letters) };
       }
       // Remove the material within `depth` inside the surface, under the letters.
-      return toPiece(keep(solid.subtract(keep(columns.subtract(shift(-o.depth))))));
+      const cut = keep(columns.subtract(shift(-o.depth)));
+      return { ...toPiece(keep(solid.subtract(cut))), letters: lettersOf(keep(solid.intersect(cut))) };
     } finally {
       section.delete();
     }

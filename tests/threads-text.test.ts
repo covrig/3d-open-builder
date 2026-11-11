@@ -81,6 +81,19 @@ describe('text on a face', () => {
     expect(up - 64000).toBeCloseTo(64000 - down, 0);
   });
 
+  it('also returns the letters as a solid in world space', () => {
+    const polys = textOutlines(font, 'Hi', 8);
+    const onTop: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 20, 1];
+    const cube = createPrimitive(wasm, 'cube');
+    for (const mode of ['emboss', 'deboss'] as const) {
+      const { letters } = textOnFace(wasm, { mesh: cube, matrix: IDENTITY }, { polygons: polys, depth: 1, mode, frame: onTop });
+      expect(letters.indices.length).toBeGreaterThan(0);
+      // The raised letters stand on the top face (z = 20); the cut-away ones sit just under it.
+      const b = bounds(letters);
+      expect(mode === 'emboss' ? b.max[2] : b.min[2]).toBeCloseTo(mode === 'emboss' ? 21 : 19, 3);
+    }
+  });
+
   it('follows a round surface: letters on a sphere touch it all along', () => {
     const polys = textOutlines(font, 'Text', 8);
     const sphere = createPrimitive(wasm, 'sphere');

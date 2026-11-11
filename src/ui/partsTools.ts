@@ -1,11 +1,12 @@
 import type { Mat4 } from 'manifold-3d';
 import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
+import type { MeshData } from '../geometry/meshData';
 import { flatFaceCentre } from '../geometry/faceRegion';
 import { FONTS, loadFont, textOutlines, type FontName } from '../geometry/text';
 import { ISO_THREADS, threadLabel, type ThreadKind, type ThreadSize } from '../geometry/threads';
 import { runOp } from '../geometry/workerClient';
-import type { SceneDocument, SceneObject } from '../scene/document';
+import { buildGeometry, type SceneDocument, type SceneObject } from '../scene/document';
 import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { settings } from '../settings';
@@ -15,6 +16,10 @@ import { viewClicks } from './interaction';
 type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
 
 const KIND_NAMES: Record<Exclude<ThreadKind, 'tap'>, string> = { bolt: 'bolt', nut: 'nut', rod: 'threaded rod' };
+/** The letters while the text is being placed: strong blue, drawn just in front of the surface they sit on. */
+const letterMaterial = new THREE.MeshStandardMaterial({
+  color: 0x4aa8ff, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+});
 const SIZES = Object.keys(ISO_THREADS).map((s) => [s, threadLabel(s as ThreadSize)] as [string, string]);
 
 /**
@@ -140,6 +145,7 @@ export class PartsTools {
       return [x, 0, -b.min.z]; // resting on the plate
     };
     this.bar.open<Piece>({
+      focusFirst: true,
       title: `Add ${KIND_NAMES[kind]}`,
       hint: `${KIND_NAMES[kind][0].toUpperCase()}${KIND_NAMES[kind].slice(1)}: choose the size${kind === 'nut' ? '' : ' and length'}, then Apply.`,
       fields: [
@@ -307,7 +313,7 @@ export class PartsTools {
       return [x.x, x.y, x.z, 0, y.x, y.y, y.z, 0, n.x, n.y, n.z, 0, o.x, o.y, o.z, 1];
     };
 
-    this.bar.open<Piece>({
+    this.bar.open<Piece & { letters: MeshData }>({
       title: 'Text on a face',
       hint: 'Text: click the face where the text should go. Arrow keys move it; Apply when it looks right.',
       fields: [
@@ -340,7 +346,12 @@ export class PartsTools {
           mode: v.mode as 'emboss' | 'deboss', frame: frame(Number(v.angle)),
         });
       },
-      show: (p) => [previewMesh(p.mesh, p.center)],
+      show: (p) => {
+        const shown = [previewMesh(p.mesh, p.center)];
+        // The letters in strong colour on top of the ghost (their data is already in world space).
+        if (p.letters.indices.length) shown.push(new THREE.Mesh(buildGeometry(p.letters), letterMaterial));
+        return shown;
+      },
       apply: (p) => {
         if (!this.doc.objects.includes(obj)) return;
         this.doc.checkpoint();
