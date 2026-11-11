@@ -112,7 +112,7 @@ describe('chamfer and fillet', () => {
         expect(countPieces(out.mesh), `${kind} ${k}`).toBe(1);
       }
     }
-  });
+  }, 30_000); // heavy: many shapes (slower on CI machines)
 
   it('leaves no fins standing at the joints of a cylinder rim', () => {
     const cyl = createPrimitive(wasm, 'cylinder'); // radius 20, z from -20 to 20

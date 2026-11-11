@@ -32,7 +32,13 @@ export function meshId(data: MeshData): number {
 const solidCache = new Map<number, { solid: Manifold; triangles: number }>();
 let cachedTriangles = 0;
 /** Most triangles held in the cache; the oldest are freed beyond this. */
-const CACHE_TRIANGLES = 3_000_000;
+export const SOLID_CACHE_TRIANGLES = 3_000_000;
+let cacheLimit = SOLID_CACHE_TRIANGLES;
+
+/** Change the cache's triangle limit (tests use a small one to check freeing quickly). */
+export function setSolidCacheLimit(triangles: number): void {
+  cacheLimit = triangles;
+}
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as Mat4;
 
 /** The matrix as text, to tell placements apart (exact: unmoved objects always give the same text). */
@@ -138,7 +144,7 @@ export function meshDataToManifold(
     cachedTriangles += entry.triangles;
     // Free the oldest, but never the one just added.
     for (const [key, old] of solidCache) {
-      if (cachedTriangles <= CACHE_TRIANGLES || key === id) break;
+      if (cachedTriangles <= cacheLimit || key === id) break;
       solidCache.delete(key);
       cachedTriangles -= old.triangles;
       old.solid.delete();

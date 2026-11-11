@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { booleanOp } from '../src/geometry/booleans';
 import { findEdges, findEdgesPlaced } from '../src/geometry/edges';
-import { bakeMesh, clearSolidCache, meshDataToManifold, meshId, solidCacheSize, type MeshData } from '../src/geometry/meshData';
+import { bakeMesh, clearSolidCache, meshDataToManifold, meshId, setSolidCacheLimit, SOLID_CACHE_TRIANGLES, solidCacheSize, type MeshData } from '../src/geometry/meshData';
 import { ops } from '../src/geometry/ops';
 import { clearOverlapCache, overlapLines } from '../src/geometry/overlaps';
 import { createPrimitive } from '../src/geometry/primitives';
@@ -49,14 +49,25 @@ describe('solid cache', () => {
   });
 
   it('frees the oldest solids beyond the triangle limit without failing', () => {
+    // A small limit, so the same freeing happens with a fraction of the work
+    // (with the real 3 million it took longer than CI allows).
     const sphere = createPrimitive(wasm, 'sphere', 20);
     const each = sphere.indices.length / 3;
-    const inserts = Math.ceil(4_000_000 / each);
-    for (let i = 0; i < inserts; i++) meshDataToManifold(wasm, withId({ ...sphere }), move(i)).delete();
-    const size = solidCacheSize();
-    expect(size.triangles).toBeLessThanOrEqual(3_000_000);
-    expect(size.solids).toBeLessThan(inserts);
-    expect(size.solids).toBeGreaterThan(0);
+    const limit = each * 10;
+    setSolidCacheLimit(limit);
+    try {
+      const meshes = Array.from({ length: 14 }, () => withId({ ...sphere }));
+      for (const [i, m] of meshes.entries()) meshDataToManifold(wasm, m, move(i)).delete();
+      const size = solidCacheSize();
+      expect(size.triangles).toBeLessThanOrEqual(limit);
+      expect(size.solids).toBe(10);
+      // The oldest were freed and are built again when used; the newest are still there.
+      const again = meshDataToManifold(wasm, meshes[0]);
+      expect(again.volume()).toBeGreaterThan(0);
+      again.delete();
+    } finally {
+      setSolidCacheLimit(SOLID_CACHE_TRIANGLES);
+    }
   });
 
   it('boolean results are the same with ids', () => {
