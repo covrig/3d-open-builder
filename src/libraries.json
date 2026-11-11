@@ -35,6 +35,13 @@
     "licenseFile": "licenses/three.txt"
   },
   {
+    "name": "three-mesh-bvh",
+    "version": "0.9.16",
+    "license": "MIT",
+    "url": "https://github.com/gkjohnson/three-mesh-bvh#readme",
+    "licenseFile": "licenses/three-mesh-bvh.txt"
+  },
+  {
     "name": "Roboto (font)",
     "version": "–",
     "license": "OFL-1.1",

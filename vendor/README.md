@@ -11,6 +11,7 @@ release, unpublish or outage cannot change or break it.
 | `fflate-0.8.3.tgz` | `npm pack fflate@0.8.3` | MIT |
 | `lucide-1.70.0.tgz` | `npm pack lucide@1.70.0` | ISC |
 | `opentype.js-2.0.0.tgz` | `npm pack opentype.js@2.0.0` | MIT |
+| `three-mesh-bvh-0.9.16.tgz` | `npm pack three-mesh-bvh@0.9.16` | MIT |
 | `manifold-3d-3.5.4.tgz` | minimal repack of `manifold-3d@3.5.4`: only `manifold.js`, `manifold.wasm`, `manifold.d.ts`, `LICENSE`, `README.md` | Apache-2.0 |
 
 The manifold-3d repack leaves out the ManifoldCAD editor tooling, whose extra

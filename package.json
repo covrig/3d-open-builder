@@ -19,7 +19,8 @@
     "lucide": "file:vendor/lucide-1.70.0.tgz",
     "manifold-3d": "file:vendor/manifold-3d-3.5.4.tgz",
     "opentype.js": "file:vendor/opentype.js-2.0.0.tgz",
-    "three": "file:vendor/three-0.187.0.tgz"
+    "three": "file:vendor/three-0.187.0.tgz",
+    "three-mesh-bvh": "file:vendor/three-mesh-bvh-0.9.16.tgz"
   },
   "devDependencies": {
     "@types/three": "0.187.0",

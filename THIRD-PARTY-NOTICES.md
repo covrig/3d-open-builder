@@ -78,7 +78,19 @@ Draws the 3D view.
 
 ---
 
-## 6. Roboto (font)
+## 6. three-mesh-bvh
+
+Finds what is under the pointer quickly on objects with many triangles.
+
+- Version: 0.9.16
+- Licence: MIT
+- Copyright: © 2018 Garrett Johnson
+- Project: https://github.com/gkjohnson/three-mesh-bvh
+- Licence text: [`public/licenses/three-mesh-bvh.txt`](public/licenses/three-mesh-bvh.txt)
+
+---
+
+## 7. Roboto (font)
 
 The "Sans" font for text on faces (Roboto Bold).
 
@@ -89,7 +101,7 @@ The "Sans" font for text on faces (Roboto Bold).
 
 ---
 
-## 7. Roboto Slab (font)
+## 8. Roboto Slab (font)
 
 The "Serif" font for text on faces (Roboto Slab Bold).
 
@@ -100,7 +112,7 @@ The "Serif" font for text on faces (Roboto Slab Bold).
 
 ---
 
-## 8. Roboto Mono (font)
+## 9. Roboto Mono (font)
 
 The "Mono" font for text on faces (Roboto Mono Bold).
 

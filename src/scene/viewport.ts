@@ -8,6 +8,29 @@ import { Ground, type GroundColors } from './ground';
 import { GRID_NUMBER_HEIGHT, makeLabel } from './labels';
 import { Reflection } from './reflection';
 import { MM_PER_UNIT, settings, settingsEvents, type Unit } from '../settings';
+import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
+
+/** Below this many triangles, testing every triangle is already quick. */
+const BVH_TRIANGLES = 2000;
+
+/**
+ * Let a big object's ray tests skip most of its triangles: a tree of boxes
+ * around them (three-mesh-bvh), built the first time the object is tested and
+ * kept with its geometry (an object gets new geometry whenever its shape
+ * changes, so the tree never goes stale). "Indirect" leaves the geometry
+ * exactly as it is, so a hit's triangle number still matches the object's
+ * own triangles (face-centre snapping relies on that). The hits are the same
+ * as without it, only found faster.
+ */
+function accelerate(mesh: THREE.Mesh): void {
+  const g = mesh.geometry as THREE.BufferGeometry & { boundsTree?: MeshBVH };
+  if (g.boundsTree) return;
+  const position = g.getAttribute('position');
+  const triangles = (g.index ? g.index.count : position?.count ?? 0) / 3;
+  if (triangles < BVH_TRIANGLES) return;
+  g.boundsTree = new MeshBVH(g, { indirect: true });
+  mesh.raycast = acceleratedRaycast;
+}
 
 /** Grid lines per unit (mm): minor and major spacing. Inches get quarter-inch and one-inch lines. */
 const GRID_STEPS: Record<Unit, { minor: number; major: number }> = {
@@ -373,6 +396,7 @@ export class Viewport extends EventTarget {
   hitsOn(raycaster: THREE.Raycaster, bothSides = false): THREE.Intersection[] {
     // Objects hidden with the eye button can't be clicked (objects a tool hides for its preview still can).
     const meshes = this.objectRoot.children.filter((o): o is THREE.Mesh => (o as THREE.Mesh).isMesh && !o.userData.userHidden);
+    for (const m of meshes) accelerate(m);
     if (!this.clipFilter && !bothSides) return raycaster.intersectObjects(meshes, false);
     const sides = meshes.map((m) => (m.material as THREE.Material).side);
     for (const m of meshes) (m.material as THREE.Material).side = THREE.DoubleSide;
