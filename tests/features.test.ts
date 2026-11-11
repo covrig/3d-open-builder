@@ -1,7 +1,7 @@
 import Module, { type ManifoldToplevel } from 'manifold-3d';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { findEdges } from '../src/geometry/edges';
-import { edgeTreatment, gusset, shell } from '../src/geometry/features';
+import { centredRowMoves, edgeTreatment, gusset, shell } from '../src/geometry/features';
 import { bakeMesh, meshDataToManifold, type MeshData } from '../src/geometry/meshData';
 import { bounds } from '../src/geometry/meshOps';
 import { countPieces } from '../src/geometry/meshCheck';
@@ -162,6 +162,70 @@ describe('chamfer and fillet', () => {
   });
 });
 
+describe('chamfer and fillet at an inside corner of a rim', () => {
+  /** 40 mm cube (x, y -20..20, z 0..40) with a notch x 7..20, y -20..3, z 11..40: the top face is L-shaped. */
+  function notched(): MeshData {
+    const cube = wasm.Manifold.cube([40, 40, 40]).translate([-20, -20, 0]);
+    const box = wasm.Manifold.cube([13, 23, 29]).translate([7, -20, 11]);
+    const m = cube.subtract(box);
+    const mesh = m.getMesh();
+    const out = { positions: mesh.vertProperties.slice(), indices: mesh.triVerts.slice() };
+    cube.delete(); box.delete(); m.delete();
+    return out;
+  }
+  const onTop = (s: { a: number[]; b: number[] }) => s.a[2] > 39.99 && s.b[2] > 39.99;
+  const rims = (mesh: MeshData) => {
+    const top = findEdges(mesh).segments.filter(onTop);
+    // x = 7 rim (y -20..3) and y = 3 rim (x 7..20).
+    const rimX = top.filter((s) => Math.abs(s.a[0] - 7) < 1e-3 && Math.abs(s.b[0] - 7) < 1e-3);
+    const rimY = top.filter((s) => Math.abs(s.a[1] - 3) < 1e-3 && Math.abs(s.b[1] - 3) < 1e-3);
+    return { rimX, rimY };
+  };
+  const contains = (mesh: MeshData, p: [number, number, number]) => {
+    const solid = meshDataToManifold(wasm, mesh);
+    const probe = wasm.Manifold.cube([0.02, 0.02, 0.02]).translate([p[0] - 0.01, p[1] - 0.01, p[2] - 0.01]);
+    const hit = solid.intersect(probe);
+    const v = hit.volume();
+    solid.delete(); probe.delete(); hit.delete();
+    return v > 0.02 ** 3 * 0.99;
+  };
+
+  it('chamfers the rim ending at the reflex corner without cutting into the top face', () => {
+    const mesh = notched();
+    const { rimX, rimY } = rims(mesh);
+    expect(rimX.length).toBeGreaterThan(0);
+    expect(rimY.length).toBeGreaterThan(0);
+    const before = volume(mesh);
+    const one = edgeTreatment(wasm, { mesh, matrix: IDENTITY }, rimX, 'chamfer', 2);
+    expect(before - volume(one.mesh)).toBeCloseTo(2 * 2 / 2 * 23, 0);
+    const both = edgeTreatment(wasm, { mesh, matrix: IDENTITY }, [...rimX, ...rimY], 'chamfer', 2);
+    const removed = before - volume(both.mesh);
+    expect(removed).toBeLessThanOrEqual(72 + 0.5);
+    expect(removed).toBeGreaterThan(72 - 0.5);
+    // The top face past the corner (x < 7, y > 3) is untouched.
+    const world = (m: MeshData, c: [number, number, number]) => {
+      const pm = { positions: m.positions.slice(), indices: m.indices };
+      for (let i = 0; i < pm.positions.length; i += 3) for (let k = 0; k < 3; k++) pm.positions[i + k] += c[k];
+      return pm;
+    };
+    const res = world(both.mesh, both.center);
+    expect(contains(res, [5, 5, 39.9])).toBe(true);
+    expect(contains(res, [-10, 10, 39.9])).toBe(true);
+    expect(contains(res, [6.5, 3.5, 39.9])).toBe(true);
+  });
+
+  it('rounds both rims into a valid solid without overcutting', () => {
+    const mesh = notched();
+    const { rimX, rimY } = rims(mesh);
+    const before = volume(mesh);
+    const out = edgeTreatment(wasm, { mesh, matrix: IDENTITY }, [...rimX, ...rimY], 'fillet', 2);
+    const removed = before - volume(out.mesh);
+    expect(removed).toBeGreaterThan(0);
+    expect(removed).toBeLessThan(72);
+    expect(countPieces(out.mesh)).toBe(1);
+  });
+});
+
 describe('gusset and shell', () => {
   it('adds a triangular gusset in the inside corner', () => {
     const l = lBlock();
@@ -188,3 +252,15 @@ describe('gusset and shell', () => {
 
 // Keep the import used even if a test above is skipped.
 void bakeMesh;
+
+describe('centredRowMoves', () => {
+  it('centres a row of items on a point, spacing apart', () => {
+    const moves = centredRowMoves(4, 10, [1, 0, 0], [100, 5, 0], [0, 5, 0]);
+    expect(moves.map((m) => m[0])).toEqual([85, 95, 105, 115]);
+    expect(moves.every((m) => m[1] === 0 && m[2] === 0)).toBe(true);
+  });
+  it('puts an odd count symmetrically about the point', () => {
+    const moves = centredRowMoves(3, 4, [0, 0, 1], [0, 0, 0], [0, 0, 0]);
+    expect(moves.map((m) => m[2])).toEqual([-4, 0, 4]);
+  });
+});

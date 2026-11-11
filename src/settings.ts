@@ -21,6 +21,14 @@ export interface UiState {
   hiddenPanels: PanelId[];
   /** How much of the plate's fill shows (0 = clear, 1 = solid) */
   plateOpacity: number;
+  /** How strongly the plate's minor and major grid lines show (1 = as designed) */
+  gridLineOpacity: number;
+  /** Numbers along the plate's X and Y axis lines */
+  gridValues: boolean;
+  /** Opacity of the edge lines in the Edges view (1 = solid) */
+  edgeStrength: number;
+  /** Dashed lines where objects overlap, in the Edges view */
+  internalIntersections: boolean;
   /** Mirror image of the objects in the plate: how strong, and how deep (mm) before it fades out */
   reflection: { on: boolean; strength: number; depth: number };
   /** Overhang view: surfaces steeper than ngle degrees from vertical get color */
@@ -69,6 +77,10 @@ const DEFAULTS: Settings = {
     panelOrder: PANELS.map(([id]) => id),
     hiddenPanels: [],
     plateOpacity: 0.35,
+    gridLineOpacity: 1,
+    gridValues: false,
+    edgeStrength: 1,
+    internalIntersections: true,
     reflection: { on: false, strength: 0.3, depth: 60 },
     overhang: { angle: 45, color: '#e5484d' },
     importUnit: 'mm',
@@ -103,6 +115,11 @@ function load(): Settings {
   s.ui.panelOrder = [...new Set([...saved, ...known])];
   s.ui.hiddenPanels = Array.isArray(s.ui.hiddenPanels) ? s.ui.hiddenPanels.filter((id) => known.includes(id)) : [];
   if (!(s.ui.importUnit in IMPORT_UNITS)) s.ui.importUnit = 'mm';
+  const clamp01 = (v: unknown, fallback: number) => (typeof v === 'number' && v >= 0 && v <= 1 ? v : fallback);
+  s.ui.gridLineOpacity = clamp01(s.ui.gridLineOpacity, 1);
+  s.ui.edgeStrength = clamp01(s.ui.edgeStrength, 1);
+  s.ui.gridValues = s.ui.gridValues === true;
+  s.ui.internalIntersections = s.ui.internalIntersections !== false;
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
   s.ui.measure.snap = true;
   return s;

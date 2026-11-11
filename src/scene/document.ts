@@ -102,6 +102,13 @@ export const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
 /** Fainter, dotted lines where the surfaces of overlapping objects cross (see OverlapLines). Dash sizes are mm, so the geometry needs computeLineDistances(). */
 export const overlapMaterial = new THREE.LineDashedMaterial({ color: 0xe6edf5, transparent: true, opacity: 0.45, dashSize: 1.5, gapSize: 1 });
 
+/** How solid the edge lines are (Edges tile's Strength slider; 1 = fully solid, as before). */
+export function setEdgeStrength(strength: number): void {
+  edgeMaterial.transparent = strength < 1;
+  edgeMaterial.opacity = strength;
+  edgeMaterial.needsUpdate = true;
+}
+
 export function setEdgeColor(hex: number): void {
   edgeMaterial.color.setHex(hex);
   overlapMaterial.color.setHex(hex);

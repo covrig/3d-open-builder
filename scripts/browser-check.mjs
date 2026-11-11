@@ -1161,7 +1161,11 @@ async function runChecks(b) {
     const xs = () => page.evaluate(() => window.app.doc.objects.map((o) => Math.round(o.mesh.position.x)));
     const zs = () => page.evaluate(() => window.app.doc.objects.map((o) => Math.round(window.app.doc.worldBox([o]).min.z)));
     // Mirror X: the parts swap sides.
-    await page.evaluate(() => document.querySelector('[data-mirror="0"]').click());
+    // (Mirror opens a bar with the axis choice, X by default; Apply flips the selection.)
+    await page.evaluate(() => document.querySelector('[data-action="mirror"]').click());
+    await page.waitForFunction(() => window.app.doc.objects.every((o) => !o.mesh.visible), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 400));
+    await page.click('#feature-bar [data-feature="apply"]');
     const mirrored = await xs();
     if (mirrored[0] !== 30 || mirrored[1] !== -30) throw new Error(`mirror X: parts at ${mirrored}`);
     // On plate: the group's lowest point rests on the plate; the parts keep their height difference.

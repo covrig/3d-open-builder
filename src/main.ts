@@ -6,7 +6,7 @@ import { cancelAll, onBusyChange, runOp } from './geometry/workerClient';
 import { Autosave, clearAutosave, fromSaved, loadAutosave, type SavedScene } from './app/autosave';
 import { installErrorHandlers, watchGraphicsContext } from './app/errors';
 import { bakeMesh, meshDataToManifold, type MeshData } from './geometry/meshData';
-import { bounds, largestFlatFaceNormal, mirrorMesh, recenter } from './geometry/meshOps';
+import { bounds, largestFlatFaceNormal, recenter } from './geometry/meshOps';
 import { countPieces } from './geometry/meshCheck';
 import { createPrimitive, PRIMITIVE_NAMES } from './geometry/primitives';
 import { IMPORT_EXTENSIONS, importFile } from './io/importFile';
@@ -38,6 +38,7 @@ import { FeatureBar } from './ui/featureBar';
 import { viewClicks } from './ui/interaction';
 import { ModifyTools } from './ui/modifyTools';
 import { PartsTools } from './ui/partsTools';
+import { TurnTools } from './ui/turnTools';
 import { ShapeTools } from './ui/shapeTools';
 import { ReferenceImage } from './ui/referenceImage';
 import { setupMenus } from './ui/menu';
@@ -100,7 +101,7 @@ setupMultiSelect();
 // With nothing selected and a single object in the drawing, the tools work on
 // that object instead of asking to select it first. (After the tool guard, so a
 // refused click changes nothing.) Delete and Cut are left out on purpose.
-const NEEDS_AN_OBJECT = '[data-modify], [data-action="split"], [data-action="extrude-down"], [data-mirror], [data-rotate], [data-action="check"], '
+const NEEDS_AN_OBJECT = '[data-modify], [data-action="split"], [data-action="extrude-down"], [data-action="mirror"], [data-action="rotate90"], [data-action="check"], '
   + '[data-action="orient"], [data-action="duplicate"], [data-action="drop"], [data-action="lay-flat"], [data-action="center"]';
 document.addEventListener('click', (e) => {
   if (doc.selection.length > 0 || !(e.target as Element).closest?.(NEEDS_AN_OBJECT)) return;
@@ -164,6 +165,7 @@ new CheckTools(doc, toast);
 const featureBar = new FeatureBar(viewport, gizmo, doc, toast);
 new ModifyTools(viewport, doc, featureBar, heavy, toast);
 new PartsTools(viewport, doc, featureBar, toast);
+new TurnTools(doc, featureBar, toast);
 new ShapeTools(wasm, doc, featureBar);
 const measure = new MeasureTool(viewport, doc, toast);
 // Cross-section view (More menu); measuring works on the cut.
@@ -175,11 +177,17 @@ const overhangs = new OverhangTool(viewport, gizmo);
 // without it, and snap targets while measuring.
 const overlaps = new OverlapLines(
   viewport, doc,
-  () => ({ opacity: settings.ui.view.edges ? 0.45 : settings.ui.view.xray ? 0.05 : 0, snap: measure.active }),
+  () => ({
+    opacity: settings.ui.view.edges ? (settings.ui.internalIntersections ? 0.45 : 0) : settings.ui.view.xray ? 0.05 : 0,
+    snap: measure.active,
+  }),
   () => isLocked() && !onlyViewLocked(),
 );
 measure.overlaps = overlaps;
 onToolChange(() => overlaps.refresh());
+$('#settings-dialog').addEventListener('change', (e) => {
+  if ((e.target as HTMLInputElement).name === 'internalIntersections') overlaps.refresh();
+});
 for (const b of $$('[data-view="edges"], [data-view="xray"]')) b.addEventListener('click', () => overlaps.refresh());
 setupViewCube(viewport);
 setupLookSettings();
@@ -263,52 +271,7 @@ on('[data-action="split"]', () => {
 
 // Extrude down: a level plane, and below it the shape at the plane down to the plate.
 new ExtrudeTool(viewport, doc, featureBar, toast);
-for (const btn of $$<HTMLButtonElement>('[data-mirror]')) {
-  btn.addEventListener('click', () =>
-    withSelection((objs) => {
-      const axis = Number(btn.dataset.mirror) as 0 | 1 | 2;
-      // A group mirrors as a whole: through the middle of the group, so its
-      // parts swap sides too. A loose object mirrors through its own middle.
-      for (const unit of units(doc, objs)) {
-        const mid = (unit.box.min.getComponent(axis) + unit.box.max.getComponent(axis)) / 2;
-        for (const obj of unit.objs) {
-          // Bake rotation and scale into the geometry and mirror it about the
-          // object's own origin, then place the origin's mirror image. The
-          // object ends up with no rotation, which keeps the transform bar simple.
-          const m = obj.mesh;
-          const linear = new THREE.Matrix4().compose(new THREE.Vector3(), m.quaternion, m.scale);
-          const mirrored = mirrorMesh(bakeMesh({ mesh: obj.data, matrix: linear.elements }), axis);
-          const { mesh, center } = recenter(mirrored);
-          doc.setData(obj, mesh);
-          m.position.setComponent(axis, 2 * mid - m.position.getComponent(axis));
-          m.position.add(new THREE.Vector3(...center));
-          m.quaternion.identity();
-          m.scale.set(1, 1, 1);
-        }
-      }
-    }),
-  );
-}
-
-// Rotate 90°: a quarter turn clockwise seen from the positive end of the axis (so -90° by the
-// right-hand rule). The whole selection turns as one about its centre, and keeps its lowest
-// point where it was, so things resting on the plate stay on it.
-for (const btn of $$<HTMLButtonElement>('[data-rotate]')) {
-  btn.addEventListener('click', () =>
-    withSelection((objs) => {
-      const axis = new THREE.Vector3().setComponent(Number(btn.dataset.rotate), 1);
-      const turn = new THREE.Quaternion().setFromAxisAngle(axis, -Math.PI / 2);
-      const before = doc.worldBox(objs);
-      const centre = before.getCenter(new THREE.Vector3());
-      for (const o of objs) {
-        o.mesh.quaternion.premultiply(turn);
-        o.mesh.position.sub(centre).applyQuaternion(turn).add(centre);
-      }
-      const lift = before.min.z - doc.worldBox(objs).min.z;
-      for (const o of objs) o.mesh.position.z += lift;
-    }),
-  );
-}
+// Mirror and Rotate 90° open the parameter bar: see TurnTools.
 
 // --- Working… and Cancel -------------------------------------------------------
 
@@ -726,7 +689,7 @@ updateHistory();
 // --- Repeat the last tool (R) ------------------------------------------------
 
 /** Buttons whose tool can be run again with R (e.g. a second brace): edit, combine, add and mirror tools. */
-const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-mirror], [data-rotate], [data-action="split"], [data-action="extrude-down"]';
+const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-action="mirror"], [data-action="rotate90"], [data-action="split"], [data-action="extrude-down"]';
 let lastTool: HTMLElement | null = null;
 document.addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>(REPEATABLE);

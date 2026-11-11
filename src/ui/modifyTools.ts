@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
 import { findEdges, type EdgeSegment, type V3 } from '../geometry/edges';
+import { centredRowMoves } from '../geometry/features';
 import { bakeMesh } from '../geometry/meshData';
 import { runOp } from '../geometry/workerClient';
 import type { ObjectState, SceneDocument, SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
 import { EdgePicker } from './edgePicker';
 import { previewMesh, type FeatureBar, type Values } from './featureBar';
+import { SnapPicker } from './snapPicker';
 
 type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
 
@@ -18,6 +20,7 @@ const AXES: Record<string, V3> = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
  */
 export class ModifyTools {
   private readonly edges: EdgePicker;
+  private readonly points: SnapPicker;
 
   constructor(
     viewport: Viewport,
@@ -27,6 +30,7 @@ export class ModifyTools {
     private readonly toast: (msg: string) => void,
   ) {
     this.edges = new EdgePicker(viewport);
+    this.points = new SnapPicker(viewport, doc);
     const actions: Record<string, () => void> = {
       chamfer: () => this.edgeTool('chamfer'),
       fillet: () => this.edgeTool('fillet'),
@@ -156,9 +160,24 @@ export class ModifyTools {
     const size = box.getSize(new THREE.Vector3());
     const centre = box.getCenter(new THREE.Vector3());
     const spacing = Math.round(Math.max(size.x, size.y, 5) + 5);
-    const transforms = (v: Values): ObjectState[][] => {
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    /** The point the row or the axis is centred on (null: linear without a point) */
+    const centreOf = (v: Values): THREE.Vector3 | null =>
+      v.type === 'linear'
+        ? (v.useCentre ? new THREE.Vector3(Number(v.px), Number(v.py), Number(v.pz)) : null)
+        : new THREE.Vector3(Number(v.cx), Number(v.cy), Number(v.cz));
+    const transforms = (v: Values): { moved: ObjectState[] | null; copies: ObjectState[][]; centre: THREE.Vector3 | null } => {
       const count = Math.max(2, Math.min(200, Math.round(Number(v.count))));
       const states = objs.map((o) => this.doc.capture(o));
+      const about = centreOf(v);
+      const shift = (s: ObjectState, by: V3): ObjectState => ({
+        ...s, position: [s.position[0] + by[0], s.position[1] + by[1], s.position[2] + by[2]],
+      });
+      // Linear, centred on a point: the row of `count` items (the original included) is centred there.
+      if (v.type === 'linear' && about) {
+        const moves = centredRowMoves(count, Number(v.spacing), AXES[String(v.direction)], about.toArray() as V3, centre.toArray() as V3);
+        return { moved: states.map((s) => shift(s, moves[0])), copies: moves.slice(1).map((m) => states.map((s) => shift(s, m))), centre: about };
+      }
       const out: ObjectState[][] = [];
       for (let k = 1; k < count; k++) {
         out.push(states.map((s) => {
@@ -170,44 +189,81 @@ export class ModifyTools {
             const total = Number(v.angle);
             const step = THREE.MathUtils.degToRad(total) / (Math.abs(total) >= 360 ? count : count - 1);
             const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...AXES[String(v.axis)]), step * k);
-            const c = new THREE.Vector3(Number(v.cx), Number(v.cy), Number(v.cz));
-            pos.sub(c).applyQuaternion(rot).add(c);
+            pos.sub(about!).applyQuaternion(rot).add(about!);
             q.premultiply(rot);
           }
           return { ...s, position: pos.toArray() as [number, number, number], quaternion: q.toArray() as [number, number, number, number] };
         }));
       }
-      return out;
+      return { moved: null, copies: out, centre: about };
     };
     const ghost = new THREE.MeshStandardMaterial({ color: 0xf2a33a, transparent: true, opacity: 0.55 });
-    this.bar.open<ObjectState[][]>({
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x4cb8ff, depthTest: false, transparent: true });
+    const markerSize = Math.max(1, Math.max(size.x, size.y, size.z) * 0.04);
+    /** A small ball at the point the pattern is centred on */
+    const marker = (at: THREE.Vector3) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(markerSize, 16, 12), markerMaterial);
+      m.position.copy(at);
+      m.renderOrder = 10;
+      return m;
+    };
+    const pickPoint = () => {
+      const typeSelect = document.querySelector<HTMLSelectElement>('#feature-bar [data-key="type"] select');
+      const circular = typeSelect?.value === 'circular';
+      this.toast('Click a point on the model (Esc stops picking)');
+      this.points.start({
+        onPick: (at) => {
+          const [x, y, z] = at.toArray().map(round2);
+          const [kx, ky, kz] = circular ? ['cx', 'cy', 'cz'] : ['px', 'py', 'pz'];
+          if (!circular) this.bar.setValue('useCentre', true, null);
+          this.bar.setValue(kx, x, null);
+          this.bar.setValue(ky, y, null);
+          this.bar.setValue(kz, z);
+        },
+      });
+    };
+    this.bar.open<ReturnType<typeof transforms>>({
       title: 'Pattern',
-      hint: 'Pattern: repeat the selection in a row or around an axis. Apply to add the copies.',
+      hint: 'Pattern: repeat the selection in a row or around an axis. Pick a point on the model to centre it there. Apply to add the copies.',
       fields: [
         { key: 'type', label: 'Type', type: 'select', value: 'linear', options: [['linear', 'Linear'], ['circular', 'Circular']], tip: 'Copies in a straight row, or around an axis.' },
         { key: 'count', label: 'Count', type: 'number', value: 4, min: 2, max: 200, step: 1, tip: 'Total number, including the original.' },
         { key: 'spacing', label: 'Spacing', type: 'number', value: spacing, step: 1, unit: 'mm', showIf: ['type', 'linear'], tip: 'Distance from one copy to the next.' },
         { key: 'direction', label: 'Along', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: ['type', 'linear'], tip: 'Direction of the row.' },
+        { key: 'useCentre', label: 'Centred on point', type: 'checkbox', value: false, showIf: ['type', 'linear'], tip: 'Centre the row (original included) on the point below, instead of starting at the original.' },
+        { key: 'px', label: 'Point X', type: 'number', value: round2(centre.x), step: 1, unit: 'mm', showIf: ['type', 'linear'], tip: 'The point the row is centred on (used when "Centred on point" is ticked).' },
+        { key: 'py', label: 'Y', type: 'number', value: round2(centre.y), step: 1, unit: 'mm', showIf: ['type', 'linear'] },
+        { key: 'pz', label: 'Z', type: 'number', value: round2(centre.z), step: 1, unit: 'mm', showIf: ['type', 'linear'] },
         { key: 'angle', label: 'Angle', type: 'number', value: 360, step: 15, unit: '°', showIf: ['type', 'circular'], tip: 'Total angle covered. 360° spreads copies evenly all the way round.' },
         { key: 'axis', label: 'Axis', type: 'select', value: 'z', options: [['z', 'Z (vertical)'], ['x', 'X'], ['y', 'Y']], showIf: ['type', 'circular'], tip: 'Axis the copies turn around.' },
         { key: 'cx', label: 'Centre X', type: 'number', value: Math.round(centre.x - spacing), step: 1, unit: 'mm', showIf: ['type', 'circular'], tip: 'Point the axis goes through.' },
         { key: 'cy', label: 'Y', type: 'number', value: Math.round(centre.y), step: 1, unit: 'mm', showIf: ['type', 'circular'] },
         { key: 'cz', label: 'Z', type: 'number', value: 0, step: 1, unit: 'mm', showIf: ['type', 'circular'] },
+        { key: 'pick', label: 'Pick point', type: 'button', value: '', onClick: pickPoint, tip: 'Click a corner, edge or face on the model to centre the pattern there (Esc stops picking).' },
         { key: 'merge', label: 'Merge into one', type: 'checkbox', value: false, tip: 'Join the original and all copies into a single object.' },
       ],
       targets: objs,
+      onClose: () => this.points.stop(),
       compute: async (v) => transforms(v),
-      show: (copies) => copies.flatMap((states) => states.map((s, i) => {
-        const m = new THREE.Mesh(objs[i].mesh.geometry, ghost);
-        m.position.fromArray(s.position);
-        m.quaternion.fromArray(s.quaternion);
-        m.scale.fromArray(s.scale);
-        m.userData.sharedGeometry = true; // the preview must not free the object's geometry
-        return m;
-      })),
-      apply: (copies, v) => {
+      show: ({ moved, copies, centre: about }) => {
+        const ghostOf = (states: ObjectState[]) => states.map((s, i) => {
+          const m = new THREE.Mesh(objs[i].mesh.geometry, ghost);
+          m.position.fromArray(s.position);
+          m.quaternion.fromArray(s.quaternion);
+          m.scale.fromArray(s.scale);
+          m.userData.sharedGeometry = true; // the preview must not free the object's geometry
+          return m;
+        });
+        return [...(moved ? ghostOf(moved) : []), ...copies.flatMap(ghostOf), ...(about ? [marker(about)] : [])];
+      },
+      apply: ({ moved, copies }, v) => {
         if (!objs.every((o) => this.doc.objects.includes(o))) return;
         this.doc.checkpoint();
+        // Centred on a point: the original moves to the first place of the row.
+        if (moved) {
+          objs.forEach((o, i) => o.mesh.position.fromArray(moved[i].position));
+          this.doc.emit('transform');
+        }
         const added = copies.flatMap((states) => this.doc.addCopies(states));
         const all = [...objs, ...added];
         if (!v.merge) return this.doc.setSelection(all);

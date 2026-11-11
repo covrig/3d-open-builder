@@ -1,4 +1,4 @@
-import { settings, settingsEvents, updateSettings, type ThemeChoice, type Unit } from '../settings';
+import { settings, settingsEvents, updateSettings, updateUi, type ThemeChoice, type Unit } from '../settings';
 
 /** Wire up the Settings dialog: units, colour mode, snapping and collision. */
 export function setupSettingsDialog(openButton: HTMLElement): void {
@@ -10,6 +10,15 @@ export function setupSettingsDialog(openButton: HTMLElement): void {
     form.querySelector<HTMLInputElement>(`input[name="theme"][value="${settings.theme}"]`)!.checked = true;
     form.querySelector<HTMLInputElement>('input[name="snapping"]')!.checked = settings.snapping;
     form.querySelector<HTMLInputElement>('input[name="collision"]')!.checked = settings.collision;
+    // The dashed lines belong to the Edges view: while it is off the choice is greyed out.
+    const crossings = form.querySelector<HTMLInputElement>('input[name="internalIntersections"]')!;
+    const off = !settings.ui.view.edges;
+    crossings.checked = settings.ui.internalIntersections;
+    crossings.disabled = off;
+    const label = crossings.closest('label')!;
+    label.classList.toggle('disabled', off);
+    label.title = off ? 'Needs Edges on in View' : '';
+    label.querySelector<HTMLElement>('.note')!.hidden = !off;
   };
 
   form.addEventListener('change', (e) => {
@@ -19,6 +28,7 @@ export function setupSettingsDialog(openButton: HTMLElement): void {
       case 'theme': updateSettings({ theme: input.value as ThemeChoice }); break;
       case 'snapping': updateSettings({ snapping: input.checked }); break;
       case 'collision': updateSettings({ collision: input.checked }); break;
+      case 'internalIntersections': updateUi((ui) => (ui.internalIntersections = input.checked)); break;
     }
   });
   settingsEvents.addEventListener('change', sync);

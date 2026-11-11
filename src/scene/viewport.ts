@@ -73,6 +73,9 @@ export class Viewport extends EventTarget {
   private readonly shadowFocus = new THREE.Sphere(new THREE.Vector3(), 100);
   private frameRequested = false;
   private originLabel?: THREE.Mesh;
+  /** Numbers along the plate's X and Y axis lines (Plate popover: "Grid values"), rebuilt when the step changes */
+  private gridValues = false;
+  private gridLabels: { group: THREE.Group; step: number; dark: boolean; cx: number; cy: number; radius: number } | null = null;
   /** Mirror image of the objects in the plate (Settings; off by default) */
   readonly reflection: Reflection;
   /** The plate fill's see-through value from Settings (null: the colour theme's own) */
@@ -273,6 +276,7 @@ export class Viewport extends EventTarget {
     const view = this.camera.position.clone().sub(t);
     const distance = view.length();
     this.ground.follow(t, distance);
+    this.updateGridValues(t, distance);
     // Near and far planes follow the zoom. A fixed 1 mm near plane wastes the
     // depth precision when zoomed far out, and the grid starts to show
     // through objects resting on it.
@@ -348,14 +352,16 @@ export class Viewport extends EventTarget {
    * With the cross-section on, both sides of surfaces count: looking into a
    * cut, the ray's first hit is the inside of the far wall.
    */
-  hitsOn(raycaster: THREE.Raycaster): THREE.Intersection[] {
+  /** `bothSides`: also hit faces turned away from the camera (X-ray picking of hidden corners and edges). */
+  hitsOn(raycaster: THREE.Raycaster, bothSides = false): THREE.Intersection[] {
     // Objects hidden with the eye button can't be clicked (objects a tool hides for its preview still can).
     const meshes = this.objectRoot.children.filter((o): o is THREE.Mesh => (o as THREE.Mesh).isMesh && !o.userData.userHidden);
-    if (!this.clipFilter) return raycaster.intersectObjects(meshes, false);
+    if (!this.clipFilter && !bothSides) return raycaster.intersectObjects(meshes, false);
     const sides = meshes.map((m) => (m.material as THREE.Material).side);
     for (const m of meshes) (m.material as THREE.Material).side = THREE.DoubleSide;
     try {
-      return raycaster.intersectObjects(meshes, false).filter((h) => this.clipFilter!(h.point));
+      const hits = raycaster.intersectObjects(meshes, false);
+      return this.clipFilter ? hits.filter((h) => this.clipFilter!(h.point)) : hits;
     } finally {
       meshes.forEach((m, i) => ((m.material as THREE.Material).side = sides[i]));
     }
@@ -388,6 +394,81 @@ export class Viewport extends EventTarget {
     this.outline.hiddenEdgeColor.setHex(this.palette.outline);
     this.dispatchEvent(new Event('theme'));
     this.invalidate();
+  }
+
+  /** Show numbers (in mm) along the X and Y axis lines of the plate. */
+  setGridValues(on: boolean): void {
+    this.gridValues = on;
+    if (!on) this.clearGridValues();
+    this.invalidate();
+  }
+
+  /** How strongly the minor and major grid lines show (1: as designed). */
+  setGridLineOpacity(value: number): void {
+    this.ground.setLineOpacity(value);
+    this.invalidate();
+  }
+
+  private clearGridValues(): void {
+    const old = this.gridLabels;
+    if (!old) return;
+    this.gridLabels = null;
+    this.ground.group.remove(old.group);
+    for (const child of old.group.children) {
+      const m = child as THREE.Mesh;
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose(); // the text texture is shared and stays cached
+    }
+  }
+
+  /**
+   * Numbers on the axis lines at multiples of a step picked from the camera
+   * distance (about 80 px or more apart). They cover the area the grid has not
+   * faded out of, and are only rebuilt when the step, the theme or the area
+   * changes.
+   */
+  private updateGridValues(target: THREE.Vector3, distance: number): void {
+    if (!this.gridValues) return;
+    const pxPerMm = this.height / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
+    const wanted = 80 / Math.max(pxPerMm, 1e-6);
+    let step = 10;
+    for (let mag = 10; ; mag *= 10) {
+      const found = [mag, mag * 2, mag * 5].find((c) => c >= wanted);
+      if (found !== undefined) {
+        step = Math.max(10, found);
+        break;
+      }
+      if (mag > 1e7) break;
+    }
+    const radius = Math.max(400, distance * 3) * 0.7;
+    const cur = this.gridLabels;
+    if (cur && cur.step === step && cur.dark === this.palette.dark
+      && Math.hypot(target.x - cur.cx, target.y - cur.cy) < cur.radius * 0.25
+      && radius < cur.radius * 1.3 && radius > cur.radius * 0.6) return;
+    this.clearGridValues();
+    const group = new THREE.Group();
+    const height = Math.max(3.5, step * 0.3);
+    const fadeAt = Math.max(400, distance * 3);
+    const add = (value: number, x: number, y: number, alongX: boolean) => {
+      if (value === 0) return; // the "0" label is already there
+      const label = makeLabel(String(value), this.palette.label, height);
+      const w = (label.geometry as THREE.PlaneGeometry).parameters.width;
+      // Under the X axis line, left of the Y axis line; clear of the "0" at the origin.
+      label.position.set(alongX ? x : -w / 2 - height * 0.2, alongX ? -height * 0.8 : y, 0.05);
+      const d = Math.hypot(x - target.x, y - target.y) / fadeAt;
+      const fade = 1 - THREE.MathUtils.smoothstep(d, 0.35, 1);
+      (label.material as THREE.MeshBasicMaterial).opacity = fade;
+      if (fade > 0.02) group.add(label);
+      else {
+        label.geometry.dispose();
+        (label.material as THREE.Material).dispose();
+      }
+    };
+    const from = (c: number) => Math.ceil((c - radius) / step) * step;
+    for (let x = from(target.x); x <= target.x + radius; x += step) add(x, x, 0, true);
+    for (let y = from(target.y); y <= target.y + radius; y += step) add(y, 0, y, false);
+    this.ground.group.add(group);
+    this.gridLabels = { group, step, dark: this.palette.dark, cx: target.x, cy: target.y, radius };
   }
 
   setGridVisible(visible: boolean): void {

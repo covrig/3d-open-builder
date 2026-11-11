@@ -1,4 +1,4 @@
-import type { SceneDocument, SceneObject } from '../scene/document';
+import { OBJECT_COLORS, type SceneDocument, type SceneObject } from '../scene/document';
 import type { ColorPopover } from './colorPopover';
 import { multiSelect } from './chrome';
 import { icon } from './icons';
@@ -8,6 +8,67 @@ export interface RowActions {
   remove(obj: SceneObject): void;
   /** Hide the object from the view, or show it again. */
   toggleHidden(obj: SceneObject): void;
+}
+
+type Lab = [number, number, number];
+
+/** A #rrggbb colour in CIE Lab (D65), where distances roughly match how different colours look. */
+function toLab(hex: string): Lab {
+  const lin = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const [r, g, b] = lin;
+  const xyz = [
+    (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047,
+    0.2126729 * r + 0.7151522 * g + 0.072175 * b,
+    (0.0193339 * r + 0.119192 * g + 0.9503041 * b) / 1.08883,
+  ].map((t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116));
+  return [116 * xyz[1] - 16, 500 * (xyz[0] - xyz[1]), 200 * (xyz[1] - xyz[2])];
+}
+
+const labDistance = (a: Lab, b: Lab) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/** A random mid-tone, fairly saturated colour (like the standard ones: readable on both backgrounds). */
+function randomColor(): string {
+  const h = Math.random() * 360;
+  const sat = 0.5 + Math.random() * 0.35;
+  const l = 0.45 + Math.random() * 0.2;
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - sat * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(c * 255).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * One colour per object: the standard colours first, in random order, then
+ * (for more objects than that) the candidate, of about 200 random ones, that is
+ * furthest in Lab from every colour already used.
+ */
+export function distinctColors(count: number): string[] {
+  const colors = [...OBJECT_COLORS];
+  for (let i = colors.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [colors[i], colors[j]] = [colors[j], colors[i]];
+  }
+  colors.length = Math.min(colors.length, count);
+  const labs = colors.map(toLab);
+  while (colors.length < count) {
+    let best = '';
+    let bestLab: Lab = [0, 0, 0];
+    let bestGap = -1;
+    for (let k = 0; k < 200; k++) {
+      const c = randomColor();
+      const lab = toLab(c);
+      const gap = Math.min(...labs.map((u) => labDistance(lab, u)));
+      if (gap > bestGap) [best, bestLab, bestGap] = [c, lab, gap];
+    }
+    colors.push(best);
+    labs.push(bestLab);
+  }
+  return colors;
 }
 
 /** Sidebar "Objects" section: selection buttons and the list of objects. */
@@ -23,6 +84,14 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
   el.querySelector('[data-action="invert-selection"]')!.addEventListener('click', () =>
     doc.setSelection(doc.objects.filter((o) => !doc.selection.includes(o))),
   );
+
+  // The dice beside the title: every object gets its own colour (one undo step).
+  el.querySelector('[data-action="random-colors"]')!.addEventListener('click', () => {
+    if (doc.objects.length === 0) return;
+    const picked = distinctColors(doc.objects.length);
+    doc.checkpoint();
+    doc.objects.forEach((o, i) => doc.setColor([o], picked[i]));
+  });
 
   /** Swap the name for a text field; Enter or leaving the field saves, Esc cancels. */
   const startRename = (obj: SceneObject, nameEl: HTMLElement) => {

@@ -13,6 +13,19 @@ const norm = (a: V3): V3 => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 
+/**
+ * Moves that put a row of `count` items (the first being the original) centred
+ * on `point` along `dir` (unit vector), `spacing` apart. Item k sits at offset
+ * (k - (count - 1) / 2) * spacing from the point; each move is measured from
+ * `from`, the centre of what is being repeated. Index 0 is the original's move.
+ */
+export function centredRowMoves(count: number, spacing: number, dir: V3, point: V3, from: V3): V3[] {
+  return Array.from({ length: count }, (_, k) => {
+    const off = (k - (count - 1) / 2) * spacing;
+    return [point[0] + dir[0] * off - from[0], point[1] + dir[1] * off - from[1], point[2] + dir[2] * off - from[2]] as V3;
+  });
+}
+
 /** Column-major matrix whose Z axis is `z`, placed at `origin`. */
 function frameMatrix(z: V3, origin: V3): Mat4 {
   const helper: V3 = Math.abs(z[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
@@ -96,8 +109,20 @@ export function edgeTreatment(
       // the cut ends on the neighbouring face itself (exact at any corner angle;
       // ending square to the edge only fits where that face is at 90°).
       const corner = leg * 3 + size;
-      const extA = !s.convex ? 0 : continues(i, s.a) ? overlap : corner;
-      const extB = !s.convex ? 0 : continues(i, s.b) ? overlap : corner;
+      // But at an inside (reflex) corner of the solid, just past the end lies more
+      // material (the face carries on there): the tool must stop square, or it
+      // would cut a groove into that face.
+      const bisector0 = norm(add(f.t1, f.t2));
+      const probe = Math.min(leg, 0.05);
+      const solidPast = (p: V3, out: V3) => {
+        const at = add(add(p, out, probe), bisector0, probe);
+        const cube = keep(keep(Manifold.cube([probe / 2, probe / 2, probe / 2], true)).translate(at));
+        const hit = keep(solid.intersect(cube));
+        return hit.volume() > 0;
+      };
+      const extend = (p: V3, out: V3) => (continues(i, p) ? overlap : solidPast(p, out) ? 0 : corner);
+      const extA = !s.convex ? 0 : extend(s.a, [-f.u[0], -f.u[1], -f.u[2]]);
+      const extB = !s.convex ? 0 : extend(s.b, f.u);
       const a = add(s.a, f.u, -extA), b = add(s.b, f.u, extB);
       // The tool's sides would lie exactly in the two faces and its ridge on the
       // edge; such touching surfaces can leave paper-thin plates standing. Push

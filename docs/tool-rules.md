@@ -45,7 +45,7 @@ the other), and measuring works beside them.
 | Action | Allowed | Why |
 |---|---|---|
 | The tool's own bar, fields, handles and view clicks | Yes | It is the tool |
-| Camera (turn, pan, zoom), view cube, Home, Fit, View toggles (X-ray, wireframe, edges, shadows, rulers, reflection, plate) | Yes | Only the view changes |
+| Camera (turn, pan, zoom), view cube, Home, Fit, View toggles (X-ray, wireframe, edges, shadows, rulers, reflection, plate) and their sliders | Yes | Only the view changes |
 | Side panel open/close, Settings, Export, About, Privacy, keyboard shortcuts panel | Yes | Nothing in the drawing changes |
 | Copy (button, Ctrl+C) | Yes | Reads only |
 | Measuring tools, Clear measurements | No | Opening another tool would end this one |
@@ -91,12 +91,22 @@ Selecting a part of a group selects the whole group.
 
 ## Rotate 90°
 
-More menu: Rotate 90° X, Y and Z. They turn the selection a quarter turn
-clockwise as seen from the positive end of the axis, as one piece about the
-selection's centre (groups and several objects too), and keep the lowest point
-at the same height, so things on the plate stay on it. One undo step. Like the
-other toolbar items they are locked while a tool is open, and with nothing
-selected and a single object in the drawing they work on that object.
+One tool, in the toolbar when there is room and in the More menu otherwise.
+It opens a bar with the buttons X, Y and Z: each click adds a quarter turn
+clockwise as seen from the positive end of the axis, shown as an orange preview
+(the selection itself is hidden meanwhile) and as a total in the bar's title
+("X 90°, Z 180°"). Reset clears the turns. The selection turns as one piece
+about its centre (groups and several objects too) and keeps the lowest point at
+the same height, so things on the plate stay on it. Apply is one undo step;
+Cancel changes nothing. Like the other toolbar items it is locked while a tool
+is open, with nothing selected and a single object in the drawing it works on
+that object, and R repeats it.
+
+## Mirror
+
+A toolbar button that opens a bar with the axis (X, Y or Z; X to start with)
+and an orange preview of the flipped selection. Apply is one undo step; Cancel
+changes nothing. R repeats it.
 
 ## Tools that need two objects
 

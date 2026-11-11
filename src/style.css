@@ -315,6 +315,17 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
   align-items: baseline;
   justify-content: space-between;
 }
+/* Small action beside a section title (Objects: random colours), shown while the header is hovered or focused, always on touch screens. */
+#sidebar .header-action {
+  width: 22px; height: 22px; padding: 0; margin: 0 auto 0 6px; align-self: center; justify-content: center;
+  border-radius: 4px; background: transparent; border: 1px solid transparent; opacity: 0;
+}
+#sidebar .header-action svg { width: 14px; height: 14px; }
+#sidebar section > header:hover .header-action, #sidebar .header-action:focus-visible { opacity: 1; }
+#sidebar .header-action:hover { background: var(--panel-hover); border-color: var(--border-strong); }
+@media (hover: none) { #sidebar .header-action { opacity: 1; } }
+#settings-dialog label.disabled { opacity: 0.5; }
+#settings-dialog label .note { margin-left: 4px; }
 #sidebar h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--muted); }
 .muted { color: var(--muted); font-size: 12px; }
 
@@ -1077,6 +1088,8 @@ button.active > .tile-more { display: flex; }
 .view-popover .pop-row { display: flex; align-items: center; gap: 8px; min-height: 40px; }
 .view-popover .pop-row > span { flex: none; min-width: 64px; }
 .view-popover .pop-row input[type='range'] { flex: 1; min-width: 0; height: 40px; accent-color: var(--accent); }
+.view-popover .pop-toggle { cursor: pointer; }
+.view-popover .pop-toggle input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
 .view-popover .pop-row output { flex: none; min-width: 44px; text-align: right; color: var(--muted); font-size: 12.5px; }
 
 /* Single-object tools while a group or several objects are selected (SINGLE_ONLY in src/ui/toolGuard.ts). */

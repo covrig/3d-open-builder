@@ -83,19 +83,15 @@
         <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-shortcut="E" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-shortcut="P" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
-        <button data-menu="mirror-menu" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z."><span class="icon-row"><i data-lucide="flip-horizontal-2"></i><i data-lucide="chevron-down" class="caret"></i></span><span>Mirror</span></button>
-        <div id="mirror-menu" class="menu compact" role="menu" hidden>
-          <button data-mirror="0" role="menuitem">Mirror X</button>
-          <button data-mirror="1" role="menuitem">Mirror Y</button>
-          <button data-mirror="2" role="menuitem">Mirror Z</button>
-        </div>
+        <button data-action="mirror" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z. Pick the axis, check the orange preview, then Apply."><i data-lucide="flip-horizontal-2"></i><span>Mirror</span></button>
         <!-- The More menu's tools, shown here instead when the toolbar has room (toolbarFit.ts). -->
         <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply."><i data-lucide="triangle-right"></i><span>Bevel</span></button>
         <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply."><i data-lucide="squircle"></i><span>Round</span></button>
         <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle"></i><span>Brace</span></button>
         <button data-modify="shell" class="more-out" data-tip-title="Shell" data-tip="Hollow the object out, leaving walls as thick as you choose."><i data-lucide="box"></i><span>Shell</span></button>
+        <button data-action="rotate90" class="more-out" data-tip-title="Rotate 90°" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like, check the orange preview, then Apply."><i data-lucide="rotate-cw"></i><span>Rotate 90°</span></button>
         <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cut the view open across X, Y or Z to see inside. Only the view changes; measuring works on the cut."><i data-lucide="scan-line"></i><span>Section</span></button>
-        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, brace, shell, rotate 90° about X, Y or Z, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, brace, shell, rotate 90°, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
@@ -105,9 +101,7 @@
           <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Round<kbd class="key-hint">O</kbd></button>
           <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Brace</button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
-          <button data-rotate="0" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate 90° X</button>
-          <button data-rotate="1" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate 90° Y</button>
-          <button data-rotate="2" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate 90° Z</button>
+          <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate 90°</button>
           <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Section</button>
         </div>
       </div>
@@ -279,15 +273,15 @@
         <section data-panel="view">
           <header><h2>View</h2></header>
           <div class="button-grid cols-3 tiles">
-            <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
-            <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
-            <button data-view="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge."><i data-lucide="square-dashed"></i><span>Edges</span></button>
-            <button data-action="home" data-tip-title="Home view" data-shortcut="H" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
             <button data-action="fit" data-tip-title="Fit view" data-shortcut="F" data-tip="Zoom to the selection, or to everything when nothing is selected."><i data-lucide="focus"></i><span>Fit</span></button>
-            <button data-view="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate."><i data-lucide="sun"></i><span>Shadows</span></button>
-            <button data-view="rulers" data-tip-title="Rulers" data-tip="Show the rulers and axis arrows next to the objects."><i data-lucide="ruler"></i><span>Rulers</span></button>
             <button data-pop="reflection" data-tip-title="Reflection" data-tip="Show a mirror image of the objects in the plate. Switching it on opens its sliders; the arrow in the tile opens them again."><i data-lucide="flip-vertical-2"></i><span>Reflection</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-pop="plate" data-tip-title="Plate" data-tip="Show the build plate. Switching it on opens a slider for how see-through it is; the arrow in the tile opens it again."><i data-lucide="grid-3x3"></i><span>Plate</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
+            <button data-action="home" data-tip-title="Home view" data-shortcut="H" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
+            <button data-view="rulers" data-tip-title="Rulers" data-tip="Show the rulers and axis arrows next to the objects."><i data-lucide="ruler"></i><span>Rulers</span></button>
+            <button data-view="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate."><i data-lucide="sun"></i><span>Shadows</span></button>
+            <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
+            <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
+            <button data-view="edges" data-pop="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge. Switching it on opens a slider for how strong the lines are; the arrow in the tile opens it again."><i data-lucide="square-dashed"></i><span>Edges</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
           </div>
         </section>
 
@@ -357,7 +351,7 @@
         </section>
 
         <section data-panel="objects">
-          <header><h2>Objects</h2><span id="object-count" class="muted"></span></header>
+          <header><h2>Objects</h2><button data-action="random-colors" class="header-action" data-tip-title="Random colours" data-tip="Give every object a different colour." aria-label="Random colours"><i data-lucide="dices"></i></button><span id="object-count" class="muted"></span></header>
           <div class="button-grid cols-3">
             <button data-action="select-all" data-tip-title="Select all (Ctrl+A)" data-tip="Select every object.">All</button>
             <button data-action="deselect-all" data-tip-title="Select none" data-tip="Clear the selection.">None</button>
@@ -411,6 +405,10 @@
           <legend>Placing objects</legend>
           <label><input type="checkbox" name="snapping" /> Snapping: move in 1 mm steps, turn in 5° steps, line faces up with the plate and other objects</label>
           <label><input type="checkbox" name="collision" /> Collision: a dragged object stops when it touches another one</label>
+        </fieldset>
+        <fieldset>
+          <legend>View</legend>
+          <label id="intersections-label"><input type="checkbox" name="internalIntersections" /> Show internal intersections: dashed lines where objects overlap <span class="muted note" hidden>Needs Edges on in View.</span></label>
         </fieldset>
         <fieldset>
           <legend>Keyboard</legend>

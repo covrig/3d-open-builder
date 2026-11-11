@@ -21,6 +21,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uMajor;
   uniform vec3 uFill;
   uniform float uFillOpacity;
+  uniform float uLineOpacity;
   uniform vec2 uCenter;
   uniform float uFade;
   varying vec3 vWorld;
@@ -43,9 +44,9 @@ const fragmentShader = /* glsl */ `
     vec3 color = uFill;
     float alpha = uFillOpacity;
     color = mix(color, uMinor, minor);
-    alpha = max(alpha, minor * 0.8);
+    alpha = max(alpha, minor * 0.8 * uLineOpacity);
     color = mix(color, uMajor, major);
-    alpha = max(alpha, major);
+    alpha = max(alpha, major * uLineOpacity);
 
     // Axis lines: X axis (y = 0) red, Y axis (x = 0) green.
     vec2 aw = fwidth(p);
@@ -87,6 +88,7 @@ export class Ground {
         uMajor: { value: new THREE.Color() },
         uFill: { value: new THREE.Color() },
         uFillOpacity: { value: 0.3 },
+        uLineOpacity: { value: 1 },
         uCenter: { value: new THREE.Vector2() },
         uFade: { value: 1000 },
       },
@@ -112,6 +114,11 @@ export class Ground {
     (u.uMajor.value as THREE.Color).setHex(c.major);
     (u.uFill.value as THREE.Color).setHex(c.fill);
     u.uFillOpacity.value = c.fillOpacity;
+  }
+
+  /** How strongly the minor and major grid lines show (1: as designed; the axis lines and the fill are not affected). */
+  setLineOpacity(opacity: number): void {
+    this.material.uniforms.uLineOpacity.value = opacity;
   }
 
   /** Centre the fade on what the camera looks at; reach grows as the camera backs away. */
