@@ -99,8 +99,8 @@ const FADED_OPACITY = 0.08;
 const FADED_COLOR = 0x8f98a3;
 /** Sharp-edge lines (Edges view); the cross-section draws its cut outline with it too. */
 export const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
-/** Fainter lines where the surfaces of overlapping objects cross (see OverlapLines). */
-export const overlapMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5, transparent: true, opacity: 0.45 });
+/** Fainter, dotted lines where the surfaces of overlapping objects cross (see OverlapLines). Dash sizes are mm, so the geometry needs computeLineDistances(). */
+export const overlapMaterial = new THREE.LineDashedMaterial({ color: 0xe6edf5, transparent: true, opacity: 0.45, dashSize: 1.5, gapSize: 1 });
 
 export function setEdgeColor(hex: number): void {
   edgeMaterial.color.setHex(hex);

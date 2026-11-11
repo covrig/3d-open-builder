@@ -70,6 +70,7 @@ export class OverlapLines {
     g.setAttribute('position', new THREE.BufferAttribute(segs, 3));
     this.lines.geometry.dispose();
     this.lines.geometry = g;
+    this.lines.computeLineDistances(); // the dashes need the length along each segment
     this.found = { segs, ...edgeFeatures(segs) };
     const { opacity } = this.wanted();
     overlapMaterial.opacity = opacity;

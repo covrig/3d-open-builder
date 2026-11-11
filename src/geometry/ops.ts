@@ -16,7 +16,11 @@ export const ops = {
   boolean: (wasm: ManifoldToplevel, a: { op: BooleanOp; items: PlacedMesh[] }) => booleanOp(wasm, a.op, a.items),
   combine: (wasm: ManifoldToplevel, a: { op: RoleOp; targets: PlacedMesh[]; tools: PlacedMesh[] }) =>
     combineWithTools(wasm, a.op, a.targets, a.tools),
-  extrudeDown: (wasm: ManifoldToplevel, a: { item: PlacedMesh; height: number }) => extrudeToPlane(wasm, a.item, a.height),
+  // `normal` and `centre` (x, y the plane passes through) tilt the plane; without them it is level.
+  extrudeDown: (wasm: ManifoldToplevel, a: { item: PlacedMesh; height: number; normal?: [number, number, number]; centre?: [number, number] }) =>
+    extrudeToPlane(wasm, a.item, a.normal && a.centre
+      ? { point: [a.centre[0], a.centre[1], a.height], normal: a.normal }
+      : a.height),
   split: (wasm: ManifoldToplevel, a: { item: PlacedMesh; normal: [number, number, number]; offset: number }) =>
     splitByPlane(wasm, a.item, a.normal, a.offset),
   check: (wasm: ManifoldToplevel, a: { item: PlacedMesh; minWall: number }) => checkMesh(wasm, a.item, a.minWall),

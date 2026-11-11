@@ -315,6 +315,55 @@ export function gusset(
 }
 
 /**
+ * Is the surface under the text too busy for it (a thread, a small rounded
+ * edge)? Looks only at the triangles near the letters: those touching the
+ * letters' footprint and within a little more than the depth of the face.
+ * Many of them leaning more than 45 degrees away from the face normal, or a
+ * huge number of triangles, means the letter columns cannot follow it. Plain
+ * flat faces and gently curved ones (a cylinder's side) stay well clear.
+ */
+function faceTooComplex(item: PlacedMesh, frame: Mat4, polygons: [number, number][][], depth: number): boolean {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const poly of polygons) {
+    for (const [x, y] of poly) {
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+  }
+  const zLimit = depth + 1;
+  const m = item.matrix, P = item.mesh.positions, I = item.mesh.indices;
+  // Vertex into the face frame (frame columns: x, y, face normal, origin; it is a rigid placement).
+  const local = (i: number, out: number[]) => {
+    const x = P[3 * i], y = P[3 * i + 1], z = P[3 * i + 2];
+    const wx = m[0] * x + m[4] * y + m[8] * z + m[12] - frame[12];
+    const wy = m[1] * x + m[5] * y + m[9] * z + m[13] - frame[13];
+    const wz = m[2] * x + m[6] * y + m[10] * z + m[14] - frame[14];
+    out[0] = wx * frame[0] + wy * frame[1] + wz * frame[2];
+    out[1] = wx * frame[4] + wy * frame[5] + wz * frame[6];
+    out[2] = wx * frame[8] + wy * frame[9] + wz * frame[10];
+  };
+  const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0];
+  const cos45 = Math.SQRT1_2;
+  let near = 0, stray = 0;
+  for (let t = 0; t < I.length; t += 3) {
+    local(I[t], a); local(I[t + 1], b); local(I[t + 2], c);
+    if (Math.max(a[0], b[0], c[0]) < x0 || Math.min(a[0], b[0], c[0]) > x1) continue;
+    if (Math.max(a[1], b[1], c[1]) < y0 || Math.min(a[1], b[1], c[1]) > y1) continue;
+    if (Math.max(a[2], b[2], c[2]) < -zLimit || Math.min(a[2], b[2], c[2]) > zLimit) continue;
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const len = Math.hypot(nx, ny, nz);
+    if (len < 1e-12) continue;
+    near++;
+    // Cosine to the face normal. Triangles facing right away (a thin plate's back) are not "busy".
+    const cosine = nz / len;
+    if (cosine < cos45 && cosine > -0.9) stray++;
+  }
+  return near > 20000 || (near >= 30 && stray > 0.25 * near);
+}
+
+/**
  * Raised (emboss) or recessed (deboss) text on a face. `polygons` are the
  * glyph outlines in the face plane (mm, centred on the clicked point);
  * `frame` places that plane: its Z axis is the face normal.
@@ -326,6 +375,9 @@ export function textOnFace(
 ): Piece & { letters: MeshData } {
   if (o.polygons.length === 0) throw new Error('Type some text');
   if (!(o.depth > 0)) throw new Error('The height or depth must be more than 0');
+  if (faceTooComplex(item, o.frame, o.polygons, o.depth)) {
+    throw new Error('This face is too complex for text (e.g. a thread or a small rounded edge): pick a flat or gently curved face.');
+  }
   const { Manifold, CrossSection } = wasm;
   return withCleanup((keep) => {
     const solid = keep(meshDataToManifold(wasm, item.mesh, item.matrix));

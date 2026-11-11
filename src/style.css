@@ -936,6 +936,31 @@ svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
   border-radius: 4px;
   white-space: nowrap;
 }
+/* Measuring by touch: the aimed point waits for the tick; the chip sits above it, buttons big enough for a finger. */
+.m-chip {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -100%);
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+.m-chip[hidden] { display: none; }
+.m-chip button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #2f8f4e;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 22px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  touch-action: manipulation;
+}
+.m-chip button[data-no] { background: #4a5260; }
 /* Export: file name box */
 .export-name { flex-direction: column; gap: 6px !important; }
 .export-field { display: flex; align-items: center; gap: 6px; width: 100%; }

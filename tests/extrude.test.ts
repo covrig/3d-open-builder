@@ -49,6 +49,29 @@ describe('extrude down with a plane', () => {
     expect(countPieces(r.mesh)).toBe(1);
   });
 
+  it('gives the same result for a level plane given as a point and normal', () => {
+    const cube = meshOf(() => wasm.Manifold.cube([20, 20, 20], true));
+    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(20) }, { point: [3, -2, 15], normal: [0, 0, 1] });
+    expect(volume(r.mesh)).toBeCloseTo(20 * 20 * 30, 0);
+  });
+
+  it('tilts the plane: the column ends exactly at it', () => {
+    // A 40 mm cube from z = 10 to 50. The plane passes through (0, 0, 30) and falls 0.5 mm per mm
+    // along +x (z = 30 - 0.5x), so it stays inside the cube everywhere.
+    const cube = meshOf(() => wasm.Manifold.cube([40, 40, 40], true));
+    const n = Math.hypot(0.5, 1);
+    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(30) }, { point: [0, 0, 30], normal: [0.5 / n, 0, 1 / n] });
+    // Above the plane: 1600 × average height 20; below: 1600 × average height 30 down to the plate.
+    expect(volume(r.mesh)).toBeCloseTo(1600 * 20 + 1600 * 30, 0);
+    expect(countPieces(r.mesh)).toBe(1);
+    // The column is cut off by the plane, so the object still ends at z = 50 and starts on the plate.
+    const lo = r.center[2] - 0, zs = [] as number[];
+    for (let i = 2; i < r.mesh.positions.length; i += 3) zs.push(r.mesh.positions[i] + r.center[2]);
+    expect(Math.min(...zs)).toBeCloseTo(0, 3);
+    expect(Math.max(...zs)).toBeCloseTo(50, 3);
+    expect(lo).toBeGreaterThan(0);
+  });
+
   it('refuses a plane that misses the object', () => {
     const cube = meshOf(() => wasm.Manifold.cube([10, 10, 10], true));
     expect(() => extrudeToPlane(wasm, { mesh: cube, matrix: lift(20) }, 40)).toThrow(/cuts through/);

@@ -11,10 +11,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const PLANE_COLOR = 0xf2a33a;
 
 /**
- * Extrude down: a level plane through the selected object. Above the plane
- * the object stays as it is; below it, it becomes the shape cut by the plane,
- * pushed straight down to the plate. The plane moves with its arrow or the
- * height field; the result shows in orange before Apply.
+ * Extrude down: a plane through the selected object, level or tilted. Above
+ * the plane the object stays as it is; below it, it becomes the shape cut by
+ * the plane, pushed straight down to the plate. The plane moves with its arrow
+ * or the height field and tilts with the two Tilt fields; the result shows in
+ * orange before Apply.
  */
 export class ExtrudeTool {
   private readonly plane: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
@@ -22,6 +23,8 @@ export class ExtrudeTool {
   private readonly handle: SVGPolygonElement;
   private target: SceneObject | null = null;
   private height = 0;
+  private tiltA = 0; // degrees around X
+  private tiltB = 0; // degrees around Y
   private range: [number, number] = [0, 0];
   private pxPerMm = 1;
   private dir = new THREE.Vector2(0, -1);
@@ -76,31 +79,47 @@ export class ExtrudeTool {
     const start = Math.min(hi - 0.05, bottom + Math.min(1, (hi - bottom) * 0.1));
     this.range = [Math.max(bottom, 0.05), hi];
     this.target = objs[0];
+    this.tiltA = this.tiltB = 0;
     this.setHeight(start);
     const size = box.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.y, 10) * 1.5;
     this.plane.scale.set(span, span, 1);
     this.plane.position.x = (box.min.x + box.max.x) / 2;
     this.plane.position.y = (box.min.y + box.max.y) / 2;
+    this.updateTilt();
     this.plane.visible = true;
+    const centre: [number, number] = [this.plane.position.x, this.plane.position.y];
 
     this.bar.open<(Piece | null)[]>({
       title: 'Extrude down',
-      hint: 'Extrude down: drag the blue arrow or type a height. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
+      hint: 'Extrude down: drag the blue arrow or type a height. Tilt the plane if you like. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
       fields: [
         {
           key: 'height', label: 'Plane height', type: 'number', value: round(start), min: 0, step: 0.5, unit: 'mm',
-          tip: 'Height of the plane above the plate. What is above it stays; below it the shape at the plane goes straight down.',
+          tip: 'Height of the plane above the plate, at the middle of the objects. What is above it stays; below it the shape at the plane goes straight down.',
+        },
+        {
+          key: 'tiltA', label: 'Tilt', type: 'number', value: 0, min: -MAX_TILT, max: MAX_TILT, step: 1, unit: '°',
+          tip: 'Tilt the plane around the X axis (red), up to 60°.',
+        },
+        {
+          key: 'tiltB', label: 'Tilt', type: 'number', value: 0, min: -MAX_TILT, max: MAX_TILT, step: 1, unit: '°',
+          tip: 'Tilt the plane around the Y axis (green), up to 60°.',
         },
       ],
       hide: objs,
       compute: async (v) => {
+        this.tiltA = clampTilt(Number(v.tiltA));
+        this.tiltB = clampTilt(Number(v.tiltB));
+        if (this.tiltA !== Number(v.tiltA)) this.bar.setValue('tiltA', this.tiltA, null);
+        if (this.tiltB !== Number(v.tiltB)) this.bar.setValue('tiltB', this.tiltB, null);
+        this.updateTilt();
         this.setHeight(Number(v.height));
         // A height outside the objects is pulled back in; show where the plane really is.
         if (round(this.height) !== Number(v.height)) this.bar.setValue('height', round(this.height), null);
         // An object the plane misses stays as it is (null).
         const pieces = await Promise.all(objs.map((o) =>
-          runOp('extrudeDown', { item: this.doc.placed(o), height: this.height }).catch(() => null)));
+          runOp('extrudeDown', { item: this.doc.placed(o), height: this.height, normal: this.normal().toArray() as [number, number, number], centre }).catch(() => null)));
         if (pieces.every((p) => p === null)) throw new Error('Move the plane so it cuts through the objects');
         return pieces;
       },
@@ -126,6 +145,19 @@ export class ExtrudeTool {
     this.target = null;
     this.plane.visible = false;
     this.handleSvg.style.display = 'none';
+    this.viewport.invalidate();
+  }
+
+  /** Plane normal: straight up, tilted by the two angles (as in Split). */
+  private normal(): THREE.Vector3 {
+    return new THREE.Vector3(0, 0, 1)
+      .applyAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(this.tiltA))
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(this.tiltB))
+      .normalize();
+  }
+
+  private updateTilt(): void {
+    this.plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), this.normal());
     this.viewport.invalidate();
   }
 
@@ -174,4 +206,6 @@ export class ExtrudeTool {
   }
 }
 
+const MAX_TILT = 60;
+const clampTilt = (v: number) => THREE.MathUtils.clamp(Number.isFinite(v) ? v : 0, -MAX_TILT, MAX_TILT);
 const round = (v: number) => Math.round(v * 100) / 100;

@@ -6,16 +6,22 @@ import { settings, toUnit, updateUi } from '../settings';
 import { hideHint, showHint } from './hint';
 import { beginTool, endTool } from './toolLock';
 import { edgeFeatures } from '../geometry/edgeMiddles';
+import { flatFaceRegion } from '../geometry/faceRegion';
+import type { MeshData } from '../geometry/meshData';
 
 const POINTS_NEEDED: Record<MeasureKind, number> = { distance: 2, angle: 3, circle: 3 };
 const HINTS: Record<MeasureKind, string> = {
-  distance: 'Distance: click two points. Click Distance again to stop.',
-  angle: 'Angle: click the start, the corner, then the end. Click Angle again to stop.',
-  circle: 'Circle: click three points on the edge of a circle or hole. Click Circle again to stop.',
+  distance: 'Distance: click two points on the model. Click Distance again to stop.',
+  angle: 'Angle: click the start, the corner, then the end, all on the model. Click Angle again to stop.',
+  circle: 'Circle: click three points on the model, on the edge of a circle or hole. Click Circle again to stop.',
 };
 /** Colours of the 1st, 2nd and 3rd point. */
 const POINT_COLORS = ['#4cb8ff', '#7ed321', '#c77dff'];
 const SNAP_PX = 14;
+/** Touch: the point being aimed at sits this far above the finger, so the finger doesn't hide it. */
+const TOUCH_OFFSET_PX = 70;
+/** Gap kept between two labels (px). */
+const LABEL_GAP = 3;
 const EDGE_ANGLE = 25;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -35,8 +41,40 @@ export function circleThrough(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vecto
 }
 
 /** What a measuring point snapped to (shown while hovering, so a point isn't misplaced). */
-export type SnapKind = 'corner' | 'middle' | 'edge';
-const SNAP_NAMES: Record<SnapKind, string> = { corner: 'Corner', middle: 'Middle of edge', edge: 'On edge' };
+export type SnapKind = 'corner' | 'measure' | 'middle' | 'face' | 'edge';
+const SNAP_NAMES: Record<SnapKind, string> = {
+  corner: 'Corner',
+  measure: 'Measurement point',
+  middle: 'Middle of edge',
+  face: 'Centre of face',
+  edge: 'On edge',
+};
+
+/** Centres of flat faces per geometry and triangle (null: not a flat face, e.g. a curved surface), found once. */
+const faceCentreCache = new WeakMap<THREE.BufferGeometry, Map<number, THREE.Vector3 | null>>();
+function faceCentre(geometry: THREE.BufferGeometry, data: MeshData, tri: number): THREE.Vector3 | null {
+  let cache = faceCentreCache.get(geometry);
+  if (!cache) faceCentreCache.set(geometry, (cache = new Map()));
+  if (cache.has(tri)) return cache.get(tri)!;
+  // The geometry is the object's mesh made non-indexed in the same triangle order; if not, the triangle numbers don't match.
+  if (geometry.getAttribute('position').count !== data.indices.length) return null;
+  const region = flatFaceRegion(data, tri);
+  const centre = region.flat ? new THREE.Vector3(...region.centre) : null;
+  // Every triangle of the face has the same centre.
+  for (const t of region.triangles) cache.set(t, centre);
+  return centre;
+}
+
+/** One measurement label waiting to be placed so that it doesn't cover another. */
+interface LabelSpec {
+  x: number;
+  y: number;
+  main: string;
+  sub?: string;
+  /** Unit direction (screen) the label may slide along, and how far (px) */
+  dir: THREE.Vector2;
+  slide: number;
+}
 
 interface FeatureEdges {
   /** Sharp-edge segments, 6 numbers (two points) each, local space */
@@ -64,7 +102,7 @@ const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0
 
 /**
  * Measuring on the model: distances, angles and circle diameters. Points are
- * picked on objects (or the plate) and drawn over the view. While a tool is
+ * picked on objects only and drawn over the view. While a tool is
  * active, clicks in the view place points instead of selecting.
  */
 export class MeasureTool {
@@ -77,6 +115,12 @@ export class MeasureTool {
   private readonly options = settings.ui.measure;
   private readonly svg: SVGSVGElement;
   private readonly labels: HTMLElement;
+  /** Floating "Place / discard" chip next to the candidate point of a touch */
+  private readonly chip: HTMLElement;
+  /** True while the last pointer over the view was a finger */
+  private touchPointer = false;
+  /** Touch: the aimed point waiting for the tick (the finger has lifted) */
+  private candidate: { point: MeasurePoint; snap: SnapKind | null } | null = null;
 
   constructor(
     private readonly viewport: Viewport,
@@ -88,8 +132,49 @@ export class MeasureTool {
     this.svg.classList.toggle('dotted', this.options.dotted);
     this.labels = document.createElement('div');
     this.labels.className = 'measure-labels';
-    viewport.element.append(this.svg, this.labels);
+    this.chip = document.createElement('div');
+    this.chip.className = 'm-chip';
+    this.chip.hidden = true;
+    this.chip.innerHTML =
+      '<button type="button" data-ok aria-label="Place the point">✓ Place</button><button type="button" data-no aria-label="Discard the point">✕</button>';
+    this.chip.querySelector('[data-ok]')!.addEventListener('click', () => {
+      const c = this.candidate;
+      this.candidate = null;
+      if (c) this.place(c.point);
+    });
+    this.chip.querySelector('[data-no]')!.addEventListener('click', () => {
+      this.candidate = null;
+      this.viewport.invalidate();
+    });
+    viewport.element.append(this.svg, this.labels, this.chip);
     viewport.onFrame(() => this.draw());
+
+    // Which kind of pointer is over the view (main.ts passes plain coordinates), so a
+    // finger can aim above itself. These run before main.ts's own handlers.
+    const canvas = viewport.renderer.domElement;
+    const track = (e: PointerEvent) => (this.touchPointer = e.pointerType === 'touch');
+    canvas.addEventListener(
+      'pointerdown',
+      (e) => {
+        track(e);
+        if (this.touchPointer) this.move(e.clientX, e.clientY);
+      },
+      { passive: true },
+    );
+    canvas.addEventListener('pointermove', track, { passive: true });
+    for (const type of ['pointerup', 'pointercancel'] as const) {
+      canvas.addEventListener(
+        type,
+        (e) => {
+          if (e.pointerType !== 'touch') return;
+          // The finger is up: the aimed point is shown as a candidate (see click) instead.
+          this.hover = null;
+          this.hoverSnap = null;
+          this.viewport.invalidate();
+        },
+        { passive: true },
+      );
+    }
 
     const panel = document.querySelector<HTMLElement>('#measure-panel')!;
     for (const b of panel.querySelectorAll<HTMLButtonElement>('[data-measure]')) {
@@ -123,6 +208,7 @@ export class MeasureTool {
     this.pending = [];
     this.hover = null;
     this.hoverSnap = null;
+    this.candidate = null;
     for (const b of document.querySelectorAll<HTMLButtonElement>('[data-measure]')) {
       b.classList.toggle('active', b.dataset.measure === kind);
     }
@@ -135,17 +221,38 @@ export class MeasureTool {
   /** Remove all measurements (undoable). */
   clear(): void {
     this.pending = [];
+    this.candidate = null;
     if (this.doc.measurements.length === 0) return this.viewport.invalidate();
     this.doc.checkpoint();
     this.doc.setMeasurements([]);
   }
 
-  /** A click in the view while measuring. */
+  /** Where a pointer at these coordinates aims: a finger aims above itself, a mouse where it is. */
+  private aim(clientX: number, clientY: number): [number, number] {
+    if (!this.touchPointer) return [clientX, clientY];
+    const top = this.viewport.element.getBoundingClientRect().top;
+    return [clientX, Math.max(top, clientY - TOUCH_OFFSET_PX)];
+  }
+
+  /** A click in the view while measuring. A finger only proposes the point (see the chip). */
   click(clientX: number, clientY: number): void {
     if (!this.kind) return;
-    const picked = this.pickPoint(clientX, clientY);
+    const picked = this.pickPoint(...this.aim(clientX, clientY));
+    if (this.touchPointer) {
+      this.hover = null;
+      this.hoverSnap = null;
+      if (picked) this.candidate = picked;
+      this.viewport.invalidate();
+      return;
+    }
     if (!picked) return;
-    const p = picked.point;
+    this.place(picked.point);
+  }
+
+  /** Put a point down: the next point of the measurement being made, which completes when it has enough. */
+  private place(p: MeasurePoint): void {
+    if (!this.kind) return;
+    this.candidate = null;
     this.pending.push(p);
     // Placed: the point goes back to its normal look until the mouse moves again.
     this.hover = null;
@@ -165,13 +272,13 @@ export class MeasureTool {
 
   move(clientX: number, clientY: number): void {
     if (!this.kind) return;
-    const picked = this.pickPoint(clientX, clientY);
+    const picked = this.pickPoint(...this.aim(clientX, clientY));
     this.hover = picked?.point ?? null;
     this.hoverSnap = picked?.snap ?? null;
     this.viewport.invalidate();
   }
 
-  /** World position of a point, or null if its object no longer exists. */
+  /** World position of a point, or null if its object no longer exists. Older files may hold points on the plate (no object). */
   private world(p: MeasurePoint): THREE.Vector3 | null {
     if (p.objectId === undefined) return p.local.clone();
     const obj = this.doc.objects.find((o) => o.id === p.objectId);
@@ -186,32 +293,53 @@ export class MeasureTool {
   overlaps: { readonly features: { segs: Float32Array; corners: Float32Array; mids: Float32Array } | null } | null = null;
 
   /**
-   * Point under the cursor: on an object (snapped, when close, to a corner,
-   * the middle of a straight edge or an edge, in that order), else on the
-   * plate. Also says what it snapped to. With the cross-section on, cut-away
+   * Point under the cursor: on an object only (nothing on the plate or in empty
+   * space), snapped, when close, to a corner, an existing measurement point, the
+   * middle of a straight edge, the centre of a flat face or an edge, in that
+   * order. Also says what it snapped to. With the cross-section on, cut-away
    * parts are ignored, the filled cut face can be measured on, and its outline
    * counts as edges.
    */
   private pickPoint(clientX: number, clientY: number): { point: MeasurePoint; snap: SnapKind | null } | null {
+    // hitsOn skips objects hidden with the eye button and cut-away parts.
     const raycaster = this.viewport.rayAt(clientX, clientY);
+    const hit = this.viewport.hitsOn(raycaster)[0];
+    if (hit) return this.pickFrom(hit, raycaster, clientX, clientY);
+    // Just past an object's outline, where its corners and edges are: the ray
+    // misses by a pixel. Look a little around the cursor for the object and
+    // take the point only if it snaps to something there.
+    for (const radius of [5, 10]) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        const near = this.viewport.hitsOn(this.viewport.rayAt(clientX + radius * Math.cos(a), clientY + radius * Math.sin(a)))[0];
+        if (!near) continue;
+        const picked = this.pickFrom(near, raycaster, clientX, clientY);
+        return picked?.snap ? picked : null;
+      }
+    }
+    return null;
+  }
+
+  /** The point for a hit on an object, snapped from where the cursor (`raycaster`) is. */
+  private pickFrom(hit: THREE.Intersection, raycaster: THREE.Raycaster, clientX: number, clientY: number): { point: MeasurePoint; snap: SnapKind | null } | null {
     const section = this.section?.active ? this.section : null;
     const shown = (world: THREE.Vector3) => !section || section.plane.distanceToPoint(world) >= -1e-4;
-    const hit = section ? this.viewport.hitsOn(raycaster)[0] : raycaster.intersectObjects(this.viewport.objectRoot.children, false)[0];
-    if (!hit) {
-      const onPlate = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
-      return onPlate ? { point: { local: onPlate }, snap: null } : null;
-    }
     const mesh = hit.object as THREE.Mesh;
     const obj = this.doc.byMesh(mesh);
+    if (!obj) return null;
     // Looking into the cut: the first surface still shown faces away, so what
     // is seen is the filled cut face, where the ray meets the plane.
     let worldHit = hit.point;
+    let intoCut = false;
     if (section && hit.face && hit.face.normal.clone().transformDirection(mesh.matrixWorld).dot(raycaster.ray.direction) > 0) {
       const onPlane = raycaster.ray.intersectPlane(section.plane, new THREE.Vector3());
-      if (onPlane) worldHit = onPlane;
+      if (onPlane) {
+        worldHit = onPlane;
+        intoCut = true;
+      }
     }
     const toLocal = (w: THREE.Vector3) => mesh.worldToLocal(w.clone());
-    const snapped = (local: THREE.Vector3, snap: SnapKind | null) => ({ point: { objectId: obj?.id, local }, snap });
+    const snapped = (local: THREE.Vector3, snap: SnapKind | null) => ({ point: { objectId: obj.id, local }, snap });
     if (!this.options.snap || !hit.face) return snapped(toLocal(worldHit), null);
 
     const r = this.viewport.element.getBoundingClientRect();
@@ -224,7 +352,7 @@ export class MeasureTool {
 
     // Snap targets: the object's sharp edges, plus the outline of the cut (in the object's own coordinates).
     const own = featureEdges(mesh.geometry);
-    const cut = section && obj ? section.cutOf(obj) : null;
+    const cut = section ? section.cutOf(obj) : null;
     const inverse = mesh.matrixWorld.clone().invert();
     const toLocalList = (list: Float32Array) => {
       const out = new Float32Array(list.length);
@@ -240,9 +368,10 @@ export class MeasureTool {
     const seam = this.overlaps?.features;
     const seamLocal = seam?.segs.length ? { corners: toLocalList(seam.corners), mids: toLocalList(seam.mids), segs: toLocalList(seam.segs) } : null;
 
-    // 1. Real corners, then 2. middles of straight edges. (Not the points of the
-    // triangles: on a sphere or a cylinder's rim those are only where the
-    // smooth surface was divided up.)
+    // In order: 1. real corners, 2. existing measurement points, 3. middles of
+    // straight edges, 4. centres of flat faces, 5. the nearest sharp edge. (Not
+    // the points of the triangles: on a sphere or a cylinder's rim those are
+    // only where the smooth surface was divided up.)
     let best: THREE.Vector3 | null = null;
     let bestPx = SNAP_PX;
     /**
@@ -271,10 +400,30 @@ export class MeasureTool {
     };
     const corner = single(own.corners, cutLocal?.corners, seamLocal?.corners);
     if (corner) return snapped(corner, 'corner');
+
+    // An existing measurement point (placed or being placed) close to the cursor and near the surface under it.
+    let known: MeasurePoint | null = null;
+    let knownPx = SNAP_PX;
+    for (const q of [...this.doc.measurements.flatMap((m) => m.points), ...this.pending]) {
+      const w = this.world(q);
+      if (!w || !shown(w)) continue;
+      const px = this.viewport.project(w).distanceTo(cursor);
+      if (px >= knownPx || mesh.worldToLocal(w.clone()).distanceTo(localHit) > near) continue;
+      knownPx = px;
+      known = q;
+    }
+    if (known) return { point: { objectId: known.objectId, local: known.local.clone() }, snap: 'measure' };
+
     const middle = single(own.mids, cutLocal?.mids, seamLocal?.mids);
     if (middle) return snapped(middle, 'middle');
 
-    // 3. The nearest sharp edge (cube edges, hole rims, the cut's outline, overlap lines...), never a flat face's diagonal.
+    // The centre of the flat face under the cursor (not on curved surfaces, and not when looking at the cut face).
+    if (!intoCut && hit.faceIndex !== undefined && hit.faceIndex !== null) {
+      const centre = faceCentre(mesh.geometry, obj.data, hit.faceIndex);
+      if (centre && shown(toWorld(centre)) && screenDist(centre) < SNAP_PX) return snapped(centre.clone(), 'face');
+    }
+
+    // 5. The nearest sharp edge (cube edges, hole rims, the cut's outline, overlap lines...), never a flat face's diagonal.
     const localRay = raycaster.ray.clone().applyMatrix4(inverse);
     const a = new THREE.Vector3(), b = new THREE.Vector3(), onSeg = new THREE.Vector3();
     const seg = new THREE.Line3();
@@ -299,9 +448,9 @@ export class MeasureTool {
   // --- Drawing ------------------------------------------------------------
 
   private draw(): void {
-    // Forget measurements whose object was deleted.
     const svg: string[] = [];
-    const html: string[] = [];
+    const specs: LabelSpec[] = [];
+    let snapTag = '';
     const P = (v: THREE.Vector3) => this.viewport.project(v);
     const num = (mm: number) => (Math.round(toUnit(mm) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const unit = settings.unit;
@@ -313,21 +462,22 @@ export class MeasureTool {
       const p = P(v);
       svg.push(`<circle class="point" cx="${p.x}" cy="${p.y}" r="4.5" stroke="${POINT_COLORS[i % 3]}"/>`);
     };
-    const label = (at: THREE.Vector3, main: string, sub?: string) => {
-      const p = P(at);
-      html.push(
-        `<div class="m-label" style="left:${p.x}px;top:${p.y}px"><div class="m-main">${escapeHtml(main)}</div>${
-          sub ? `<div class="m-sub">${escapeHtml(sub)}</div>` : ''
-        }</div>`,
-      );
+    /** A label at a screen point; `dir` and `slide` say where it may move to if it would cover another label. */
+    const label = (at: THREE.Vector2, dir: THREE.Vector2, slide: number, main: string, sub?: string) => {
+      specs.push({ x: at.x, y: at.y, main, sub, dir, slide });
     };
 
     const render = (kind: MeasureKind, pts: THREE.Vector3[]) => {
       if (kind === 'distance' && pts.length === 2) {
         line(pts[0], pts[1]);
         const d = pts[1].clone().sub(pts[0]);
+        const pa = P(pts[0]), pb = P(pts[1]);
+        const len = pa.distanceTo(pb);
         label(
-          pts[0].clone().lerp(pts[1], 0.5),
+          pa.clone().lerp(pb, 0.5),
+          // Slides along its own line, up to 40% of its length on screen.
+          len > 1 ? pb.clone().sub(pa).divideScalar(len) : new THREE.Vector2(1, 0),
+          len * 0.4,
           `${num(d.length())} ${unit}`,
           // Sizes along each axis: always positive, whichever point was picked first.
           this.options.deltas ? `ΔX ${num(Math.abs(d.x))}   ΔY ${num(Math.abs(d.y))}   ΔZ ${num(Math.abs(d.z))}` : undefined,
@@ -351,7 +501,15 @@ export class MeasureTool {
             }
             svg.push(`<path d="M${arc.map((p) => `${p.x},${p.y}`).join('L')}"/>`);
             const bisector = u.clone().normalize().add(v.clone().normalize()).normalize();
-            label(pts[1].clone().addScaledVector(bisector, r * 1.6), `${(Math.round(THREE.MathUtils.radToDeg(angle) * 10) / 10).toLocaleString()}°`);
+            const at = P(pts[1].clone().addScaledVector(bisector, r * 1.6));
+            // Moves out along the line from the corner through its anchor.
+            const out = at.clone().sub(P(pts[1]));
+            label(
+              at,
+              out.length() > 1 ? out.normalize() : new THREE.Vector2(0, -1),
+              60,
+              `${(Math.round(THREE.MathUtils.radToDeg(angle) * 10) / 10).toLocaleString()}°`,
+            );
           }
         }
       }
@@ -370,7 +528,7 @@ export class MeasureTool {
           // disagree, e.g. Ø 10.01 with R 5.01): up to one more decimal.
           const d = Math.round(toUnit(c.radius * 2) * 100) / 100;
           const half = (d / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
-          label(c.center, `Ø ${num(c.radius * 2)} ${unit}  ·  R ${half} ${unit}`);
+          label(P(c.center), new THREE.Vector2(0, -1), 60, `Ø ${num(c.radius * 2)} ${unit}  ·  R ${half} ${unit}`);
         }
       }
       pts.forEach(dot);
@@ -381,28 +539,89 @@ export class MeasureTool {
       const pts = m.points.map((p) => this.world(p));
       if (pts.every((p) => p !== null)) render(m.kind, pts);
     }
+    // A touch candidate whose object is gone is dropped.
+    if (this.candidate && !this.world(this.candidate.point)) this.candidate = null;
+    let chipAt: THREE.Vector2 | null = null;
     if (this.kind) {
-      const pending = [...this.pending, ...(this.hover ? [this.hover] : [])]
+      // The candidate of a touch counts as the aimed point while no finger is moving one.
+      const aimed = this.hover ?? this.candidate?.point ?? null;
+      const aimedSnap = this.hover ? this.hoverSnap : this.candidate?.snap ?? null;
+      const pending = [...this.pending, ...(aimed ? [aimed] : [])]
         .map((p) => this.world(p))
         .filter((p) => p !== null);
       render(this.kind, pending);
-      if (this.hover) {
-        const h = this.world(this.hover);
-        if (h) {
-          const p = P(h);
-          // A snapped point lights up and says what it caught, so a point that only
-          // looks right from this angle isn't placed by mistake.
-          if (this.hoverSnap) {
-            svg.push(`<circle class="hover snapped" cx="${p.x}" cy="${p.y}" r="9"/>`);
-            svg.push(`<circle class="snap-dot" cx="${p.x}" cy="${p.y}" r="4.5"/>`);
-            html.push(`<div class="m-snap" style="left:${p.x}px;top:${p.y}px">${SNAP_NAMES[this.hoverSnap]}</div>`);
-          } else {
-            svg.push(`<circle class="hover" cx="${p.x}" cy="${p.y}" r="8"/>`);
-          }
+      const h = aimed ? this.world(aimed) : null;
+      if (h) {
+        const p = P(h);
+        // A snapped point lights up and says what it caught, so a point that only
+        // looks right from this angle isn't placed by mistake.
+        if (aimedSnap) {
+          svg.push(`<circle class="hover snapped" cx="${p.x}" cy="${p.y}" r="9"/>`);
+          svg.push(`<circle class="snap-dot" cx="${p.x}" cy="${p.y}" r="4.5"/>`);
+          snapTag = `<div class="m-snap" style="left:${p.x}px;top:${p.y}px">${SNAP_NAMES[aimedSnap]}</div>`;
+        } else {
+          svg.push(`<circle class="hover" cx="${p.x}" cy="${p.y}" r="8"/>`);
         }
+        if (!this.hover) chipAt = p;
       }
     }
     this.svg.innerHTML = svg.join('');
-    this.labels.innerHTML = html.join('');
+
+    // Labels: put them in, measure them, then move any that would cover another.
+    this.labels.innerHTML =
+      specs
+        .map(
+          (s, i) =>
+            `<div class="m-label" data-i="${i}"><div class="m-main">${escapeHtml(s.main)}</div>${
+              s.sub ? `<div class="m-sub">${escapeHtml(s.sub)}</div>` : ''
+            }</div>`,
+        )
+        .join('') + snapTag;
+    if (specs.length) this.placeLabels(specs);
+
+    // The place / discard chip above the candidate (above, because the finger is below it).
+    this.chip.hidden = !chipAt;
+    if (chipAt) {
+      const w = this.chip.offsetWidth, h = this.chip.offsetHeight;
+      const x = Math.min(Math.max(chipAt.x, w / 2 + 4), Math.max(w / 2 + 4, this.viewport.element.clientWidth - w / 2 - 4));
+      this.chip.style.left = `${x}px`;
+      this.chip.style.top = `${Math.max(chipAt.y - 34, h + 4)}px`;
+    }
+  }
+
+  /**
+   * Position the labels in the layer so that no two overlap, each as close to its
+   * anchor as it can be: first the anchor itself, then sliding along its own
+   * line (both ways), then stepping aside from that line (both sides, further
+   * and further). The order of the labels is stable, so they don't jump around.
+   */
+  private placeLabels(specs: LabelSpec[]): void {
+    const els = this.labels.querySelectorAll<HTMLElement>('.m-label');
+    const sizes = Array.from(els, (el) => [el.offsetWidth, el.offsetHeight] as const);
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    const STEP = 8;
+    specs.forEach((s, i) => {
+      const [w, h] = sizes[i];
+      const free = (x: number, y: number) =>
+        placed.every((b) => Math.abs(x - b.x) >= (w + b.w) / 2 + LABEL_GAP || Math.abs(y - b.y) >= (h + b.h) / 2 + LABEL_GAP);
+      const slides = [0];
+      for (let t = STEP; t <= s.slide; t += STEP) slides.push(t, -t);
+      const sides = [0];
+      for (let k = 1; k <= 6; k++) sides.push(k * (h * 0.8 + LABEL_GAP), -k * (h * 0.8 + LABEL_GAP));
+      let spot = { x: s.x, y: s.y };
+      search: for (const side of sides) {
+        for (const t of slides) {
+          const x = s.x + s.dir.x * t - s.dir.y * side;
+          const y = s.y + s.dir.y * t + s.dir.x * side;
+          if (free(x, y)) {
+            spot = { x, y };
+            break search;
+          }
+        }
+      }
+      placed.push({ ...spot, w, h });
+      els[i].style.left = `${spot.x}px`;
+      els[i].style.top = `${spot.y}px`;
+    });
   }
 }

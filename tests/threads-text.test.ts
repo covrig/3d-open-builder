@@ -112,4 +112,25 @@ describe('text on a face', () => {
       expect(Math.abs(volume(r) - base)).toBeLessThan(letterArea * 1.1);
     }
   });
+
+  it('allows text on the side of a default cylinder', () => {
+    const polys = textOutlines(font, 'Hello', 8);
+    const cyl = createPrimitive(wasm, 'cylinder');
+    const b = bounds(cyl);
+    const r = (b.max[0] - b.min[0]) / 2;
+    // Face normal +X at the middle of the side.
+    const frame: Mat4 = [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, r, 0, (b.min[2] + b.max[2]) / 2, 1];
+    const out = textOnFace(wasm, { mesh: cyl, matrix: IDENTITY }, { polygons: polys, depth: 1, mode: 'emboss', frame }).mesh;
+    expect(volume(out)).toBeGreaterThan(volume(cyl));
+  });
+
+  it('refuses text on a thread', () => {
+    const polys = textOutlines(font, 'Hi', 8);
+    const rod = makeThreaded(wasm, { kind: 'rod', size: 'M6', length: 20, clearance: 0 }).mesh;
+    const b = bounds(rod);
+    const frame: Mat4 = [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, b.max[0], 0, (b.min[2] + b.max[2]) / 2, 1];
+    for (const mode of ['emboss', 'deboss'] as const) {
+      expect(() => textOnFace(wasm, { mesh: rod, matrix: IDENTITY }, { polygons: polys, depth: 0.5, mode, frame })).toThrow(/too complex for text/);
+    }
+  });
 });
