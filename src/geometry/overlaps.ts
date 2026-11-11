@@ -1,5 +1,5 @@
 import type { Manifold, ManifoldToplevel } from 'manifold-3d';
-import { meshDataToManifold, type PlacedMesh } from './meshData';
+import { matrixKey, meshDataToManifold, type PlacedMesh } from './meshData';
 
 /** Stop looking for more overlaps once the pairs worked out add up to this many triangles. */
 const TRIANGLE_BUDGET = 600_000;
@@ -21,6 +21,17 @@ function worldBox({ mesh, matrix: e }: PlacedMesh): Box {
   }
   return b;
 }
+
+/** What each pair of placed objects gave last time, so only new or moved pairs are worked out again. */
+const pairCache = new Map<string, { segments: Float32Array; triangles: number }>();
+
+/** Forget every remembered pair (for tests). */
+export function clearOverlapCache(): void {
+  pairCache.clear();
+}
+
+/** Identity of an object as placed; null when its mesh has no id (then nothing is remembered). */
+const placement = ({ mesh, matrix }: PlacedMesh): string | null => (mesh.id === undefined ? null : `${mesh.id}:${matrixKey(matrix)}`);
 
 const overlap = (a: Box, b: Box) => a[0] < b[3] && b[0] < a[3] && a[1] < b[4] && b[1] < a[4] && a[2] < b[5] && b[2] < a[5];
 
@@ -54,22 +65,39 @@ export function overlapLines(wasm: ManifoldToplevel, items: PlacedMesh[]): Float
   };
   const out: number[] = [];
   let triangles = 0;
+  const places = items.map(placement);
+  /** Cache keys of the pairs met in this call; the others are forgotten at the end. */
+  const seen = new Set<string>();
   try {
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
         if (!overlap(boxes[i], boxes[j])) continue;
+        const pi = places[i], pj = places[j];
+        const key = pi !== null && pj !== null ? (pi < pj ? `${pi}|${pj}` : `${pj}|${pi}`) : null;
+        const known = key === null ? undefined : pairCache.get(key);
+        if (key !== null) seen.add(key);
+        if (known) {
+          triangles += known.triangles;
+          if (triangles > TRIANGLE_BUDGET) return new Float32Array(out);
+          for (let k = 0; k < known.segments.length; k++) out.push(known.segments[k]);
+          continue;
+        }
         const a = solid(i), b = solid(j);
         if (!a || !b) continue;
-        triangles += a.numTri() + b.numTri();
+        const pairTriangles = a.numTri() + b.numTri();
+        triangles += pairTriangles;
         if (triangles > TRIANGLE_BUDGET) return new Float32Array(out);
         const both = a.intersect(b);
         owned.push(both);
-        if (both.isEmpty()) continue;
-        crossings(both, a.originalID(), b.originalID(), out);
+        const segments: number[] = [];
+        if (!both.isEmpty()) crossings(both, a.originalID(), b.originalID(), segments);
+        if (key !== null) pairCache.set(key, { segments: new Float32Array(segments), triangles: pairTriangles });
+        for (let k = 0; k < segments.length; k++) out.push(segments[k]);
       }
     }
     return new Float32Array(out);
   } finally {
+    for (const k of [...pairCache.keys()]) if (!seen.has(k)) pairCache.delete(k);
     for (const m of owned) m.delete();
   }
 }

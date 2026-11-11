@@ -321,6 +321,9 @@ export function gusset(
   edge: EdgeSegment,
   o: { leg1: number; leg2: number; thickness: number; position: number },
 ): Piece {
+  if (!(o.leg1 > 0)) throw new Error('Leg 1 must be more than 0');
+  if (!(o.leg2 > 0)) throw new Error('Leg 2 must be more than 0');
+  if (!(o.thickness > 0)) throw new Error('The thickness must be more than 0');
   if (edge.convex) throw new Error('Pick an inside corner (where two walls meet), not an outside edge');
   const f = edgeFrame(edge);
   const { Manifold } = wasm;

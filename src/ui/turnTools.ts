@@ -5,6 +5,7 @@ import type { SceneDocument, SceneObject } from '../scene/document';
 import { units } from './arrange';
 import { FeatureBar, previewMesh } from './featureBar';
 import { showHint } from './hint';
+import { mirrorPlaneAt } from './mirrorDistance';
 import { SnapPicker } from './snapPicker';
 
 const AXIS_NAMES = ['X', 'Y', 'Z'] as const;
@@ -104,6 +105,10 @@ export class TurnTools {
           options: [['axis', 'Axis'], ['line', 'Line (2 points)']],
         },
         { key: 'axis', label: 'Axis', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: ['mode', 'axis'], tip: 'The selection is flipped along this axis.' },
+        {
+          key: 'distance', label: 'Distance', type: 'number', unit: 'mm', value: 0, step: 1, showIf: ['mode', 'axis'],
+          tip: '0 flips in place. Otherwise the copy lands this far from the original (negative: the other side).',
+        },
         { key: 'keep', label: 'Keep the original', type: 'checkbox', value: false, tip: 'Keep the original and add the mirrored copy next to it.' },
         {
           key: 'again', label: 'Pick again', type: 'button', value: '', showIf: (v) => v.mode !== 'axis',
@@ -127,10 +132,11 @@ export class TurnTools {
         }
         const axis = AXIS_NAMES.indexOf(String(v.axis).toUpperCase() as 'X') as 0 | 1 | 2;
         const out: Flipped[] = [];
+        const distance = Number(v.distance) || 0;
         // A group mirrors as a whole: through the middle of the group, so its
         // parts swap sides too. A loose object mirrors through its own middle.
         for (const unit of units(doc, objs)) {
-          const mid = (unit.box.min.getComponent(axis) + unit.box.max.getComponent(axis)) / 2;
+          const mid = mirrorPlaneAt(unit.box.min.getComponent(axis), unit.box.max.getComponent(axis), distance);
           for (const obj of unit.objs) {
             // Bake rotation and scale into the geometry and mirror it about the
             // object's own origin, then place the origin's mirror image. The

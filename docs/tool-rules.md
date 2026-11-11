@@ -106,10 +106,25 @@ that object, and R repeats it.
 
 A toolbar button that opens a bar with the mirror mode: Axis (X, Y or Z; X to
 start with) or Line (click two points; the mirror is the vertical plane through
-them), and an orange preview of the flipped selection. "Keep the original"
+them), and an orange preview of the flipped selection. In Axis mode, "Distance"
+(0 to start with) flips in place; any other value puts the mirrored result that
+far from the original (negative: on the other side), so there is a gap of that
+size between them. "Keep the original"
 (off to start with) leaves the selection as it is and adds the mirrored copies
 instead, selected, and copies of a group form a group of their own. Apply is
 one undo step; Cancel changes nothing. R repeats it.
+
+## Units and rulers
+
+Number fields in the tool bars that hold a length show and accept it in the
+unit chosen in Settings (mm, cm or inch); changing the unit while a bar is open
+updates its fields. An empty or non-numeric entry keeps the previous value, and
+a number is held to the field's limits.
+
+The rulers sit on the two sides of the footprint that face the camera and move
+to the other sides when the view goes round the object, with the numbers on the
+outside and the text turned to read from the viewer. The small X, Y and Z axes
+stay where the two rulers meet.
 
 ## Tools that need two objects
 

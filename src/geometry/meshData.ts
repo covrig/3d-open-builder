@@ -10,6 +10,64 @@ export interface MeshData {
   positions: Float32Array;
   /** three vertex indices per triangle, counter-clockwise seen from outside */
   indices: Uint32Array;
+  /**
+   * Session-unique identity of this exact mesh, added by the scene when it
+   * hands the mesh to the geometry worker (see meshId). Never saved. It lets
+   * the worker keep the validated solid and reuse it between operations.
+   */
+  id?: number;
+}
+
+const ids = new WeakMap<MeshData, number>();
+let lastId = 0;
+
+/** A number that stands for this mesh object for the rest of the session (a mesh is never changed once added). */
+export function meshId(data: MeshData): number {
+  let id = ids.get(data);
+  if (id === undefined) ids.set(data, (id = ++lastId));
+  return id;
+}
+
+/** Validated, untransformed solids by mesh id, oldest first. Only the geometry worker passes ids, so elsewhere this stays empty. */
+const solidCache = new Map<number, { solid: Manifold; triangles: number }>();
+let cachedTriangles = 0;
+/** Most triangles held in the cache; the oldest are freed beyond this. */
+const CACHE_TRIANGLES = 3_000_000;
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] as Mat4;
+
+/** The matrix as text, to tell placements apart (exact: unmoved objects always give the same text). */
+export function matrixKey(matrix: ArrayLike<number>): string {
+  return Array.prototype.join.call(matrix, ',');
+}
+
+/** Free every cached solid (for tests, and when the cache is no longer wanted). */
+export function clearSolidCache(): void {
+  for (const e of solidCache.values()) e.solid.delete();
+  solidCache.clear();
+  cachedTriangles = 0;
+}
+
+/** Number of solids and triangles in the cache. */
+export function solidCacheSize(): { solids: number; triangles: number } {
+  return { solids: solidCache.size, triangles: cachedTriangles };
+}
+
+function validSolid(wasm: ManifoldToplevel, data: MeshData): Manifold {
+  const mesh = new wasm.Mesh({
+    numProp: 3,
+    vertProperties: data.positions,
+    triVerts: data.indices,
+  });
+  // Welds vertices that share a position, in case the mesh came from a file
+  // format that duplicates them (STL does this for every triangle).
+  mesh.merge();
+  const m = new wasm.Manifold(mesh);
+  const status = m.status();
+  if (status !== 'NoError') {
+    m.delete();
+    throw new Error(`Mesh is not a valid solid (${status})`);
+  }
+  return m;
 }
 
 /** A mesh plus the column-major 4x4 world matrix that places it in the scene. */
@@ -51,33 +109,42 @@ export function manifoldToMeshData(m: Manifold): MeshData {
 
 /**
  * Build a Manifold from mesh data, optionally transformed by a world matrix.
- * Throws if the mesh is not a closed, watertight solid.
+ * Throws if the mesh is not a closed, watertight solid. The caller owns the
+ * result and deletes it. A mesh with an id keeps its validated solid for next
+ * time (the same object is often used again and again), within a size limit.
  */
 export function meshDataToManifold(
   wasm: ManifoldToplevel,
   data: MeshData,
   matrix?: ArrayLike<number>,
 ): Manifold {
-  const mesh = new wasm.Mesh({
-    numProp: 3,
-    vertProperties: data.positions,
-    triVerts: data.indices,
-  });
-  // Welds vertices that share a position, in case the mesh came from a file
-  // format that duplicates them (STL does this for every triangle).
-  mesh.merge();
-  let m = new wasm.Manifold(mesh);
-  const status = m.status();
-  if (status !== 'NoError') {
-    m.delete();
-    throw new Error(`Mesh is not a valid solid (${status})`);
-  }
-  if (matrix) {
+  const id = data.id;
+  if (id === undefined) {
+    const m = validSolid(wasm, data);
+    if (!matrix) return m;
     const t = m.transform(Array.from(matrix) as Mat4);
     m.delete();
-    m = t;
+    return t;
   }
-  return m;
+  let entry = solidCache.get(id);
+  if (entry) {
+    // Used just now: move to the newest end.
+    solidCache.delete(id);
+    solidCache.set(id, entry);
+  } else {
+    const solid = validSolid(wasm, data);
+    entry = { solid, triangles: solid.numTri() };
+    solidCache.set(id, entry);
+    cachedTriangles += entry.triangles;
+    // Free the oldest, but never the one just added.
+    for (const [key, old] of solidCache) {
+      if (cachedTriangles <= CACHE_TRIANGLES || key === id) break;
+      solidCache.delete(key);
+      cachedTriangles -= old.triangles;
+      old.solid.delete();
+    }
+  }
+  return entry.solid.transform(matrix ? (Array.from(matrix) as Mat4) : IDENTITY);
 }
 
 /**

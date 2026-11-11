@@ -229,16 +229,17 @@ export class SnapPicker {
     // Just past an object's outline, where its corners and edges are: the ray
     // misses by a pixel. Look a little around the cursor for the object and
     // take the point only if it snaps to something there.
+    let best: Candidate | null = null;
     for (const radius of [5, 10]) {
       for (let i = 0; i < 8; i++) {
         const a = (i * Math.PI) / 4;
         const nearHits = this.viewport.hitsOn(this.viewport.rayAt(clientX + radius * Math.cos(a), clientY + radius * Math.sin(a)), xray);
         if (!nearHits.length) continue;
         const picked = this.pickFromHits(nearHits, raycaster, clientX, clientY);
-        return picked?.snap ? this.withHidden(picked) : null;
+        if (picked?.snap && (!best || this.betterThan(picked, best))) best = picked;
       }
     }
-    return null;
+    return best ? this.withHidden(best) : null;
   }
 
   /** Whether a snapped point lies behind the surface in front of it (only possible to pick with X-ray on). */
@@ -262,10 +263,13 @@ export class SnapPicker {
     const found = list.map((h) => this.pickFrom(h, raycaster, clientX, clientY)).filter((c): c is Candidate => c !== null);
     const snapped = found.filter((c) => c.snap);
     if (snapped.length === 0) return found[0] ?? null;
-    return snapped.reduce((best, c) => {
-      const rank = RANK[c.snap!] - RANK[best.snap!];
-      return rank < 0 || (rank === 0 && c.px < best.px) ? c : best;
-    });
+    return snapped.reduce((best, c) => (this.betterThan(c, best) ? c : best));
+  }
+
+  /** Same ranking as pickFromHits: the higher-priority snap, then the nearer to the cursor. */
+  private betterThan(c: Candidate, best: Candidate): boolean {
+    const rank = RANK[c.snap!] - RANK[best.snap!];
+    return rank < 0 || (rank === 0 && c.px < best.px);
   }
 
   /** The candidate for a hit on an object, snapped from where the cursor (`raycaster`) is. */

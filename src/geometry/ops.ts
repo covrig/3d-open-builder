@@ -1,9 +1,10 @@
 import type { ManifoldToplevel } from 'manifold-3d';
+import * as THREE from 'three';
 import { booleanOp, combineWithTools, type BooleanOp, type RoleOp } from './booleans';
 import { extrudeToPlane, splitByPlane } from './cut';
 import type { MeshData, PlacedMesh } from './meshData';
 import { checkMesh, repairMesh } from './meshTools';
-import type { EdgeSegment } from './edges';
+import { findEdgesPlaced, type EdgeSegment } from './edges';
 import { edgeTreatment, gusset, shell, textOnFace } from './features';
 import { overlapLines } from './overlaps';
 import { makeThreaded, type ThreadInfo } from './threads';
@@ -33,6 +34,19 @@ export const ops = {
   union: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => booleanOp(wasm, 'union', a.items),
   threaded: (wasm: ManifoldToplevel, a: Parameters<typeof makeThreaded>[1]) => makeThreaded(wasm, a),
   text: (wasm: ManifoldToplevel, a: { item: PlacedMesh } & Parameters<typeof textOnFace>[2]) => textOnFace(wasm, a.item, a),
+  // Sharp edges of the object as placed, for picking (bevel, round, brace).
+  findEdges: (_wasm: ManifoldToplevel, a: { item: PlacedMesh }) => findEdgesPlaced(a.item),
+  // Lines along the edges sharper than `angle` degrees (the Edges view), 6 numbers per segment, in the mesh's own space.
+  edgeLines: (_wasm: ManifoldToplevel, a: { mesh: MeshData; angle: number }): Float32Array => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(a.mesh.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(a.mesh.indices, 1));
+    const edges = new THREE.EdgesGeometry(geometry, a.angle);
+    const lines = new Float32Array(edges.getAttribute('position').array);
+    geometry.dispose();
+    edges.dispose();
+    return lines;
+  },
   overlaps: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => overlapLines(wasm, a.items),
 };
 

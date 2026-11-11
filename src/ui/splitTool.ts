@@ -306,9 +306,13 @@ export class SplitTool {
     const up = () => {
       this.handle.removeEventListener('pointermove', move);
       this.handle.removeEventListener('pointerup', up);
+      this.handle.removeEventListener('pointercancel', up);
+      this.handle.removeEventListener('lostpointercapture', up);
     };
     this.handle.addEventListener('pointermove', move);
     this.handle.addEventListener('pointerup', up);
+    this.handle.addEventListener('pointercancel', up);
+    this.handle.addEventListener('lostpointercapture', up);
   }
 
   private apply(): void {

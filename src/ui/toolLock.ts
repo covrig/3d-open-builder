@@ -96,3 +96,16 @@ export function onlyViewLocked(): boolean {
 export function onToolChange(listener: () => void): void {
   listeners.add(listener);
 }
+
+let busy = false;
+
+/** A heavy job (background calculation) is running: treated like a locked app. */
+export function setBusy(value: boolean): void {
+  if (busy === value) return;
+  busy = value;
+  notify();
+}
+
+export function isBusy(): boolean {
+  return busy;
+}

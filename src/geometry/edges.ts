@@ -1,5 +1,5 @@
 import { weld } from './meshCheck';
-import type { MeshData } from './meshData';
+import { bakeMesh, matrixKey, type MeshData, type PlacedMesh } from './meshData';
 
 export type V3 = [number, number, number];
 
@@ -112,6 +112,24 @@ export function findEdges(mesh: MeshData, minAngle = 30): EdgeSet {
     else groups.set(r, [i]);
   });
   return { segments, chains: [...groups.values()] };
+}
+
+/** Edge sets of recently opened objects by id and placement, oldest first. */
+const edgeCache = new Map<string, EdgeSet>();
+const EDGE_CACHE_SIZE = 6;
+
+/** Sharp edges of an object as placed in the scene; the last few answers are remembered for meshes with an id. */
+export function findEdgesPlaced(item: PlacedMesh, minAngle = 30): EdgeSet {
+  const id = item.mesh.id;
+  const key = id === undefined ? null : `${id}:${matrixKey(item.matrix)}:${minAngle}`;
+  const known = key === null ? undefined : edgeCache.get(key);
+  if (known) return known;
+  const set = findEdges(bakeMesh(item), minAngle);
+  if (key !== null) {
+    edgeCache.set(key, set);
+    if (edgeCache.size > EDGE_CACHE_SIZE) edgeCache.delete(edgeCache.keys().next().value!);
+  }
+  return set;
 }
 
 /** Directions across the two faces, pointing away from the edge, plus the edge direction. */

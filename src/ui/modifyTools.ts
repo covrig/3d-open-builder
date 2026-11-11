@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
-import { findEdges, type EdgeSegment, type V3 } from '../geometry/edges';
+import type { EdgeSegment, EdgeSet, V3 } from '../geometry/edges';
 import { centredRowMoves } from '../geometry/features';
-import { bakeMesh } from '../geometry/meshData';
-import { runOp } from '../geometry/workerClient';
+import { CANCELLED, runOp } from '../geometry/workerClient';
 import type { ObjectState, SceneDocument, SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
 import { EdgePicker } from './edgePicker';
 import { previewMesh, type FeatureBar, type Values } from './featureBar';
 import { SnapPicker } from './snapPicker';
+import { isToolOpen } from './toolLock';
 
 type Heavy = <T>(objs: SceneObject[], compute: () => Promise<T>, apply: (r: T) => void) => Promise<void>;
 
@@ -51,6 +51,25 @@ export class ModifyTools {
     return this.doc.selection[0];
   }
 
+  /**
+   * The object's sharp edges, found in the worker (a big mesh takes a while).
+   * Undefined when it failed or the user moved on meanwhile: another selection,
+   * or another tool opened.
+   */
+  private async edgesOf(obj: SceneObject): Promise<EdgeSet | undefined> {
+    const toolWasOpen = isToolOpen();
+    let set: EdgeSet;
+    try {
+      set = await runOp('findEdges', { item: this.doc.placed(obj) });
+    } catch (e) {
+      if (e instanceof Error && e.message !== CANCELLED) this.toast(e.message);
+      return undefined;
+    }
+    const sel = this.doc.selection;
+    const moved = sel.length !== 1 || sel[0] !== obj || !this.doc.objects.includes(obj);
+    return moved || this.bar.active || (isToolOpen() && !toolWasOpen) ? undefined : set;
+  }
+
   /** Replace an object's geometry with a computed piece (undoable). */
   private replace(obj: SceneObject, piece: Piece): void {
     if (!this.doc.objects.includes(obj)) return;
@@ -72,10 +91,11 @@ export class ModifyTools {
 
   // --- Bevel / Round (chamfer / fillet) --------------------------------------
 
-  private edgeTool(kind: 'chamfer' | 'fillet'): void {
+  private async edgeTool(kind: 'chamfer' | 'fillet'): Promise<void> {
     const obj = this.one();
     if (!obj) return;
-    const set = findEdges(bakeMesh(this.doc.placed(obj)));
+    const set = await this.edgesOf(obj);
+    if (!set) return;
     if (set.segments.length === 0) return this.toast(`${obj.name} has no sharp edges to ${kind === 'chamfer' ? 'bevel' : 'round'}`);
     const name = kind === 'chamfer' ? 'Bevel' : 'Round';
     this.bar.open<Piece>({
@@ -101,10 +121,11 @@ export class ModifyTools {
 
   // --- Brace (gusset) ----------------------------------------------------------
 
-  private gusset(): void {
+  private async gusset(): Promise<void> {
     const obj = this.one();
     if (!obj) return;
-    const set = findEdges(bakeMesh(this.doc.placed(obj)));
+    const set = await this.edgesOf(obj);
+    if (!set) return;
     const inside = (s: EdgeSegment) => !s.convex;
     if (!set.segments.some(inside)) return this.toast(`${obj.name} has no inside corner where two walls meet`);
     this.bar.open<Piece>({
@@ -122,9 +143,10 @@ export class ModifyTools {
         if (!edge) return null;
         // Position runs along the whole picked corner, not one segment.
         const run = this.edges.segments.filter(inside);
-        const idx = Math.min(run.length - 1, Math.floor((Number(v.position) / 100) * run.length));
+        const position = Math.min(100, Math.max(0, Number(v.position)));
+        const idx = Math.min(run.length - 1, Math.floor((position / 100) * run.length));
         const seg = run[idx];
-        const within = (Number(v.position) / 100) * run.length - idx;
+        const within = (position / 100) * run.length - idx;
         return runOp('gusset', {
           item: this.doc.placed(obj), edge: seg,
           leg1: Number(v.leg1), leg2: Number(v.leg2), thickness: Number(v.thickness), position: Math.min(1, within),
@@ -245,7 +267,11 @@ export class ModifyTools {
         { key: 'merge', label: 'Merge into one', type: 'checkbox', value: false, tip: 'Join the original and all copies into a single object.' },
       ],
       targets: objs,
-      onClose: () => this.points.stop(),
+      onClose: () => {
+        this.points.stop();
+        ghost.dispose();
+        markerMaterial.dispose();
+      },
       compute: async (v) => transforms(v),
       show: ({ moved, copies, centre: about }) => {
         const ghostOf = (states: ObjectState[]) => states.map((s, i) => {

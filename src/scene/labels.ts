@@ -35,14 +35,30 @@ export function makeSprite(text: string, color: string, height: number): THREE.S
   return sprite;
 }
 
-/** Flat text lying on the plate, centred on its position, `height` mm tall. */
+/** Geometry and material per text, colour and height: a ruler rebuilt while dragging adds no new GPU objects. */
+const labelCache = new Map<string, { geometry: THREE.PlaneGeometry; material: THREE.MeshBasicMaterial }>();
+const MAX_LABELS = 200;
+
+/** Flat text lying on the plate, centred on its position, `height` mm tall. The geometry and material are shared: don't dispose them. */
 export function makeLabel(text: string, color: string, height: number): THREE.Mesh {
-  const { texture, aspect } = textTexture(text, color);
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(height * aspect, height),
-    // The texture is shared through the cache, so disposing this material leaves it alone.
-    new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }),
-  );
+  const key = `${color}|${height}|${text}`;
+  let entry = labelCache.get(key);
+  if (!entry) {
+    if (labelCache.size >= MAX_LABELS) {
+      for (const e of labelCache.values()) {
+        e.geometry.dispose();
+        e.material.dispose(); // the texture is shared through textTexture's cache and stays
+      }
+      labelCache.clear();
+    }
+    const { texture, aspect } = textTexture(text, color);
+    entry = {
+      geometry: new THREE.PlaneGeometry(height * aspect, height),
+      material: new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }),
+    };
+    labelCache.set(key, entry);
+  }
+  const mesh = new THREE.Mesh(entry.geometry, entry.material);
   mesh.renderOrder = 1;
   return mesh;
 }

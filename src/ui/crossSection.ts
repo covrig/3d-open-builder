@@ -117,7 +117,7 @@ export class CrossSection {
 
   /** Where the plane can go along the axis: across all objects. */
   private limits(): [number, number] {
-    const box = this.doc.worldBox(this.doc.objects);
+    const box = this.doc.worldBox(this.doc.objects.filter((o) => !o.hidden));
     return [box.min.getComponent(this.axis), box.max.getComponent(this.axis)];
   }
 

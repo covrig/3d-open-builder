@@ -45,10 +45,10 @@ import { setupMenus } from './ui/menu';
 import { setupSettingsDialog } from './ui/settingsDialog';
 import { SplitTool } from './ui/splitTool';
 import { setupTooltips } from './ui/tooltip';
-import { isLocked, isToolOpen, onlyViewLocked, onToolChange, stopActiveTool } from './ui/toolLock';
+import { isBusy, isLocked, isToolOpen, onlyViewLocked, onToolChange, setBusy, stopActiveTool } from './ui/toolLock';
 import { OverlapLines } from './ui/overlapLines';
 import { setupToolbarFit } from './ui/toolbarFit';
-import { LOCKED_MESSAGE, setupToolGuard } from './ui/toolGuard';
+import { BUSY_MESSAGE, LOCKED_MESSAGE, setupToolGuard } from './ui/toolGuard';
 import { TransformBar } from './ui/transformBar';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -119,10 +119,12 @@ $('#loading').remove();
 
 /** Rulers along the selection's footprint, or everything's when nothing is selected. */
 function updateRuler(): void {
-  const objs = doc.selection.length ? doc.selection : doc.objects;
-  ruler.update(objs.length ? doc.worldBox(objs) : null, viewport.palette);
+  const objs = doc.selection.length ? doc.selection : doc.objects.filter((o) => !o.hidden);
+  ruler.update(objs.length ? doc.worldBox(objs) : null, viewport.palette, viewport.camera);
   viewport.invalidate();
 }
+// The rulers sit on the sides facing the camera: move them when it goes round to the other side.
+viewport.beforeFrame(() => ruler.follow(viewport.camera));
 
 // --- Messages -------------------------------------------------------------
 
@@ -144,18 +146,28 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
  * One job at a time; while it runs a "Working…" hint shows. If the objects
  * it was computed for were deleted meanwhile, the result is dropped.
  */
-let busy = false;
+/** What an object's result depends on: its shape (by reference) and its placement. */
+function snapshot(objs: SceneObject[]): { data: unknown; matrix: number[] }[] {
+  return objs.map((o) => {
+    o.mesh.updateMatrixWorld();
+    return { data: o.data, matrix: [...o.mesh.matrixWorld.elements] };
+  });
+}
 async function heavy<T>(objs: SceneObject[], compute: () => Promise<T>, apply: (result: T) => void): Promise<void> {
-  if (busy) return toast('Still working on the previous operation…');
-  busy = true;
+  if (isBusy()) return toast(BUSY_MESSAGE);
+  setBusy(true);
   try {
+    const before = snapshot(objs);
     const result = await compute();
-    if (!objs.every((o) => doc.objects.includes(o))) return toast('The objects changed while computing; nothing was applied');
+    const after = snapshot(objs);
+    const same = objs.every((o, i) => doc.objects.includes(o)
+      && before[i].data === after[i].data && before[i].matrix.every((v, k) => v === after[i].matrix[k]));
+    if (!same) return toast('The objects changed while computing; nothing was applied');
     apply(result);
   } catch (err) {
     toast(errorText(err));
   } finally {
-    busy = false;
+    setBusy(false);
   }
 }
 
@@ -399,16 +411,21 @@ on('[data-action="lay-flat"]', () =>
 
 setupViewToggles(doc, viewport, ruler.group);
 function fitView(): void {
-  viewport.fit(doc.worldBox(doc.selection.length ? doc.selection : doc.objects));
+  const objs = doc.selection.length ? doc.selection : doc.objects.filter((o) => !o.hidden);
+  viewport.fit(doc.worldBox(objs));
 }
 on('[data-action="fit"]', fitView);
 /** The starting view, zoomed out to show every object. */
-const homeView = () => viewport.home(doc.objects.length ? doc.worldBox(doc.objects) : undefined);
+const homeView = () => {
+  const shown = doc.objects.filter((o) => !o.hidden);
+  viewport.home(shown.length ? doc.worldBox(shown) : undefined);
+};
 on('[data-action="home"]', homeView);
 
 /** Aim the shadow map at the objects so their shadows stay sharp wherever they are. */
 function updateShadows(): void {
-  viewport.setShadowFocus(doc.objects.length ? doc.worldBox(doc.objects) : null);
+  const shown = doc.objects.filter((o) => !o.hidden);
+  viewport.setShadowFocus(shown.length ? doc.worldBox(shown) : null);
 }
 
 // --- File -----------------------------------------------------------------
@@ -577,16 +594,23 @@ async function offerRestore(): Promise<void> {
 const supported = (f: File) => IMPORT_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext));
 
 /** Ask which unit an imported file's numbers are in; null if cancelled. */
-async function askImportUnit(): Promise<{ unit: ImportUnit; separate: boolean } | null> {
+async function askImportUnit(only3mf: boolean): Promise<{ unit: ImportUnit; separate: boolean } | null> {
   const dialog = $<HTMLDialogElement>('#import-dialog');
   const separateBox = $<HTMLInputElement>('#import-separate');
   separateBox.checked = settings.ui.importSeparate;
-  for (const r of [...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')]) r.checked = r.value === settings.ui.importUnit;
+  // 3MF files carry their own size: the unit only matters for STL and OBJ.
+  $('#import-unit-note').hidden = !only3mf;
+  for (const r of [...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')]) {
+    r.checked = r.value === settings.ui.importUnit;
+    r.disabled = only3mf;
+  }
   dialog.returnValue = '';
   dialog.showModal();
   await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
   if (dialog.returnValue !== 'import') return null;
-  const unit = ([...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')].find((r) => r.checked)?.value ?? 'mm') as ImportUnit;
+  const unit = only3mf
+    ? settings.ui.importUnit
+    : ([...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')].find((r) => r.checked)?.value ?? 'mm') as ImportUnit;
   const separate = separateBox.checked;
   updateUi((ui) => {
     ui.importUnit = unit;
@@ -609,7 +633,9 @@ async function openFiles(all: File[]): Promise<void> {
     toast(`File not supported: ${names}. Open 3MF, STL or OBJ files.`);
   }
   if (files.length === 0) return;
-  const choice = await askImportUnit();
+  if (isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
+  const is3mf = (f: File) => f.name.toLowerCase().endsWith('.3mf');
+  const choice = await askImportUnit(files.every(is3mf));
   if (!choice) return;
   const factor = IMPORT_UNITS[choice.unit];
   const added: SceneObject[] = [];
@@ -633,7 +659,7 @@ async function openFiles(all: File[]): Promise<void> {
     // Optionally one object per separate piece (named like the part, numbered by doc.add).
     if (choice.separate) parts = parts.flatMap((p) => splitPieces(p.data).map((data) => ({ ...p, data })));
     // The file's numbers are in its own unit; everything here is in mm.
-    if (factor !== 1) {
+    if (factor !== 1 && !is3mf(file)) {
       for (const p of parts) {
         const pos = p.data.positions;
         for (let i = 0; i < pos.length; i++) pos[i] *= factor;
@@ -680,6 +706,7 @@ viewportEl.addEventListener('drop', (e) => {
   dropHint.hidden = true;
   const files = [...(e.dataTransfer?.files ?? [])];
   if (files.length === 0) return;
+  if (isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
   void openFiles(files);
 });
 
@@ -723,7 +750,8 @@ const TOOL_KEYS: Record<string, string> = {
 /** Run the last tool again, but only once the previous operation is finished. */
 function repeatLastTool(): void {
   if (!lastTool) return toast('Nothing to repeat yet: use a tool first');
-  if (isToolOpen() || isLocked() || busy) return toast(LOCKED_MESSAGE);
+  if (isBusy() && !isLocked() && !isToolOpen()) return toast(BUSY_MESSAGE);
+  if (isToolOpen() || isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
   lastTool.click();
 }
 
@@ -798,7 +826,7 @@ document.addEventListener('keydown', (e) => {
   // can't disturb it works: Copy, the view keys, and the arrow keys the tool
   // itself uses. Undo, redo, cut, paste and Delete would change or remove what
   // the tool works on (docs/tool-rules.md).
-  const locked = isLocked() || busy;
+  const locked = isLocked() || isBusy();
   const refuse = () => run(() => toast(LOCKED_MESSAGE));
   if (ctrl && key === 'c') return run(actions.copy);
   if (ctrl && key === 's') return run(saveNow);

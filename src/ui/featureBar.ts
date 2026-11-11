@@ -3,6 +3,7 @@ import type { MeshData } from '../geometry/meshData';
 import { buildGeometry, type SceneDocument, type SceneObject } from '../scene/document';
 import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
+import { MM_PER_UNIT, settings, settingsEvents } from '../settings';
 import { hideHint, showHint } from './hint';
 import { beginTool, endTool } from './toolLock';
 import { touchFriendly } from './touchSelect';
@@ -27,6 +28,33 @@ export interface Field {
 }
 
 export type Values = Record<string, number | string | boolean>;
+
+/** Fields in 'mm' show and take values in the chosen unit; the values themselves stay in mm. */
+const mmPerShown = (f: Field): number => (f.type === 'number' && f.unit === 'mm' ? MM_PER_UNIT[settings.unit] : 1);
+/** A value (mm) as the input shows it, free of floating-point noise. */
+const shown = (f: Field, mm: number): string => String(mmPerShown(f) === 1 ? mm : Math.round((mm / mmPerShown(f)) * 1e6) / 1e6);
+/** 1, 2 or 5 times a power of ten, close to `rough`. */
+function niceStep(rough: number): number {
+  const p = 10 ** Math.floor(Math.log10(rough));
+  const r = rough / p;
+  return (r < 1.5 ? 1 : r < 3.5 ? 2 : r < 7.5 ? 5 : 10) * p;
+}
+/** The step for the input's arrows, in the shown unit. */
+const shownStep = (f: Field): number | undefined =>
+  f.step === undefined ? undefined : mmPerShown(f) === 1 ? f.step : niceStep(f.step / mmPerShown(f));
+/** Put a number field's attributes (min, max, step) in the shown unit. */
+function applyLimits(f: Field, input: HTMLInputElement): void {
+  const k = mmPerShown(f);
+  const set = (name: string, v: number | undefined) => {
+    if (v === undefined) input.removeAttribute(name);
+    else input.setAttribute(name, String(k === 1 ? v : Math.round((v / k) * 1e6) / 1e6));
+  };
+  set('min', f.min);
+  set('max', f.max);
+  const st = shownStep(f);
+  if (st === undefined) input.removeAttribute('step');
+  else input.setAttribute('step', String(st));
+}
 
 export interface FeatureSpec<R> {
   title: string;
@@ -88,6 +116,7 @@ export class FeatureBar {
   private readonly info: HTMLElement;
   private readonly applyButton: HTMLButtonElement;
   private readonly group = new THREE.Group();
+  private shownUnit = settings.unit;
 
   constructor(
     readonly viewport: Viewport,
@@ -103,6 +132,12 @@ export class FeatureBar {
     this.extraActions.className = 'extra-actions';
     this.actions.prepend(this.extraActions);
     doc.addEventListener('change', () => this.checkTargets());
+    // A new unit in the settings: the open bar's fields follow.
+    settingsEvents.addEventListener('change', () => {
+      if (settings.unit === this.shownUnit) return;
+      this.shownUnit = settings.unit;
+      this.refreshUnits();
+    });
     this.info = this.el.querySelector<HTMLElement>('.feature-info')!;
     viewport.scene.add(this.group);
     // Like Enter: a value just typed (its field still focused, or its 'change' only now
@@ -183,14 +218,17 @@ export class FeatureBar {
       const i = document.createElement('input');
       i.type = f.type;
       if (f.type === 'checkbox') i.checked = Boolean(f.value);
-      else i.value = String(f.value);
-      if (f.min !== undefined) i.min = String(f.min);
-      if (f.max !== undefined) i.max = String(f.max);
-      if (f.step !== undefined) i.step = String(f.step);
+      else i.value = f.type === 'number' ? shown(f, Number(f.value)) : String(f.value);
+      if (f.type === 'number') applyLimits(f, i);
+      else {
+        if (f.min !== undefined) i.min = String(f.min);
+        if (f.max !== undefined) i.max = String(f.max);
+        if (f.step !== undefined) i.step = String(f.step);
+      }
       input = i;
     }
     input.addEventListener(f.type === 'text' ? 'input' : 'change', () => {
-      this.values[f.key] = FeatureBar.read(f, input);
+      this.values[f.key] = this.read(f, input);
       this.updateVisibility();
       this.refresh();
     });
@@ -199,18 +237,41 @@ export class FeatureBar {
     label.append(name, input instanceof HTMLSelectElement ? touchFriendly(input) : input);
     if (f.unit) {
       const u = document.createElement('span');
-      u.className = 'muted';
-      u.textContent = f.unit;
+      u.className = 'muted unit-label';
+      u.textContent = f.type === 'number' && f.unit === 'mm' ? settings.unit : f.unit;
       label.append(u);
     }
     return label;
   }
 
   /** A field's value as its input shows it right now. */
-  private static read(f: Field, input: HTMLInputElement | HTMLSelectElement): number | string | boolean {
-    return f.type === 'number' ? Number((input as HTMLInputElement).value)
-      : f.type === 'checkbox' ? (input as HTMLInputElement).checked
-        : input.value;
+  private read(f: Field, input: HTMLInputElement | HTMLSelectElement): number | string | boolean {
+    if (f.type === 'checkbox') return (input as HTMLInputElement).checked;
+    if (f.type !== 'number') return input.value;
+    // An empty or non-numeric entry keeps the previous value; others are held to the field's limits.
+    const text = input.value.trim();
+    const typed = text === '' ? NaN : Number(text) * mmPerShown(f);
+    const previous = this.values[f.key];
+    let v = Number.isFinite(typed) ? typed : typeof previous === 'number' ? previous : Number(f.value);
+    if (f.min !== undefined) v = Math.max(f.min, v);
+    if (f.max !== undefined) v = Math.min(f.max, v);
+    const text2 = shown(f, v);
+    if (input.value !== text2) input.value = text2;
+    return v;
+  }
+
+  /** The unit changed while the bar is open: show every 'mm' field in it. */
+  private refreshUnits(): void {
+    for (const f of this.spec?.fields ?? []) {
+      if (f.type !== 'number' || f.unit !== 'mm') continue;
+      const label = this.el.querySelector<HTMLElement>(`[data-key="${f.key}"]`);
+      const input = label?.querySelector<HTMLInputElement>('input');
+      if (!label || !input) continue;
+      applyLimits(f, input);
+      input.value = shown(f, Number(this.values[f.key]));
+      const u = label.querySelector<HTMLElement>('.unit-label');
+      if (u) u.textContent = settings.unit;
+    }
   }
 
   /** Take what the inputs show into the values, as their change handlers would (Enter can come before 'change' fires). */
@@ -218,7 +279,7 @@ export class FeatureBar {
     for (const f of this.spec?.fields ?? []) {
       if (f.type === 'button') continue;
       const input = this.el.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${f.key}"] input, [data-key="${f.key}"] select`);
-      if (input) this.values[f.key] = FeatureBar.read(f, input);
+      if (input) this.values[f.key] = this.read(f, input);
     }
     this.updateVisibility();
   }
@@ -228,9 +289,14 @@ export class FeatureBar {
     if (!this.spec) return;
     this.values[key] = value;
     const input = this.el.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-key="${key}"] input, [data-key="${key}"] select`);
-    if (input && document.activeElement !== input) {
+    const f = this.spec.fields.find((x) => x.key === key);
+    if (input) {
       if (input instanceof HTMLInputElement && input.type === 'checkbox') input.checked = Boolean(value);
-      else {
+      else if (f?.type === 'number') {
+        // Also while the field is focused (e.g. Pick point), but only when it shows something else.
+        const text = shown(f, Number(value));
+        if (!(Number(input.value) === Number(text) && input.value.trim() !== '')) input.value = text;
+      } else if (input.value !== String(value)) {
         input.value = String(value);
         input.dispatchEvent(new Event('sync')); // a touch dropdown shows the new value
       }

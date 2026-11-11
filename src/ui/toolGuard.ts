@@ -1,5 +1,5 @@
 import type { SceneDocument } from '../scene/document';
-import { isLocked, onlyViewLocked, onToolChange } from './toolLock';
+import { isBusy, isLocked, onlyViewLocked, onToolChange } from './toolLock';
 
 /**
  * While a tool with Apply/Cancel is open, the controls that would disturb it
@@ -26,12 +26,17 @@ export const LOCKED = [
 ].join(', ');
 
 export const LOCKED_MESSAGE = 'Finish or cancel the current tool first (Apply or Cancel)';
+export const BUSY_MESSAGE = 'Still working on the previous operation…';
 
 /** With only a view tool open (cross-section, overhangs), measuring still works. */
 const VIEW_TOOL_ALLOWED = '#measure-panel button';
 
+/** While a calculation runs, its Cancel button must keep working. */
+const BUSY_ALLOWED = '[data-action="cancel-op"]';
+
 /** Is this element locked right now? */
 export function lockedNow(el: Element): boolean {
+  if (isBusy() && el.closest(LOCKED) !== null && !el.closest(BUSY_ALLOWED)) return true;
   return isLocked() && el.closest(LOCKED) !== null && !(onlyViewLocked() && el.closest(VIEW_TOOL_ALLOWED));
 }
 
@@ -56,7 +61,7 @@ let singleObject = false;
 
 /** Why this control can't be used right now, or null if it can. */
 export function blockReason(el: Element): string | null {
-  if (lockedNow(el)) return LOCKED_MESSAGE;
+  if (lockedNow(el)) return isLocked() ? LOCKED_MESSAGE : BUSY_MESSAGE;
   if (manySelected && el.closest(SINGLE_ONLY)) return SINGLE_ONLY_MESSAGE;
   if (singleObject && el.closest(NEEDS_TWO)) return NEEDS_TWO_MESSAGE;
   return null;
@@ -96,11 +101,12 @@ export function setupToolGuard(toast: (msg: string) => void, doc: SceneDocument)
 
   onToolChange(() => {
     const locked = isLocked();
-    document.body.classList.toggle('tool-locked', locked);
+    // A running calculation dims the same controls as a tool does.
+    document.body.classList.toggle('tool-locked', locked || isBusy());
     document.body.classList.toggle('view-tool-only', onlyViewLocked());
     current?.classList.remove('tool-current');
     current = null;
-    if (!locked || !pressed) return;
+    if (!(locked || isBusy()) || !pressed) return;
     // A menu item's tool: highlight the toolbar button whose menu it is in.
     const menu = pressed.closest<HTMLElement>('.menu');
     current = menu ? document.querySelector<HTMLElement>(`[data-menu="${menu.id}"]`) : pressed.closest('.toolbar button');

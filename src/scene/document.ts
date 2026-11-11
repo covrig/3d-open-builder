@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { MeshData } from '../geometry/meshData';
+import { meshId, type MeshData } from '../geometry/meshData';
+import { runOp } from '../geometry/workerClient';
 import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
 import { overhangLayer, overhangMaterial } from './overhang';
@@ -94,6 +95,8 @@ export interface ViewMode {
 
 /** Edges sharper than this get a line in the Edges view. */
 const EDGE_ANGLE = 25;
+/** Meshes with more triangles than this get their edge lines worked out in the geometry worker. */
+const EDGE_WORKER_TRIANGLES = 50_000;
 /** Look of objects faded out while a tool works on others */
 const FADED_OPACITY = 0.08;
 const FADED_COLOR = 0x8f98a3;
@@ -260,6 +263,7 @@ export class SceneDocument extends EventTarget {
       this.objects.splice(i, 1);
       this.faded.delete(obj);
       this.root.remove(obj.mesh);
+      delete obj.mesh.userData.edgesPending;
       (obj.mesh.userData.edges as THREE.LineSegments | undefined)?.geometry.dispose();
       obj.mesh.geometry.dispose();
       obj.mesh.material.dispose();
@@ -281,14 +285,15 @@ export class SceneDocument extends EventTarget {
     obj.mesh.geometry.dispose();
     obj.mesh.geometry = buildGeometry(data);
     for (const c of obj.mesh.children) if (c.userData.overhangLayer) (c as THREE.Mesh).geometry = obj.mesh.geometry;
-    // Rebuild edge lines for the new shape.
+    // Rebuild edge lines for the new shape (a request still out for the old one is dropped).
+    delete obj.mesh.userData.edgesPending;
     const edges = obj.mesh.userData.edges as THREE.LineSegments | undefined;
     if (edges) {
       obj.mesh.remove(edges);
       edges.geometry.dispose();
       delete obj.mesh.userData.edges;
-      this.applyView(obj);
     }
+    if (this.view.edges) this.applyView(obj);
     this.emit('change');
   }
 
@@ -395,7 +400,8 @@ export class SceneDocument extends EventTarget {
 
   placed(obj: SceneObject): ColoredPlacedMesh {
     obj.mesh.updateMatrixWorld();
-    return { mesh: obj.data, matrix: obj.mesh.matrixWorld.elements, name: obj.name, color: obj.color };
+    // The id (same arrays, nothing copied) lets the geometry worker reuse what it worked out for this mesh; it is never saved.
+    return { mesh: { ...obj.data, id: meshId(obj.data) }, matrix: obj.mesh.matrixWorld.elements, name: obj.name, color: obj.color };
   }
 
   // --- View modes ---------------------------------------------------------
@@ -430,14 +436,15 @@ export class SceneDocument extends EventTarget {
 
     const existing = obj.mesh.userData.edges as THREE.LineSegments | undefined;
     if (this.view.edges && !existing) {
-      const lines = new THREE.LineSegments(new THREE.EdgesGeometry(obj.mesh.geometry, EDGE_ANGLE), edgeMaterial);
-      lines.raycast = () => {}; // never picked
-      obj.mesh.add(lines);
-      obj.mesh.userData.edges = lines;
-    } else if (!this.view.edges && existing) {
-      obj.mesh.remove(existing);
-      existing.geometry.dispose();
-      delete obj.mesh.userData.edges;
+      if (obj.data.indices.length / 3 > EDGE_WORKER_TRIANGLES) this.requestEdgeLines(obj);
+      else this.attachEdgeLines(obj, new THREE.EdgesGeometry(obj.mesh.geometry, EDGE_ANGLE));
+    } else if (!this.view.edges) {
+      delete obj.mesh.userData.edgesPending; // a late answer from the worker is not wanted any more
+      if (existing) {
+        obj.mesh.remove(existing);
+        existing.geometry.dispose();
+        delete obj.mesh.userData.edges;
+      }
     }
 
     // Faded bystanders (see setFaded): very faint plain grey, no lines.
@@ -451,6 +458,42 @@ export class SceneDocument extends EventTarget {
     const lines = obj.mesh.userData.edges as THREE.LineSegments | undefined;
     if (lines) lines.visible = !faded;
     for (const c of obj.mesh.children) if (c.userData.overhangLayer) c.visible = !faded;
+  }
+
+  private attachEdgeLines(obj: SceneObject, geometry: THREE.BufferGeometry): void {
+    const lines = new THREE.LineSegments(geometry, edgeMaterial);
+    lines.raycast = () => {}; // never picked
+    obj.mesh.add(lines);
+    obj.mesh.userData.edges = lines;
+  }
+
+  /**
+   * Work out a big mesh's edge lines in the worker and attach them when they
+   * arrive, unless things changed meanwhile: the object is gone, its shape was
+   * replaced, Edges was switched off (or off and on again, which asks again),
+   * or lines are there already. `edgesPending` holds a token for the request
+   * that is still wanted; anything else is stale.
+   */
+  private requestEdgeLines(obj: SceneObject): void {
+    if (obj.mesh.userData.edgesPending) return;
+    const token = {};
+    const data = obj.data;
+    obj.mesh.userData.edgesPending = token;
+    runOp('edgeLines', { mesh: data, angle: EDGE_ANGLE }, true).then(
+      (positions) => {
+        if (obj.mesh.userData.edgesPending !== token) return;
+        delete obj.mesh.userData.edgesPending;
+        if (obj.data !== data || !this.objects.includes(obj) || !this.view.edges || obj.mesh.userData.edges) return;
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        this.attachEdgeLines(obj, geometry);
+        this.applyView(obj); // the faded state, if any
+      },
+      () => {
+        // Stopped or failed: forget the request so the next view change asks again.
+        if (obj.mesh.userData.edgesPending === token) delete obj.mesh.userData.edgesPending;
+      },
+    );
   }
 
   /**

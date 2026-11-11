@@ -165,71 +165,81 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
   // as needed first: welding further merges the corners of genuinely small
   // triangles (rounded edges have many) and reports problems that aren't there.
   let solid = tryManifold(wasm, world);
-  const welded = solid ? manifoldToMeshData(solid) : gentleWeld(world).mesh;
-  solid ??= tryManifold(wasm, welded);
-  const r: MeshReport = analyze(welded);
-  const items: CheckItem[] = [];
-
-  items.push(r.openEdges === 0
-    ? { id: 'watertight', label: 'Watertight', status: 'pass', detail: 'No holes or open surfaces.', fixable: false }
-    : { id: 'watertight', label: 'Watertight', status: 'fail', detail: `${r.openEdges} open edges: the surface has holes.`, fixable: true });
-  items.push(r.nonManifoldEdges === 0
-    ? { id: 'manifold', label: 'Non-manifold edges', status: 'pass', detail: 'Every edge joins exactly two faces.', fixable: false }
-    : { id: 'manifold', label: 'Non-manifold edges', status: 'fail', detail: `${r.nonManifoldEdges} edges are shared by three or more faces.`, fixable: true });
-  const inverted = r.signedVolume < 0;
-  items.push(r.flippedEdges === 0 && !inverted
-    ? { id: 'normals', label: 'Normals', status: 'pass', detail: 'All faces point outward.', fixable: false }
-    : { id: 'normals', label: 'Normals', status: 'fail', detail: inverted ? 'The model is inside out.' : `${r.flippedEdges} edges join faces pointing opposite ways.`, fixable: true });
-
-  // The remaining checks need a valid solid.
-  if (!solid) {
-    const skip = 'Repair the problems above first.';
-    items.push({ id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: skip, fixable: false });
-    items.push({ id: 'thickness', label: 'Wall thickness', status: 'warn', detail: skip, fixable: false });
-  } else {
-    // Separate pieces that overlap each other leave internal faces inside the print.
-    // (A hollow belongs to its piece: a shelled object is one piece, not two overlapping ones.)
-    const parts = solidPieces(solid);
-    let overlapping = 0;
-    for (let i = 0; i < parts.length; i++) {
-      for (let j = i + 1; j < parts.length; j++) {
-        const both = parts[i].intersect(parts[j]);
-        if (both.volume() > 1e-6) overlapping++;
-        both.delete();
-      }
-    }
-    for (const part of parts) part.delete();
-    items.push(overlapping === 0
-      ? { id: 'overlaps', label: 'Overlapping parts', status: 'pass', detail: parts.length > 1 ? `${parts.length} separate parts, none overlapping.` : 'No overlapping internal faces.', fixable: false }
-      : { id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: `${overlapping} pairs of parts overlap, leaving faces inside the model.`, fixable: true });
-
-    const wall = wallThickness(solid, welded, minWall);
-    const pct = (f: number) => (f > 0 && f < 0.01 ? '<1' : String(Math.round(f * 100)));
-    const thinnest = Number.isFinite(wall.thinnest) ? ` (thinnest ${wall.thinnest.toFixed(2)} mm)` : '';
-    items.push(wall.halfArea >= 0.02
-      ? { id: 'thickness', label: 'Wall thickness', status: 'fail', detail: `About ${pct(wall.halfArea)}% of the surface is thinner than ${+(minWall / 2).toFixed(2)} mm: such thin parts may not print at all.`, fixable: false }
-      : wall.thinArea >= 0.01
-        ? { id: 'thickness', label: 'Wall thickness', status: 'warn', detail: `About ${pct(wall.thinArea)}% of the surface is thinner than ${minWall} mm${thinnest}: it prints, but with fewer lines and less strength.`, fixable: false }
-        : { id: 'thickness', label: 'Wall thickness', status: 'pass', detail: `No significant area thinner than ${minWall} mm found${thinnest}.`, fixable: false });
-    solid.delete();
-  }
-
-  let suggestedDown: Vec3 | null = null;
   try {
-    const o = suggestOrientation(wasm, welded);
-    if (!o.better) {
-      items.push({ id: 'orientation', label: 'Print orientation', status: 'pass', detail: `Current orientation is good (${Math.round(o.currentArea)} mm² of overhang).`, fixable: false });
+    const welded = solid ? manifoldToMeshData(solid) : gentleWeld(world).mesh;
+    solid ??= tryManifold(wasm, welded);
+    const r: MeshReport = analyze(welded);
+    const items: CheckItem[] = [];
+
+    items.push(r.openEdges === 0
+      ? { id: 'watertight', label: 'Watertight', status: 'pass', detail: 'No holes or open surfaces.', fixable: false }
+      : { id: 'watertight', label: 'Watertight', status: 'fail', detail: `${r.openEdges} open edges: the surface has holes.`, fixable: true });
+    items.push(r.nonManifoldEdges === 0
+      ? { id: 'manifold', label: 'Non-manifold edges', status: 'pass', detail: 'Every edge joins exactly two faces.', fixable: false }
+      : { id: 'manifold', label: 'Non-manifold edges', status: 'fail', detail: `${r.nonManifoldEdges} edges are shared by three or more faces.`, fixable: true });
+    const inverted = r.signedVolume < 0;
+    items.push(r.flippedEdges === 0 && !inverted
+      ? { id: 'normals', label: 'Normals', status: 'pass', detail: 'All faces point outward.', fixable: false }
+      : { id: 'normals', label: 'Normals', status: 'fail', detail: inverted ? 'The model is inside out.' : `${r.flippedEdges} edges join faces pointing opposite ways.`, fixable: true });
+
+    // The remaining checks need a valid solid.
+    if (!solid) {
+      const skip = 'Repair the problems above first.';
+      items.push({ id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: skip, fixable: false });
+      items.push({ id: 'thickness', label: 'Wall thickness', status: 'warn', detail: skip, fixable: false });
     } else {
-      suggestedDown = o.down;
-      const parts: string[] = [];
-      if (o.area < o.currentArea - 1) parts.push(`cut overhangs from ${Math.round(o.currentArea)} to ${Math.round(o.area)} mm² (fewer supports)`);
-      if (o.contact > o.currentContact + 1) parts.push(`rest it on ${Math.round(o.contact)} mm² instead of ${Math.round(o.currentContact)} mm² (sticks and stands better)`);
-      items.push({ id: 'orientation', label: 'Print orientation', status: 'warn', detail: `Turning it would ${parts.join(' and ')}.`, fixable: false });
+      // Separate pieces that overlap each other leave internal faces inside the print.
+      // (A hollow belongs to its piece: a shelled object is one piece, not two overlapping ones.)
+      const parts = solidPieces(solid);
+      let overlapping = 0;
+      try {
+        for (let i = 0; i < parts.length; i++) {
+          for (let j = i + 1; j < parts.length; j++) {
+            const both = parts[i].intersect(parts[j]);
+            try {
+              if (both.volume() > 1e-6) overlapping++;
+            } finally {
+              both.delete();
+            }
+          }
+        }
+      } finally {
+        for (const part of parts) part.delete();
+      }
+      items.push(overlapping === 0
+        ? { id: 'overlaps', label: 'Overlapping parts', status: 'pass', detail: parts.length > 1 ? `${parts.length} separate parts, none overlapping.` : 'No overlapping internal faces.', fixable: false }
+        : { id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: `${overlapping} pairs of parts overlap, leaving faces inside the model.`, fixable: true });
+
+      const wall = wallThickness(solid, welded, minWall);
+      const pct = (f: number) => (f > 0 && f < 0.01 ? '<1' : String(Math.round(f * 100)));
+      const thinnest = Number.isFinite(wall.thinnest) ? ` (thinnest ${wall.thinnest.toFixed(2)} mm)` : '';
+      items.push(wall.halfArea >= 0.02
+        ? { id: 'thickness', label: 'Wall thickness', status: 'fail', detail: `About ${pct(wall.halfArea)}% of the surface is thinner than ${+(minWall / 2).toFixed(2)} mm: such thin parts may not print at all.`, fixable: false }
+        : wall.thinArea >= 0.01
+          ? { id: 'thickness', label: 'Wall thickness', status: 'warn', detail: `About ${pct(wall.thinArea)}% of the surface is thinner than ${minWall} mm${thinnest}: it prints, but with fewer lines and less strength.`, fixable: false }
+          : { id: 'thickness', label: 'Wall thickness', status: 'pass', detail: `No significant area thinner than ${minWall} mm found${thinnest}.`, fixable: false });
     }
-  } catch {
-    // Not critical.
+
+    let suggestedDown: Vec3 | null = null;
+    try {
+      const o = suggestOrientation(wasm, welded);
+      if (!o.better) {
+        items.push({ id: 'orientation', label: 'Print orientation', status: 'pass', detail: `Current orientation is good (${Math.round(o.currentArea)} mm² of overhang).`, fixable: false });
+      } else {
+        suggestedDown = o.down;
+        const parts: string[] = [];
+        if (o.area < o.currentArea - 1) parts.push(`cut overhangs from ${Math.round(o.currentArea)} to ${Math.round(o.area)} mm² (fewer supports)`);
+        if (o.contact > o.currentContact + 1) parts.push(`rest it on ${Math.round(o.contact)} mm² instead of ${Math.round(o.currentContact)} mm² (sticks and stands better)`);
+        items.push({ id: 'orientation', label: 'Print orientation', status: 'warn', detail: `Turning it would ${parts.join(' and ')}.`, fixable: false });
+      }
+    } catch {
+      // Not critical.
+    }
+    return { items, suggestedDown };
+  } finally {
+    // Freed even if a check throws part-way.
+    solid?.delete();
   }
-  return { items, suggestedDown };
 }
 
 /**
