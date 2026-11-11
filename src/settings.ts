@@ -35,6 +35,8 @@ export interface UiState {
   overhang: { angle: number; color: string };
   /** The unit picked last time files were imported */
   importUnit: ImportUnit;
+  /** Importing: each separate piece of a file becomes an object of its own */
+  importSeparate: boolean;
 }
 
 export const PANELS = [
@@ -84,6 +86,7 @@ const DEFAULTS: Settings = {
     reflection: { on: false, strength: 0.3, depth: 60 },
     overhang: { angle: 45, color: '#e5484d' },
     importUnit: 'mm',
+    importSeparate: false,
   },
 };
 const KEY = '3d-open-builder.settings';
@@ -119,6 +122,7 @@ function load(): Settings {
   s.ui.gridLineOpacity = clamp01(s.ui.gridLineOpacity, 1);
   s.ui.edgeStrength = clamp01(s.ui.edgeStrength, 1);
   s.ui.gridValues = s.ui.gridValues === true;
+  s.ui.importSeparate = s.ui.importSeparate === true;
   s.ui.internalIntersections = s.ui.internalIntersections !== false;
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
   s.ui.measure.snap = true;

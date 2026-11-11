@@ -164,7 +164,7 @@ export class ModifyTools {
     /** The point the row or the axis is centred on (null: linear without a point) */
     const centreOf = (v: Values): THREE.Vector3 | null =>
       v.type === 'linear'
-        ? (v.useCentre ? new THREE.Vector3(Number(v.px), Number(v.py), Number(v.pz)) : null)
+        ? (v.centreOn === 'on' ? new THREE.Vector3(Number(v.px), Number(v.py), Number(v.pz)) : null)
         : new THREE.Vector3(Number(v.cx), Number(v.cy), Number(v.cz));
     const transforms = (v: Values): { moved: ObjectState[] | null; copies: ObjectState[][]; centre: THREE.Vector3 | null } => {
       const count = Math.max(2, Math.min(200, Math.round(Number(v.count))));
@@ -215,31 +215,33 @@ export class ModifyTools {
         onPick: (at) => {
           const [x, y, z] = at.toArray().map(round2);
           const [kx, ky, kz] = circular ? ['cx', 'cy', 'cz'] : ['px', 'py', 'pz'];
-          if (!circular) this.bar.setValue('useCentre', true, null);
+          if (!circular) this.bar.setValue('centreOn', 'on', null);
           this.bar.setValue(kx, x, null);
           this.bar.setValue(ky, y, null);
           this.bar.setValue(kz, z);
         },
       });
     };
+    const linear: [string, string] = ['type', 'linear'];
+    const centred = (v: Values) => v.type === 'linear' && v.centreOn === 'on';
     this.bar.open<ReturnType<typeof transforms>>({
       title: 'Pattern',
       hint: 'Pattern: repeat the selection in a row or around an axis. Pick a point on the model to centre it there. Apply to add the copies.',
       fields: [
         { key: 'type', label: 'Type', type: 'select', value: 'linear', options: [['linear', 'Linear'], ['circular', 'Circular']], tip: 'Copies in a straight row, or around an axis.' },
         { key: 'count', label: 'Count', type: 'number', value: 4, min: 2, max: 200, step: 1, tip: 'Total number, including the original.' },
-        { key: 'spacing', label: 'Spacing', type: 'number', value: spacing, step: 1, unit: 'mm', showIf: ['type', 'linear'], tip: 'Distance from one copy to the next.' },
-        { key: 'direction', label: 'Along', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: ['type', 'linear'], tip: 'Direction of the row.' },
-        { key: 'useCentre', label: 'Centred on point', type: 'checkbox', value: false, showIf: ['type', 'linear'], tip: 'Centre the row (original included) on the point below, instead of starting at the original.' },
-        { key: 'px', label: 'Point X', type: 'number', value: round2(centre.x), step: 1, unit: 'mm', showIf: ['type', 'linear'], tip: 'The point the row is centred on (used when "Centred on point" is ticked).' },
-        { key: 'py', label: 'Y', type: 'number', value: round2(centre.y), step: 1, unit: 'mm', showIf: ['type', 'linear'] },
-        { key: 'pz', label: 'Z', type: 'number', value: round2(centre.z), step: 1, unit: 'mm', showIf: ['type', 'linear'] },
+        { key: 'spacing', label: 'Spacing', type: 'number', value: spacing, step: 1, unit: 'mm', showIf: linear, tip: 'Distance from one copy to the next.' },
+        { key: 'direction', label: 'Along', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: linear, tip: 'Direction of the row.' },
+        { key: 'centreOn', label: 'Centre', type: 'select', value: 'off', options: [['off', 'Off'], ['on', 'On a point']], showIf: linear, tip: 'Off: the row starts at the original. On a point: the row (original included) is centred on that point.' },
+        { key: 'px', label: 'Point X', type: 'number', value: round2(centre.x), step: 1, unit: 'mm', showIf: centred, tip: 'The point the row is centred on.' },
+        { key: 'py', label: 'Point Y', type: 'number', value: round2(centre.y), step: 1, unit: 'mm', showIf: centred, tip: 'The point the row is centred on.' },
+        { key: 'pz', label: 'Point Z', type: 'number', value: round2(centre.z), step: 1, unit: 'mm', showIf: centred, tip: 'The point the row is centred on.' },
         { key: 'angle', label: 'Angle', type: 'number', value: 360, step: 15, unit: '°', showIf: ['type', 'circular'], tip: 'Total angle covered. 360° spreads copies evenly all the way round.' },
         { key: 'axis', label: 'Axis', type: 'select', value: 'z', options: [['z', 'Z (vertical)'], ['x', 'X'], ['y', 'Y']], showIf: ['type', 'circular'], tip: 'Axis the copies turn around.' },
-        { key: 'cx', label: 'Centre X', type: 'number', value: Math.round(centre.x - spacing), step: 1, unit: 'mm', showIf: ['type', 'circular'], tip: 'Point the axis goes through.' },
-        { key: 'cy', label: 'Y', type: 'number', value: Math.round(centre.y), step: 1, unit: 'mm', showIf: ['type', 'circular'] },
-        { key: 'cz', label: 'Z', type: 'number', value: 0, step: 1, unit: 'mm', showIf: ['type', 'circular'] },
-        { key: 'pick', label: 'Pick point', type: 'button', value: '', onClick: pickPoint, tip: 'Click a corner, edge or face on the model to centre the pattern there (Esc stops picking).' },
+        { key: 'cx', label: 'Centre X', type: 'number', value: Math.round(centre.x - spacing), step: 1, unit: 'mm', showIf: (v) => v.type === 'circular' && v.axis !== 'x', tip: 'Where the axis passes through.' },
+        { key: 'cy', label: 'Centre Y', type: 'number', value: Math.round(centre.y), step: 1, unit: 'mm', showIf: (v) => v.type === 'circular' && v.axis !== 'y', tip: 'Where the axis passes through.' },
+        { key: 'cz', label: 'Centre Z', type: 'number', value: 0, step: 1, unit: 'mm', showIf: (v) => v.type === 'circular' && v.axis !== 'z', tip: 'Where the axis passes through.' },
+        { key: 'pick', label: 'Pick point', type: 'button', value: '', onClick: pickPoint, showIf: (v) => v.type === 'circular' || v.centreOn === 'on', tip: 'Click a corner, edge or face on the model to centre the pattern there (Esc stops picking).' },
         { key: 'merge', label: 'Merge into one', type: 'checkbox', value: false, tip: 'Join the original and all copies into a single object.' },
       ],
       targets: objs,

@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { bakeMesh, type MeshData } from '../geometry/meshData';
-import { mirrorMesh, recenter } from '../geometry/meshOps';
+import { lineMirrorNormal, mirrorMesh, planeNormal, recenter, reflectMesh, reflectPoint, type Vec3 } from '../geometry/meshOps';
 import type { SceneDocument, SceneObject } from '../scene/document';
 import { units } from './arrange';
 import { FeatureBar, previewMesh } from './featureBar';
 import { showHint } from './hint';
+import { SnapPicker } from './snapPicker';
 
 const AXIS_NAMES = ['X', 'Y', 'Z'] as const;
 
@@ -14,11 +15,14 @@ const AXIS_NAMES = ['X', 'Y', 'Z'] as const;
  * leaves everything as it was.
  */
 export class TurnTools {
+  private readonly points: SnapPicker;
+
   constructor(
     private readonly doc: SceneDocument,
     private readonly bar: FeatureBar,
     private readonly toast: (msg: string) => void,
   ) {
+    this.points = new SnapPicker(bar.viewport, doc);
     for (const b of document.querySelectorAll('[data-action="mirror"]')) b.addEventListener('click', () => this.mirror());
     for (const b of document.querySelectorAll('[data-action="rotate90"]')) b.addEventListener('click', () => this.rotate());
   }
@@ -29,16 +33,100 @@ export class TurnTools {
     const objs = [...this.doc.selection];
     if (objs.length === 0) return this.toast('Select an object first');
     const doc = this.doc;
+    const bar = this.bar;
+    const picker = this.points;
+    const camera = bar.viewport.camera;
     interface Flipped { obj: SceneObject; mesh: MeshData; position: THREE.Vector3 }
-    this.bar.open<Flipped[]>({
+    interface Result { flipped: Flipped[]; ready: boolean; picked: THREE.Vector3[]; normal: Vec3 | null; mode: string }
+
+    // Picking for the Plane (3 points) and Line (2 points) modes.
+    let mode = 'axis';
+    let picked: THREE.Vector3[] = [];
+    /** Mirror plane (point and unit normal), once all the points are picked */
+    let plane: { at: Vec3; n: Vec3 } | null = null;
+    const needed = () => (mode === 'plane' ? 3 : mode === 'line' ? 2 : 0);
+    const solvePlane = (): void => {
+      plane = null;
+      if (picked.length < needed()) return;
+      const p = picked.map((v) => v.toArray() as Vec3);
+      const n = mode === 'plane'
+        ? planeNormal(p[0], p[1], p[2])
+        : lineMirrorNormal(p[0], p[1], camera.position.toArray() as Vec3);
+      if (n) plane = { at: p[0], n };
+    };
+    const askNext = () => {
+      if (picked.length >= needed()) {
+        return showHint('feature', plane
+          ? 'Mirror: Apply to flip the selection, or Pick again to choose other points.'
+          : 'Mirror: those points do not define a plane (they lie in a line). Click Pick again.');
+      }
+      const what = mode === 'plane' ? `point ${picked.length + 1} of 3 for the plane` : `point ${picked.length + 1} of 2 for the line`;
+      showHint('feature', `Mirror: click ${what} (corners, edge middles and face centres snap). Esc stops picking.`);
+      picker.start({
+        extraPoints: () => picked,
+        onPick: (at) => {
+          picked.push(at);
+          solvePlane();
+          askNext();
+          bar.refresh(0);
+        },
+      });
+    };
+    const restart = () => {
+      picker.stop();
+      picked = [];
+      plane = null;
+      if (needed() > 0) askNext();
+      else showHint('feature', 'Mirror: pick the axis to flip along. Apply to flip the selection.');
+    };
+
+    const ghost = new THREE.MeshStandardMaterial({
+      color: 0xf2a33a, transparent: true, opacity: 0.75, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1,
+    });
+    const patchMaterial = new THREE.MeshBasicMaterial({ color: 0x4cb8ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
+    const markMaterial = new THREE.MeshBasicMaterial({ color: 0x4cb8ff, depthTest: false, transparent: true });
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4cb8ff, depthTest: false });
+    const span = Math.max(doc.worldBox(objs).getSize(new THREE.Vector3()).length(), 10);
+
+    const mirrorAbout = (n: Vec3, at: Vec3): Flipped[] => objs.map((obj) => {
+      // Rotation and scale are baked into the geometry, which is reflected about the
+      // object's own origin; then the origin's mirror image is where it goes.
+      const m = obj.mesh;
+      const linear = new THREE.Matrix4().compose(new THREE.Vector3(), m.quaternion, m.scale);
+      const { mesh, center } = recenter(reflectMesh(bakeMesh({ mesh: obj.data, matrix: linear.elements }), n));
+      const position = new THREE.Vector3(...reflectPoint(m.position.toArray() as Vec3, at, n)).add(new THREE.Vector3(...center));
+      return { obj, mesh, position };
+    });
+
+    bar.open<Result>({
       title: 'Mirror',
       hint: 'Mirror: pick the axis to flip along. Apply to flip the selection.',
       fields: [
-        { key: 'axis', label: 'Axis', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], tip: 'The selection is flipped along this axis.' },
+        {
+          key: 'mode', label: 'Mirror across', type: 'select', value: 'axis',
+          tip: 'Axis: flip through the middle of the selection. Plane: click three points. Line: click two points; the mirror is the vertical plane through them.',
+          options: [['axis', 'Axis'], ['plane', 'Plane (3 points)'], ['line', 'Line (2 points)']],
+        },
+        { key: 'axis', label: 'Axis', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: ['mode', 'axis'], tip: 'The selection is flipped along this axis.' },
+        {
+          key: 'again', label: 'Pick again', type: 'button', value: '', showIf: (v) => v.mode !== 'axis',
+          tip: 'Throw away the points and click them again.',
+          onClick: () => {
+            restart();
+            bar.refresh(0);
+          },
+        },
       ],
       hide: objs,
       targets: objs,
       compute: async (v) => {
+        if (String(v.mode) !== mode) {
+          mode = String(v.mode);
+          restart();
+        }
+        if (mode !== 'axis') {
+          return { flipped: plane ? mirrorAbout(plane.n, plane.at) : [], ready: plane !== null, picked: [...picked], normal: plane?.n ?? null, mode };
+        }
         const axis = AXIS_NAMES.indexOf(String(v.axis).toUpperCase() as 'X') as 0 | 1 | 2;
         const out: Flipped[] = [];
         // A group mirrors as a whole: through the middle of the group, so its
@@ -59,19 +147,61 @@ export class TurnTools {
             out.push({ obj, mesh, position });
           }
         }
+        return { flipped: out, ready: true, picked: [], normal: null, mode };
+      },
+      show: (r) => {
+        const out: THREE.Object3D[] = [];
+        if (r.ready) out.push(...r.flipped.map((f) => previewMesh(f.mesh, f.position.toArray())));
+        else {
+          // Still picking: show the selection where it is (its own meshes are hidden meanwhile).
+          for (const o of objs) {
+            const g = new THREE.Mesh(o.mesh.geometry, ghost);
+            g.position.copy(o.mesh.position);
+            g.quaternion.copy(o.mesh.quaternion);
+            g.scale.copy(o.mesh.scale);
+            g.userData.sharedGeometry = true; // the preview must not free the object's geometry
+            out.push(g);
+          }
+        }
+        const radius = Math.max(0.5, span * 0.012);
+        for (const p of r.picked) {
+          const dot = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), markMaterial);
+          dot.position.copy(p);
+          dot.renderOrder = 10;
+          out.push(dot);
+        }
+        if (r.mode === 'line' && r.picked.length === 2) {
+          const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(r.picked), lineMaterial);
+          line.renderOrder = 10;
+          out.push(line);
+        }
+        if (r.normal && r.picked.length) {
+          const centre = r.picked.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / r.picked.length);
+          const patch = new THREE.Mesh(new THREE.PlaneGeometry(span * 1.6, span * 1.6), patchMaterial);
+          patch.position.copy(centre);
+          patch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...r.normal));
+          out.push(patch);
+        }
         return out;
       },
-      show: (flipped) => flipped.map((f) => previewMesh(f.mesh, f.position.toArray())),
-      apply: (flipped) => {
-        if (!flipped.every((f) => doc.objects.includes(f.obj))) return;
+      apply: (r) => {
+        if (!r.ready) return this.toast('Mirror: pick the points first');
+        if (!r.flipped.every((f) => doc.objects.includes(f.obj))) return;
         doc.checkpoint();
-        for (const f of flipped) {
+        for (const f of r.flipped) {
           doc.setData(f.obj, f.mesh);
           f.obj.mesh.position.copy(f.position);
           f.obj.mesh.quaternion.identity();
           f.obj.mesh.scale.set(1, 1, 1);
         }
         doc.emit('transform');
+      },
+      onClose: () => {
+        picker.stop();
+        ghost.dispose();
+        patchMaterial.dispose();
+        markMaterial.dispose();
+        lineMaterial.dispose();
       },
     });
   }

@@ -9,7 +9,7 @@ import { bakeMesh, meshDataToManifold, type MeshData } from './geometry/meshData
 import { bounds, largestFlatFaceNormal, recenter } from './geometry/meshOps';
 import { countPieces } from './geometry/meshCheck';
 import { createPrimitive, PRIMITIVE_NAMES } from './geometry/primitives';
-import { IMPORT_EXTENSIONS, importFile } from './io/importFile';
+import { IMPORT_EXTENSIONS, importFile, splitPieces } from './io/importFile';
 import { exportStl } from './io/stl';
 import { export3mf } from './io/threemf';
 import { OBJECT_COLORS, SceneDocument, setEdgeColor, type ObjectState, type SceneObject } from './scene/document';
@@ -577,16 +577,22 @@ async function offerRestore(): Promise<void> {
 const supported = (f: File) => IMPORT_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext));
 
 /** Ask which unit an imported file's numbers are in; null if cancelled. */
-async function askImportUnit(): Promise<ImportUnit | null> {
+async function askImportUnit(): Promise<{ unit: ImportUnit; separate: boolean } | null> {
   const dialog = $<HTMLDialogElement>('#import-dialog');
+  const separateBox = $<HTMLInputElement>('#import-separate');
+  separateBox.checked = settings.ui.importSeparate;
   for (const r of [...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')]) r.checked = r.value === settings.ui.importUnit;
   dialog.returnValue = '';
   dialog.showModal();
   await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
   if (dialog.returnValue !== 'import') return null;
   const unit = ([...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')].find((r) => r.checked)?.value ?? 'mm') as ImportUnit;
-  updateUi((ui) => (ui.importUnit = unit));
-  return unit;
+  const separate = separateBox.checked;
+  updateUi((ui) => {
+    ui.importUnit = unit;
+    ui.importSeparate = separate;
+  });
+  return { unit, separate };
 }
 {
   const dialog = $<HTMLDialogElement>('#import-dialog');
@@ -603,9 +609,9 @@ async function openFiles(all: File[]): Promise<void> {
     toast(`File not supported: ${names}. Open 3MF, STL or OBJ files.`);
   }
   if (files.length === 0) return;
-  const unit = await askImportUnit();
-  if (!unit) return;
-  const factor = IMPORT_UNITS[unit];
+  const choice = await askImportUnit();
+  if (!choice) return;
+  const factor = IMPORT_UNITS[choice.unit];
   const added: SceneObject[] = [];
   let checkpointed = false;
   for (const file of files) {
@@ -624,6 +630,8 @@ async function openFiles(all: File[]): Promise<void> {
       doc.checkpoint();
       checkpointed = true;
     }
+    // Optionally one object per separate piece (named like the part, numbered by doc.add).
+    if (choice.separate) parts = parts.flatMap((p) => splitPieces(p.data).map((data) => ({ ...p, data })));
     // The file's numbers are in its own unit; everything here is in mm.
     if (factor !== 1) {
       for (const p of parts) {

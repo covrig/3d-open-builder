@@ -432,6 +432,11 @@ dialog input { accent-color: var(--accent); }
 dialog .links { margin: 0; color: var(--muted); }
 dialog a { color: var(--accent); }
 dialog footer { display: flex; justify-content: flex-end; }
+#restore-dialog { width: min(420px, 92vw); }
+#restore-dialog .restore-head { display: flex; align-items: center; gap: 12px; }
+#restore-dialog .restore-head img { flex: none; width: 40px; height: 40px; border-radius: 8px; }
+#restore-dialog p { margin: 0; line-height: 1.45; }
+#restore-dialog footer { margin-top: 4px; }
 
 /* --- Dropdown menus ----------------------------------------------------- */
 

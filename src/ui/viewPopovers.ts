@@ -130,7 +130,7 @@ export function setupViewPopovers(viewport: Viewport): void {
         show: pct,
       }],
       toggles: [{
-        label: 'Grid values', tip: 'Write distances in mm along the X and Y axis lines of the plate.',
+        label: 'Grid values', tip: 'Write distances (in the unit set for the scene) along the X and Y axis lines of the plate.',
         get: () => settings.ui.gridValues,
         set: (on) => {
           updateUi((ui) => (ui.gridValues = on));

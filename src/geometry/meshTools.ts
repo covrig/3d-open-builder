@@ -99,33 +99,63 @@ function suggestOrientation(wasm: ManifoldToplevel, world: MeshData) {
   };
 }
 
-/** Thinnest wall found by shooting rays inward from sampled faces. */
-function wallThickness(m: Manifold, mesh: MeshData, minWall: number): { thin: number; sampled: number; thinnest: number } {
+/**
+ * Walls thinner than `minWall`, by surface area. Points are sampled evenly over
+ * the surface (not per triangle: rounded edges have many tiny ones) and a ray
+ * goes inward along the normal. It only counts as a wall when the face it hits
+ * looks back at the sample (a real wall has two facing sides); a slanted ray on
+ * a rounded rim that meets the inner wall measures a chord, not a thickness.
+ */
+function wallThickness(m: Manifold, mesh: MeshData, minWall: number): { thinArea: number; halfArea: number; sampled: number; thinnest: number } {
   const p = mesh.positions;
   const idx = mesh.indices;
   const triCount = idx.length / 3;
-  const step = Math.max(1, Math.floor(triCount / 1500)); // sample at most ~1500 faces
-  let thin = 0, sampled = 0, thinnest = Infinity;
-  const reach = Math.max(minWall * 3, 1);
-  for (let t = 0; t < triCount; t += step) {
+  const normals = new Float32Array(triCount * 3);
+  const cumulative = new Float64Array(triCount);
+  let total = 0;
+  for (let t = 0; t < triCount; t++) {
     const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
     const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
     const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     const len = Math.hypot(nx, ny, nz);
-    if (len === 0) continue;
-    nx /= len; ny /= len; nz /= len;
-    const cx = (p[a] + p[b] + p[c]) / 3, cy = (p[a + 1] + p[b + 1] + p[c + 1]) / 3, cz = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
-    const start: Vec3 = [cx - nx * 1e-3, cy - ny * 1e-3, cz - nz * 1e-3];
-    const end: Vec3 = [cx - nx * reach, cy - ny * reach, cz - nz * reach];
-    const hit = m.rayCast(start, end).find((r) => r.distance > 1e-3);
+    if (len > 0) {
+      normals[t * 3] = nx / len; normals[t * 3 + 1] = ny / len; normals[t * 3 + 2] = nz / len;
+      total += len / 2;
+    }
+    cumulative[t] = total;
+  }
+  const SAMPLES = 3000;
+  const reach = Math.max(minWall * 3, 1);
+  let sampled = 0, thin = 0, half = 0, thinnest = Infinity;
+  if (total <= 0) return { thinArea: 0, halfArea: 0, sampled, thinnest };
+  let t = 0;
+  for (let s = 0; s < SAMPLES; s++) {
+    // Stratified along the cumulative area: one sample in each equal slice.
+    const target = ((s + 0.5) / SAMPLES) * total;
+    while (t < triCount - 1 && cumulative[t] < target) t++;
+    const nx = normals[t * 3], ny = normals[t * 3 + 1], nz = normals[t * 3 + 2];
+    if (nx === 0 && ny === 0 && nz === 0) continue;
+    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+    // A random-ish point inside the triangle (fixed low-discrepancy values, so results repeat).
+    let u = (s * 0.7548776662466927) % 1, w = (s * 0.5698402909980532) % 1;
+    if (u + w > 1) { u = 1 - u; w = 1 - w; }
+    const px = p[a] + u * (p[b] - p[a]) + w * (p[c] - p[a]);
+    const py = p[a + 1] + u * (p[b + 1] - p[a + 1]) + w * (p[c + 1] - p[a + 1]);
+    const pz = p[a + 2] + u * (p[b + 2] - p[a + 2]) + w * (p[c + 2] - p[a + 2]);
     sampled++;
+    const start: Vec3 = [px - nx * 1e-3, py - ny * 1e-3, pz - nz * 1e-3];
+    const end: Vec3 = [px - nx * reach, py - ny * reach, pz - nz * reach];
+    const hit = m.rayCast(start, end).find((r) => r.distance > 1e-3);
     if (!hit) continue;
-    const d = hit.distance + 1e-3;
+    const n = hit.normal;
+    if (nx * n[0] + ny * n[1] + nz * n[2] > -0.85) continue;
+    const d = Math.hypot(hit.position[0] - px, hit.position[1] - py, hit.position[2] - pz);
     thinnest = Math.min(thinnest, d);
     if (d < minWall) thin++;
+    if (d < minWall / 2) half++;
   }
-  return { thin, sampled, thinnest };
+  return { thinArea: sampled ? thin / sampled : 0, halfArea: sampled ? half / sampled : 0, sampled, thinnest };
 }
 
 /** Full printability check of one object (geometry in world space). */
@@ -174,10 +204,13 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
       : { id: 'overlaps', label: 'Overlapping parts', status: 'warn', detail: `${overlapping} pairs of parts overlap, leaving faces inside the model.`, fixable: true });
 
     const wall = wallThickness(solid, welded, minWall);
-    const pct = wall.sampled ? Math.round((wall.thin / wall.sampled) * 100) : 0;
-    items.push(wall.thin === 0
-      ? { id: 'thickness', label: 'Wall thickness', status: 'pass', detail: `No walls thinner than ${minWall} mm found${Number.isFinite(wall.thinnest) ? ` (thinnest ${wall.thinnest.toFixed(2)} mm)` : ''}.`, fixable: false }
-      : { id: 'thickness', label: 'Wall thickness', status: pct > 10 ? 'fail' : 'warn', detail: `About ${pct}% of the surface is thinner than ${minWall} mm (thinnest ${wall.thinnest.toFixed(2)} mm). Make those walls thicker.`, fixable: false });
+    const pct = (f: number) => (f > 0 && f < 0.01 ? '<1' : String(Math.round(f * 100)));
+    const thinnest = Number.isFinite(wall.thinnest) ? ` (thinnest ${wall.thinnest.toFixed(2)} mm)` : '';
+    items.push(wall.halfArea >= 0.02
+      ? { id: 'thickness', label: 'Wall thickness', status: 'fail', detail: `About ${pct(wall.halfArea)}% of the surface is thinner than ${+(minWall / 2).toFixed(2)} mm: such thin parts may not print at all.`, fixable: false }
+      : wall.thinArea >= 0.01
+        ? { id: 'thickness', label: 'Wall thickness', status: 'warn', detail: `About ${pct(wall.thinArea)}% of the surface is thinner than ${minWall} mm${thinnest}: it prints, but with fewer lines and less strength.`, fixable: false }
+        : { id: 'thickness', label: 'Wall thickness', status: 'pass', detail: `No significant area thinner than ${minWall} mm found${thinnest}.`, fixable: false });
     solid.delete();
   }
 

@@ -22,8 +22,8 @@ export interface Field {
   tip?: string;
   /** Put the field on its own line just above Apply, highlighted (e.g. the text to emboss) */
   prominent?: boolean;
-  /** Show only when another field has this value */
-  showIf?: [string, string];
+  /** Show only when another field has this value, or when the function says so for the current values */
+  showIf?: [string, string] | ((values: Values) => boolean);
 }
 
 export type Values = Record<string, number | string | boolean>;
@@ -90,7 +90,7 @@ export class FeatureBar {
   private readonly group = new THREE.Group();
 
   constructor(
-    private readonly viewport: Viewport,
+    readonly viewport: Viewport,
     private readonly gizmo: Gizmo,
     private readonly doc: SceneDocument,
     private readonly toast: (msg: string) => void,
@@ -105,7 +105,9 @@ export class FeatureBar {
     doc.addEventListener('change', () => this.checkTargets());
     this.info = this.el.querySelector<HTMLElement>('.feature-info')!;
     viewport.scene.add(this.group);
-    this.el.querySelector('[data-feature="apply"]')!.addEventListener('click', () => this.apply());
+    // Like Enter: a value just typed (its field still focused, or its 'change' only now
+    // firing as the field loses focus) is computed first, then applied.
+    this.el.querySelector('[data-feature="apply"]')!.addEventListener('click', () => this.applyWhenReady());
     this.applyButton = this.el.querySelector<HTMLButtonElement>('[data-feature="apply"]')!;
     this.el.querySelector('[data-feature="cancel"]')!.addEventListener('click', () => this.close());
   }
@@ -233,6 +235,7 @@ export class FeatureBar {
         input.dispatchEvent(new Event('sync')); // a touch dropdown shows the new value
       }
     }
+    this.updateVisibility();
     // null: only show the value (the preview already uses it).
     if (delay !== null) this.refresh(delay);
   }
@@ -251,7 +254,9 @@ export class FeatureBar {
     for (const f of this.spec?.fields ?? []) {
       if (!f.showIf) continue;
       const el = this.el.querySelector<HTMLElement>(`[data-key="${f.key}"]`);
-      if (el) el.hidden = String(this.values[f.showIf[0]]) !== f.showIf[1];
+      if (el) el.hidden = typeof f.showIf === 'function'
+        ? !f.showIf(this.values)
+        : String(this.values[f.showIf[0]]) !== f.showIf[1];
     }
   }
 

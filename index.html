@@ -494,6 +494,7 @@
             <label><input type="radio" name="import-unit" value="in" /> inch</label>
           </div>
         </fieldset>
+        <label title="A file whose parts don't touch, like several printed parts in one STL, becomes one object per part."><input type="checkbox" id="import-separate" /> Separate pieces into objects</label>
         <footer>
           <button type="submit" value="cancel" class="cancel">Cancel</button>
           <button type="submit" value="import" class="primary">Import</button>
@@ -503,7 +504,10 @@
 
     <dialog id="restore-dialog">
       <form method="dialog">
-        <header><h2 id="restore-title">Continue where you left off?</h2></header>
+        <header class="restore-head">
+          <img src="icon.svg" width="40" height="40" alt="" />
+          <h2 id="restore-title">Continue where you left off?</h2>
+        </header>
         <p id="restore-text" class="muted"></p>
         <footer>
           <button value="discard" type="submit">Start empty</button>
@@ -516,7 +520,7 @@
       <form method="dialog">
         <header class="check-head"><h2>Check and Repair</h2><span id="check-scope" class="muted"></span></header>
         <div class="check-controls">
-          <label class="inline-field" data-tip-title="Minimum wall" data-tip="Walls thinner than this are reported. Use about twice your nozzle width (0.8 mm for a 0.4 mm nozzle).">
+          <label class="inline-field" data-tip-title="Minimum wall" data-tip="Parts of the surface thinner than this are reported; under half of it they may not print at all. Use about twice your nozzle width (0.8 mm for a 0.4 mm nozzle).">
             Minimum wall <input type="number" id="check-min-wall" min="0.1" step="0.1" /> mm
           </label>
           <button type="button" data-action="check-again"><i data-lucide="refresh-cw"></i>Check again</button>

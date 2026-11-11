@@ -1,8 +1,10 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import Module, { type ManifoldToplevel } from 'manifold-3d';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { applyH, invertH, solveH } from '../src/geometry/homography';
 import { analyze, countPieces, fillHoles, orient, weld } from '../src/geometry/meshCheck';
-import { meshDataToManifold, type MeshData } from '../src/geometry/meshData';
+import { manifoldToMeshData, meshDataToManifold, type MeshData } from '../src/geometry/meshData';
 import { checkMesh, repairMesh } from '../src/geometry/meshTools';
 import { findEdges } from '../src/geometry/edges';
 import { edgeTreatment } from '../src/geometry/features';
@@ -197,5 +199,57 @@ describe('homography', () => {
     const [u, v] = applyH(invertH(h), 50, 30);
     expect(u).toBeCloseTo(110, 6);
     expect(v).toBeCloseTo(90, 6);
+  });
+});
+
+describe('wall thickness check', () => {
+  const thickness = (mesh: MeshData, minWall = 0.8) => {
+    const item = checkMesh(wasm, { mesh, matrix: IDENTITY }, minWall).items.find((i) => i.id === 'thickness')!;
+    return item;
+  };
+  const toMesh = (m: import('manifold-3d').Manifold): MeshData => {
+    const mesh = manifoldToMeshData(m);
+    m.delete();
+    return mesh;
+  };
+
+  it('passes a hollow box with 2 mm walls', () => {
+    const outer = wasm.Manifold.cube([20, 20, 20], false);
+    const inner = wasm.Manifold.cube([16, 16, 16], false).translate([2, 2, 2]);
+    expect(thickness(toMesh(outer.subtract(inner))).status).toBe('pass');
+  });
+
+  it('warns about a 0.5 mm plate (prints, but weakly)', () => {
+    const item = thickness(toMesh(wasm.Manifold.cube([20, 20, 0.5], false)));
+    expect(item.status).toBe('warn');
+    expect(item.detail).toContain('fewer lines');
+  });
+
+  it('fails a 0.2 mm plate', () => {
+    const item = thickness(toMesh(wasm.Manifold.cube([20, 20, 0.2], false)));
+    expect(item.status).toBe('fail');
+    expect(item.detail).toContain('may not print at all');
+  });
+
+  it('passes a tray with a rounded rim (no false alarm from slanted rays)', () => {
+    const outer = wasm.Manifold.cylinder(10, 30, 30, 64);
+    const inner = wasm.Manifold.cylinder(9, 28, 28, 64).translate([0, 0, 2]);
+    const tray = outer.subtract(inner);
+    // Round the rim with a torus-like ring of spheres' worth of triangles: a half-round bead on top.
+    const bead = wasm.Manifold.cylinder(1, 30, 30, 64).translate([0, 0, 9.5]).subtract(wasm.Manifold.cylinder(2, 28, 28, 64).translate([0, 0, 9]));
+    expect(thickness(toMesh(tray.add(bead))).status).toBe('pass');
+  });
+
+  it('passes the real tray file with a rounded rim', () => {
+    const file = resolve(__dirname, '../../testfiles/test_wall_error.stl');
+    if (!existsSync(file)) return; // the sample files live outside the project
+    const buf = readFileSync(file);
+    const n = buf.readUInt32LE(80);
+    const positions = new Float32Array(n * 9);
+    for (let t = 0; t < n; t++) {
+      for (let k = 0; k < 9; k++) positions[t * 9 + k] = buf.readFloatLE(84 + t * 50 + 12 + k * 4);
+    }
+    const mesh: MeshData = { positions, indices: Uint32Array.from({ length: n * 3 }, (_, i) => i) };
+    expect(thickness(mesh).status).toBe('pass');
   });
 });

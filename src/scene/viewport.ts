@@ -7,6 +7,19 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { Ground, type GroundColors } from './ground';
 import { makeLabel } from './labels';
 import { Reflection } from './reflection';
+import { MM_PER_UNIT, settings, settingsEvents, type Unit } from '../settings';
+
+/** Grid lines per unit (mm): minor and major spacing. Inches get quarter-inch and one-inch lines. */
+const GRID_STEPS: Record<Unit, { minor: number; major: number }> = {
+  mm: { minor: 10, major: 50 },
+  cm: { minor: 10, major: 50 },
+  in: { minor: 6.35, major: 25.4 },
+};
+/** Height (mm) of the "0" at the origin, and of the numbers along the axis lines: smaller, and not growing with the step. */
+const ORIGIN_HEIGHT = 5;
+const GRID_NUMBER_HEIGHT = ORIGIN_HEIGHT * 0.7;
+/** Least distance (px) between two numbers along an axis line */
+const GRID_NUMBER_GAP = 60;
 
 // 3D printing files (STL, 3MF) use Z as "up"; make Three.js agree so no
 // axis conversion is ever needed on import or export. Must run before any
@@ -75,7 +88,7 @@ export class Viewport extends EventTarget {
   private originLabel?: THREE.Mesh;
   /** Numbers along the plate's X and Y axis lines (Plate popover: "Grid values"), rebuilt when the step changes */
   private gridValues = false;
-  private gridLabels: { group: THREE.Group; step: number; dark: boolean; cx: number; cy: number; radius: number } | null = null;
+  private gridLabels: { group: THREE.Group; step: number; unit: Unit; dark: boolean; cx: number; cy: number; radius: number } | null = null;
   /** Mirror image of the objects in the plate (Settings; off by default) */
   readonly reflection: Reflection;
   /** The plate fill's see-through value from Settings (null: the colour theme's own) */
@@ -129,6 +142,11 @@ export class Viewport extends EventTarget {
     this.scene.add(under);
 
     this.scene.add(this.ground.group);
+    this.applyGridUnit();
+    settingsEvents.addEventListener('change', () => {
+      this.applyGridUnit();
+      this.invalidate();
+    });
     this.reflection = new Reflection(this.scene, this.objectRoot);
     this.beforeFrame(() => this.reflection.sync());
 
@@ -387,7 +405,7 @@ export class Viewport extends EventTarget {
       this.originLabel.geometry.dispose();
       (this.originLabel.material as THREE.Material).dispose();
     }
-    this.originLabel = makeLabel('0', this.palette.label, 5);
+    this.originLabel = makeLabel('0', this.palette.label, ORIGIN_HEIGHT);
     this.originLabel.position.set(-3.5, -4, 0.05);
     this.ground.group.add(this.originLabel);
     this.outline.visibleEdgeColor.setHex(this.palette.outline);
@@ -396,7 +414,13 @@ export class Viewport extends EventTarget {
     this.invalidate();
   }
 
-  /** Show numbers (in mm) along the X and Y axis lines of the plate. */
+  /** The grid lines follow the unit setting. */
+  private applyGridUnit(): void {
+    const { minor, major } = GRID_STEPS[settings.unit];
+    this.ground.setSteps(minor, major);
+  }
+
+  /** Show numbers (in the scene's unit) along the X and Y axis lines of the plate. */
   setGridValues(on: boolean): void {
     this.gridValues = on;
     if (!on) this.clearGridValues();
@@ -422,36 +446,47 @@ export class Viewport extends EventTarget {
   }
 
   /**
-   * Numbers on the axis lines at multiples of a step picked from the camera
-   * distance (about 80 px or more apart). They cover the area the grid has not
-   * faded out of, and are only rebuilt when the step, the theme or the area
-   * changes.
+   * Numbers on the axis lines, all the same small size. Which lines get one
+   * depends on the zoom: the major lines by default, the minor lines too when
+   * zoomed in far enough, and every 2nd, 5th, 10th... major line when zoomed
+   * out, so two numbers are never less than about 60 px (or a number's width)
+   * apart. They cover the area the grid has not faded out of, and are only
+   * rebuilt when the step, the unit, the theme or the area changes.
    */
   private updateGridValues(target: THREE.Vector3, distance: number): void {
     if (!this.gridValues) return;
+    const unit = settings.unit;
+    const { minor, major } = GRID_STEPS[unit];
+    const perUnit = MM_PER_UNIT[unit];
     const pxPerMm = this.height / (2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
-    const wanted = 80 / Math.max(pxPerMm, 1e-6);
-    let step = 10;
-    for (let mag = 10; ; mag *= 10) {
-      const found = [mag, mag * 2, mag * 5].find((c) => c >= wanted);
-      if (found !== undefined) {
-        step = Math.max(10, found);
-        break;
-      }
-      if (mag > 1e7) break;
-    }
     const radius = Math.max(400, distance * 3) * 0.7;
+    // Characters in the widest number: its whole digits, plus the decimals of the step.
+    const digits = Math.max(1, Math.floor(Math.log10(Math.max(radius / perUnit, 1))) + 1);
+    const text = (mm: number) => String(Math.round((mm / perUnit) * 1e4) / 1e4);
+    const fits = (step: number) => {
+      const t = text(step);
+      const decimals = t.includes('.') ? t.length - t.indexOf('.') : 0;
+      const width = GRID_NUMBER_HEIGHT * ((digits + decimals + 1) * 0.5 + 0.3);
+      return step * pxPerMm >= Math.max(GRID_NUMBER_GAP, width * pxPerMm * 1.3);
+    };
+    let step = minor;
+    if (!fits(minor)) {
+      step = major;
+      for (let mag = 1; !fits(step) && mag < 1e9; mag *= 10) {
+        step = [1, 2, 5, 10].map((m) => major * mag * m).find(fits) ?? major * mag * 10;
+      }
+    }
     const cur = this.gridLabels;
-    if (cur && cur.step === step && cur.dark === this.palette.dark
+    if (cur && cur.step === step && cur.unit === unit && cur.dark === this.palette.dark
       && Math.hypot(target.x - cur.cx, target.y - cur.cy) < cur.radius * 0.25
       && radius < cur.radius * 1.3 && radius > cur.radius * 0.6) return;
     this.clearGridValues();
     const group = new THREE.Group();
-    const height = Math.max(3.5, step * 0.3);
+    const height = GRID_NUMBER_HEIGHT;
     const fadeAt = Math.max(400, distance * 3);
-    const add = (value: number, x: number, y: number, alongX: boolean) => {
-      if (value === 0) return; // the "0" label is already there
-      const label = makeLabel(String(value), this.palette.label, height);
+    const add = (index: number, x: number, y: number, alongX: boolean) => {
+      if (index === 0) return; // the "0" label is already there
+      const label = makeLabel(text(index * step), this.palette.label, height);
       const w = (label.geometry as THREE.PlaneGeometry).parameters.width;
       // Under the X axis line, left of the Y axis line; clear of the "0" at the origin.
       label.position.set(alongX ? x : -w / 2 - height * 0.2, alongX ? -height * 0.8 : y, 0.05);
@@ -464,11 +499,11 @@ export class Viewport extends EventTarget {
         (label.material as THREE.Material).dispose();
       }
     };
-    const from = (c: number) => Math.ceil((c - radius) / step) * step;
-    for (let x = from(target.x); x <= target.x + radius; x += step) add(x, x, 0, true);
-    for (let y = from(target.y); y <= target.y + radius; y += step) add(y, 0, y, false);
+    const from = (c: number) => Math.ceil((c - radius) / step);
+    for (let k = from(target.x); k * step <= target.x + radius; k++) add(k, k * step, 0, true);
+    for (let k = from(target.y); k * step <= target.y + radius; k++) add(k, 0, k * step, false);
     this.ground.group.add(group);
-    this.gridLabels = { group, step, dark: this.palette.dark, cx: target.x, cy: target.y, radius };
+    this.gridLabels = { group, step, unit, dark: this.palette.dark, cx: target.x, cy: target.y, radius };
   }
 
   setGridVisible(visible: boolean): void {

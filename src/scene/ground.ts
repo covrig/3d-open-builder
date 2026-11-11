@@ -12,7 +12,7 @@ const vertexShader = /* glsl */ `
   }
 `;
 
-// Anti-aliased grid lines drawn per pixel: 10 mm minor and 50 mm major lines,
+// Anti-aliased grid lines drawn per pixel: minor and major lines (10 / 50 mm, or 0.25 / 1 inch),
 // red/green lines along the X and Y axes, all fading out with distance from
 // the point the camera looks at. Minor lines also fade where they would get
 // denser than a few pixels, which avoids moiré near the horizon.
@@ -24,6 +24,8 @@ const fragmentShader = /* glsl */ `
   uniform float uLineOpacity;
   uniform vec2 uCenter;
   uniform float uFade;
+  uniform float uMinorStep;
+  uniform float uMajorStep;
   varying vec3 vWorld;
 
   float line(vec2 p, float step, out float density) {
@@ -37,8 +39,8 @@ const fragmentShader = /* glsl */ `
   void main() {
     vec2 p = vWorld.xy;
     float dMinor, dMajor;
-    float minor = line(p, 10.0, dMinor) * (1.0 - smoothstep(0.15, 0.4, dMinor));
-    float major = line(p, 50.0, dMajor) * (1.0 - smoothstep(0.3, 0.6, dMajor));
+    float minor = line(p, uMinorStep, dMinor) * (1.0 - smoothstep(0.15, 0.4, dMinor));
+    float major = line(p, uMajorStep, dMajor) * (1.0 - smoothstep(0.3, 0.6, dMajor));
     float fade = 1.0 - smoothstep(uFade * 0.35, uFade, length(p - uCenter));
 
     vec3 color = uFill;
@@ -91,6 +93,8 @@ export class Ground {
         uLineOpacity: { value: 1 },
         uCenter: { value: new THREE.Vector2() },
         uFade: { value: 1000 },
+        uMinorStep: { value: 10 },
+        uMajorStep: { value: 50 },
       },
     });
     const grid = new THREE.Mesh(new THREE.PlaneGeometry(EXTENT, EXTENT), this.material);
@@ -119,6 +123,12 @@ export class Ground {
   /** How strongly the minor and major grid lines show (1: as designed; the axis lines and the fill are not affected). */
   setLineOpacity(opacity: number): void {
     this.material.uniforms.uLineOpacity.value = opacity;
+  }
+
+  /** Distance (mm) between the minor and the major grid lines. */
+  setSteps(minor: number, major: number): void {
+    this.material.uniforms.uMinorStep.value = minor;
+    this.material.uniforms.uMajorStep.value = major;
   }
 
   /** Centre the fade on what the camera looks at; reach grows as the camera backs away. */

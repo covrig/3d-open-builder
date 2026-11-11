@@ -40,6 +40,61 @@ export function mirrorMesh(data: MeshData, axis: 0 | 1 | 2): MeshData {
   return bakeMesh({ mesh: data, matrix: m });
 }
 
+/** Unit normal of the plane through three points, or null when they lie in a line. */
+export function planeNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
+  const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+  const n: Vec3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const len = Math.hypot(...n);
+  // Tolerance relative to the edge lengths: (nearly) collinear points have no plane.
+  if (len < 1e-6 * Math.max(1, Math.hypot(...u) * Math.hypot(...v))) return null;
+  return [n[0] / len, n[1] / len, n[2] / len];
+}
+
+/**
+ * Normal of the plane that mirrors across the line a-b: the plane containing
+ * the line and the Z (up) direction. When the line is (nearly) vertical, that
+ * is undefined, so the plane through the line that faces `eye` (the camera) is used.
+ * Null when a and b coincide or the camera looks along a vertical line.
+ */
+export function lineMirrorNormal(a: Vec3, b: Vec3, eye: Vec3): Vec3 | null {
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const dl = Math.hypot(...d);
+  if (dl < 1e-9) return null;
+  d[0] /= dl; d[1] /= dl; d[2] /= dl;
+  let n: number[];
+  if (Math.abs(d[2]) < 0.98) {
+    n = [d[1], -d[0], 0]; // d x up
+  } else {
+    const t = [eye[0] - a[0], eye[1] - a[1], eye[2] - a[2]];
+    const k = t[0] * d[0] + t[1] * d[1] + t[2] * d[2];
+    n = [t[0] - k * d[0], t[1] - k * d[1], t[2] - k * d[2]];
+  }
+  const len = Math.hypot(...n);
+  if (len < 1e-9) return null;
+  return [n[0] / len, n[1] / len, n[2] / len];
+}
+
+/** Mirror a point across the plane through `point` with unit normal `n`. */
+export function reflectPoint(p: Vec3, point: Vec3, n: Vec3): Vec3 {
+  const k = 2 * ((p[0] - point[0]) * n[0] + (p[1] - point[1]) * n[1] + (p[2] - point[2]) * n[2]);
+  return [p[0] - k * n[0], p[1] - k * n[1], p[2] - k * n[2]];
+}
+
+/**
+ * Mirror across the plane through the origin with unit normal `n` (matrix I - 2nn^T).
+ * The determinant is -1, so bakeMesh turns the triangles round and the faces keep pointing outward.
+ */
+export function reflectMesh(data: MeshData, n: Vec3): MeshData {
+  const m = [
+    1 - 2 * n[0] * n[0], -2 * n[0] * n[1], -2 * n[0] * n[2], 0,
+    -2 * n[1] * n[0], 1 - 2 * n[1] * n[1], -2 * n[1] * n[2], 0,
+    -2 * n[2] * n[0], -2 * n[2] * n[1], 1 - 2 * n[2] * n[2], 0,
+    0, 0, 0, 1,
+  ];
+  return bakeMesh({ mesh: data, matrix: m }); // symmetric, so row- and column-major agree
+}
+
 /**
  * Find the outward normal of the largest flat face of the convex hull.
  * Turning that normal to point straight down makes the object rest on its
