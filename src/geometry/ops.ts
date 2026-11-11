@@ -2,7 +2,8 @@ import type { ManifoldToplevel } from 'manifold-3d';
 import * as THREE from 'three';
 import { booleanOp, combineWithTools, type BooleanOp, type RoleOp } from './booleans';
 import { extrudeToPlane, splitByPlane } from './cut';
-import type { MeshData, PlacedMesh } from './meshData';
+import { meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
+import { parseMeshFile } from '../io/meshParse';
 import { checkMesh, repairMesh } from './meshTools';
 import { findEdgesPlaced, type EdgeSegment } from './edges';
 import { edgeTreatment, gusset, shell, textOnFace } from './features';
@@ -48,6 +49,19 @@ export const ops = {
     return lines;
   },
   overlaps: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => overlapLines(wasm, a.items),
+  // Volume of the mesh as a solid (in its own space), or null if it isn't a closed solid. Also keeps the solid for later jobs.
+  volume: (wasm: ManifoldToplevel, a: { mesh: MeshData }): number | null => {
+    try {
+      const m = meshDataToManifold(wasm, a.mesh);
+      const v = m.volume();
+      m.delete();
+      return v;
+    } catch {
+      return null;
+    }
+  },
+  // Read an STL or OBJ file (welding its corners), off the page.
+  parseMesh: (_wasm: ManifoldToplevel, a: Parameters<typeof parseMeshFile>[0]) => parseMeshFile(a),
 };
 
 export type Ops = typeof ops;

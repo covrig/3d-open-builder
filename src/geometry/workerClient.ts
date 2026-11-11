@@ -1,11 +1,23 @@
+import { slim } from './meshTransfer';
 import type { OpArgs, OpName, OpResult } from './ops';
 
-type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; quiet: boolean };
+type Pending = {
+  resolve: (v: unknown) => void;
+  reject: (e: Error) => void;
+  quiet: boolean;
+  op: OpName;
+  args: unknown;
+};
 
 let worker: Worker | undefined;
 let nextId = 1;
 const pending = new Map<number, Pending>();
 const listeners = new Set<(busy: boolean) => void>();
+/**
+ * Ids of the meshes the current worker has been sent in full. Later jobs send
+ * just the id. A new worker (after Cancel or a crash) starts with none.
+ */
+let sent = new Set<number>();
 
 function notify(): void {
   // Quiet work (e.g. the overlap lines) never shows "Working…".
@@ -13,12 +25,31 @@ function notify(): void {
   for (const l of listeners) l(busy);
 }
 
+/** Send a job: meshes the worker has already by id only (see meshTransfer), unless `full`. */
+function post(id: number, op: OpName, args: unknown, full = false): void {
+  const w = getWorker();
+  if (full) {
+    w.postMessage({ id, op, args });
+    return;
+  }
+  const fresh = new Set<number>();
+  w.postMessage({ id, op, args: slim(args, sent, fresh) });
+  for (const f of fresh) sent.add(f);
+}
+
 function getWorker(): Worker {
   if (worker) return worker;
-  worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  worker.onmessage = (e: MessageEvent<{ id: number; result?: unknown; error?: string }>) => {
+  sent = new Set();
+  const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  worker = w;
+  w.onmessage = (e: MessageEvent<{ id: number; result?: unknown; error?: string; missing?: boolean }>) => {
     const p = pending.get(e.data.id);
     if (!p) return;
+    // The worker no longer keeps a mesh this job named by id: send the job again in full.
+    if (e.data.missing) {
+      post(e.data.id, p.op, p.args, true);
+      return;
+    }
     pending.delete(e.data.id);
     if (e.data.error !== undefined) p.reject(new Error(e.data.error));
     else p.resolve(e.data.result);
@@ -26,24 +57,24 @@ function getWorker(): Worker {
   };
   // If the worker itself crashes (e.g. out of memory), fail everything waiting
   // and start a fresh worker for the next operation.
-  worker.onerror = (e) => {
+  w.onerror = (e) => {
     e.preventDefault();
     for (const p of pending.values()) p.reject(new Error(e.message || 'The geometry engine stopped'));
     pending.clear();
-    worker?.terminate();
-    worker = undefined;
+    w.terminate();
+    if (worker === w) worker = undefined;
     notify();
   };
-  return worker;
+  return w;
 }
 
 /** Run a heavy geometry operation in the background worker; `quiet` ones don't show "Working…". */
 export function runOp<K extends OpName>(op: K, args: OpArgs<K>, quiet = false): Promise<OpResult<K>> {
   return new Promise((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { resolve: resolve as (v: unknown) => void, reject, quiet });
+    pending.set(id, { resolve: resolve as (v: unknown) => void, reject, quiet, op, args });
     notify();
-    getWorker().postMessage({ id, op, args });
+    post(id, op, args);
   });
 }
 

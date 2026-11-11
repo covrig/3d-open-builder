@@ -479,7 +479,7 @@ export class SceneDocument extends EventTarget {
     const token = {};
     const data = obj.data;
     obj.mesh.userData.edgesPending = token;
-    runOp('edgeLines', { mesh: data, angle: EDGE_ANGLE }, true).then(
+    runOp('edgeLines', { mesh: { ...data, id: meshId(data) }, angle: EDGE_ANGLE }, true).then(
       (positions) => {
         if (obj.mesh.userData.edgesPending !== token) return;
         delete obj.mesh.userData.edgesPending;

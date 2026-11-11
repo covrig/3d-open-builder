@@ -4,7 +4,8 @@ import type { SectionCut } from './crossSection';
 import type { Viewport } from '../scene/viewport';
 import { edgeFeatures } from '../geometry/edgeMiddles';
 import { flatFaceRegion } from '../geometry/faceRegion';
-import type { MeshData } from '../geometry/meshData';
+import { meshId, type MeshData } from '../geometry/meshData';
+import { runOp } from '../geometry/workerClient';
 import { viewClicks } from './interaction';
 
 export const SNAP_PX = 14;
@@ -55,16 +56,39 @@ interface FeatureEdges {
 
 /** Sharp edges of a geometry, its real corners and the middles of its straight edges, computed once per geometry. */
 const edgeCache = new WeakMap<THREE.BufferGeometry, FeatureEdges>();
-function featureEdges(geometry: THREE.BufferGeometry): FeatureEdges {
-  let edges = edgeCache.get(geometry);
-  if (!edges) {
-    const g = new THREE.EdgesGeometry(geometry, EDGE_ANGLE);
-    const segs = g.getAttribute('position').array as Float32Array;
-    g.dispose();
-    edges = { segs, ...edgeFeatures(segs) };
+/** Big geometries whose edges the worker is working out */
+const edgesAsked = new WeakSet<THREE.BufferGeometry>();
+/** Above this many triangles, finding the edges here would hold up the page (as for the Edges view). */
+const BIG_MESH = 50_000;
+const NO_EDGES: FeatureEdges = { segs: new Float32Array(0), corners: new Float32Array(0), mids: new Float32Array(0) };
+
+function featureEdges(mesh: THREE.Mesh, data: MeshData): FeatureEdges {
+  const geometry = mesh.geometry;
+  const known = edgeCache.get(geometry);
+  if (known) return known;
+  const keep = (segs: Float32Array) => {
+    const edges = { segs, ...edgeFeatures(segs) };
     edgeCache.set(geometry, edges);
+    return edges;
+  };
+  // The Edges view's lines, when drawn, are these same edges (same angle, the object's own coordinates).
+  const drawn = (mesh.userData.edges as THREE.LineSegments | undefined)?.geometry.getAttribute('position');
+  if (drawn) return keep(drawn.array as Float32Array);
+  // A big mesh: the worker finds them; until then this object offers no edge snaps.
+  if (data.indices.length / 3 > BIG_MESH) {
+    if (!edgesAsked.has(geometry)) {
+      edgesAsked.add(geometry);
+      runOp('edgeLines', { mesh: { ...data, id: meshId(data) }, angle: EDGE_ANGLE }, true).then(
+        (segs) => void keep(segs),
+        () => edgesAsked.delete(geometry), // stopped or failed: ask again next time
+      );
+    }
+    return NO_EDGES;
   }
-  return edges;
+  const g = new THREE.EdgesGeometry(geometry, EDGE_ANGLE);
+  const segs = g.getAttribute('position').array as Float32Array;
+  g.dispose();
+  return keep(segs);
 }
 
 /** The marker of a snapped (or plain) hover point as SVG, plus its tag as HTML. Hidden points are dashed. */
@@ -307,7 +331,7 @@ export class SnapPicker {
     const near = (mesh.geometry.boundingSphere?.radius ?? 20) * 0.2;
 
     // Snap targets: the object's sharp edges, plus the outline of the cut (in the object's own coordinates).
-    const own = featureEdges(mesh.geometry);
+    const own = featureEdges(mesh, obj.data);
     const cut = section ? section.cutOf(obj) : null;
     const inverse = mesh.matrixWorld.clone().invert();
     const toLocalList = (list: Float32Array) => {

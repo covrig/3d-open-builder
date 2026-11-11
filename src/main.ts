@@ -5,7 +5,7 @@ import { loadManifold } from './geometry/loadManifold';
 import { cancelAll, onBusyChange, runOp } from './geometry/workerClient';
 import { Autosave, clearAutosave, fromSaved, loadAutosave, type SavedScene } from './app/autosave';
 import { installErrorHandlers, watchGraphicsContext } from './app/errors';
-import { bakeMesh, meshDataToManifold, type MeshData } from './geometry/meshData';
+import { bakeMesh, meshDataToManifold, meshId, type MeshData } from './geometry/meshData';
 import { bounds, largestFlatFaceNormal, recenter } from './geometry/meshOps';
 import { countPieces } from './geometry/meshCheck';
 import { createPrimitive, PRIMITIVE_NAMES } from './geometry/primitives';
@@ -907,8 +907,27 @@ const fmt = (v: number, digits = 1) => v.toLocaleString(undefined, { maximumFrac
  * scaling multiplies it, so dragging never has to rebuild the solid.
  */
 const volumeCache = new WeakMap<MeshData, number | null>();
-function volumeOf(o: SceneObject): number | null {
+/** Big meshes whose volume the worker is working out */
+const volumeAsked = new WeakSet<MeshData>();
+/** Above this many triangles, building the solid here would hold up the page. */
+const BIG_MESH = 50_000;
+/** The object's volume, null if it isn't a closed solid, undefined while the worker works it out. */
+function volumeOf(o: SceneObject): number | null | undefined {
   if (!volumeCache.has(o.data)) {
+    const data = o.data;
+    if (data.indices.length / 3 > BIG_MESH) {
+      if (!volumeAsked.has(data)) {
+        volumeAsked.add(data);
+        runOp('volume', { mesh: { ...data, id: meshId(data) } }, true).then(
+          (v) => {
+            volumeCache.set(data, v);
+            updateDetails();
+          },
+          () => volumeAsked.delete(data), // stopped: ask again next time
+        );
+      }
+      return undefined;
+    }
     try {
       const m = meshDataToManifold(wasm, o.data);
       volumeCache.set(o.data, m.volume());
@@ -935,12 +954,15 @@ function updateDetails(): void {
   $('#detail-tris').textContent = fmt(objs.reduce((n, o) => n + o.data.indices.length / 3, 0), 0);
   const volumes = objs.map(volumeOf);
   const open = volumes.filter((v) => v === null).length;
+  const waiting = volumes.some((v) => v === undefined);
   const volume = volumes.reduce<number>((sum, v) => sum + (v ?? 0), 0);
   // Metric units show cm³ (what slicers use); imperial shows in³.
   const imperial = u === 'in';
   $('#detail-volume').textContent = open
     ? `${open} object${open > 1 ? 's are' : ' is'} not a closed solid`
-    : imperial
+    : waiting
+      ? 'Working out…'
+      : imperial
       ? `${fmt(volume / MM_PER_UNIT.in ** 3, 2)} in³`
       : `${fmt(volume / 1000, 2)} cm³`;
 }
