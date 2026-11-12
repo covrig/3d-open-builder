@@ -930,11 +930,21 @@ async function runChecks(b) {
   await check('View cube turns the view', async () => {
     const dir = async (name) => {
       await page.evaluate((name) => [...document.querySelectorAll('#view-cube .vc-face')].find((f) => f.textContent === name).click(), name);
-      await sleep(700);
-      return page.evaluate(() => {
+      // The turn is a 280 ms animation drawn frame by frame: on a slow machine (software drawing,
+      // ~0.6 s a frame) it ends later than any fixed wait, so read until the direction stops changing.
+      const read = () => page.evaluate(() => {
         const { camera, orbit } = window.app.viewport;
         return camera.position.clone().sub(orbit.target).normalize().toArray().map((v) => Math.round(v * 100) / 100);
       });
+      let last = await read();
+      let steady = 0;
+      for (let i = 0; i < 50 && steady < 3; i++) {
+        await sleep(300);
+        const now = await read();
+        steady = now.every((v, k) => v === last[k]) ? steady + 1 : 0;
+        last = now;
+      }
+      return last;
     };
     const top = await dir('TOP');
     const right = await dir('RIGHT');
@@ -1189,9 +1199,18 @@ async function runChecks(b) {
     const touchOnly = await page.evaluate(() => [...document.querySelectorAll('#view-corner .touch-only')].map((e) => getComputedStyle(e).display));
     if (touchOnly.some((d) => d !== 'none')) throw new Error(`touch-only buttons shown with a mouse: ${touchOnly}`);
     const out = [];
+    try {
     for (const [w, h] of [[1400, 900], [820, 1180], [600, 800], [390, 844]]) {
       await page.setViewport({ width: w, height: h });
       await page.evaluate(() => { for (const e of document.querySelectorAll('#view-corner .touch-only')) e.style.display = 'flex'; });
+      // The corner buttons are placed by a ResizeObserver, which runs in a drawn frame: wait until they
+      // no longer cover the transform bar (a slow machine needs longer than any fixed wait). If they
+      // still do after 10 s, the measurement below reports it.
+      await page.waitForFunction(() => {
+        const a = document.querySelector('#view-corner').getBoundingClientRect();
+        const b = document.querySelector('#transform-bar').getBoundingClientRect();
+        return !(a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+      }, { timeout: 10000 }).catch(() => {});
       await sleep(400);
       const r = await page.evaluate(async () => {
         const corner = () => [...document.querySelectorAll('#view-corner button')]
@@ -1228,7 +1247,13 @@ async function runChecks(b) {
       if (!r.closedPanel && r.labels !== 0) throw new Error(`${w}px: labels shown with the panel open`);
       out.push(`${w}px ${r.level ? 'level' : 'above'}${r.closedPanel ? ', labelled' : ''}`);
     }
+    } finally {
+      // Always leave the window and buttons as found, so a failure here cannot break the next checks.
+      await page.setViewport({ width: 1400, height: 900 });
+      await page.evaluate(() => { for (const e of document.querySelectorAll('#view-corner .touch-only')) e.style.display = ''; });
+    }
     await page.setViewport({ width: 1400, height: 900 });
+    await page.evaluate(() => { for (const e of document.querySelectorAll('#view-corner .touch-only')) e.style.display = 'flex'; });
     await sleep(300);
     await select([id]);
     await page.click('#view-corner [data-action="delete-selection"]');
@@ -1455,6 +1480,7 @@ async function runChecks(b) {
     return 'Split, Pattern and Intersect tooltips open below the bars and the hint';
   });
   await check('Top bar, brand and toolbar layout', async () => {
+    await page.setViewport({ width: 1400, height: 900 });
     const info = await page.evaluate(() => {
       const css = (s) => getComputedStyle(document.querySelector(s));
       return {
