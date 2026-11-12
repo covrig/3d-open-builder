@@ -45,9 +45,13 @@ export function findEdges(mesh: MeshData, minAngle = 30): EdgeSet {
   const idx = m.indices;
   const pt = (i: number): V3 => [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
   const normals: V3[] = [];
+  /** Triangles with no area (collapsed) have no direction: they never make a sharp edge. */
+  const flat = new Set<number>();
   for (let t = 0; t < idx.length; t += 3) {
     const a = pt(idx[t]), b = pt(idx[t + 1]), c = pt(idx[t + 2]);
-    normals.push(norm(cross(sub(b, a), sub(c, a))));
+    const n = cross(sub(b, a), sub(c, a));
+    if (Math.hypot(n[0], n[1], n[2]) < 1e-12) flat.add(t / 3);
+    normals.push(norm(n));
   }
   /** Corner of triangle t that is not u or v. */
   const opposite = (t: number, u: number, v: number): V3 => {
@@ -73,6 +77,7 @@ export function findEdges(mesh: MeshData, minAngle = 30): EdgeSet {
   for (const [key, tris] of edgeTris) {
     if (tris.length !== 2) continue;
     const [t1, t2] = tris;
+    if (flat.has(t1) || flat.has(t2)) continue; // next to a collapsed triangle: not a feature edge
     if (dot(normals[t1], normals[t2]) > cosLimit) continue; // nearly flat: not a feature edge
     const u = Math.floor(key / 67108864), v = key % 67108864;
     const o1 = opposite(t1, u, v), o2 = opposite(t2, u, v);

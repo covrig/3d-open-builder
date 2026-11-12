@@ -5,6 +5,7 @@ import { edgeMaterial, type SceneDocument, type SceneObject } from '../scene/doc
 import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { fromUnit, settings, toUnit } from '../settings';
+import { parseNumber } from './numberInputs';
 import { beginViewTool, endViewTool } from './toolLock';
 
 type Axis = 0 | 1 | 2;
@@ -61,7 +62,7 @@ export class CrossSection {
       b.addEventListener('click', () => this.setAxis(Number(b.dataset.sectionAxis) as Axis));
     }
     this.range.addEventListener('input', () => this.setOffset(fromUnit(Number(this.range.value))));
-    this.value.addEventListener('change', () => this.setOffset(fromUnit(Number(this.value.value))));
+    this.value.addEventListener('change', () => this.setOffset(fromUnit(parseNumber(this.value.value))));
     this.bar.querySelector('[data-section="flip"]')!.addEventListener('click', () => {
       this.flipped = !this.flipped;
       this.applyPlane();

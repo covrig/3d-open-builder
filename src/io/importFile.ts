@@ -1,7 +1,9 @@
+import { unzipSync } from 'fflate';
 import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
+import { nestShells, shellsOf } from '../geometry/meshCheck';
 import type { MeshData } from '../geometry/meshData';
 import { runOp } from '../geometry/workerClient';
-import { parseMeshFile, partsFromGroup, type ImportedPart } from './meshParse';
+import { checkParts, parseMeshFile, partsFromGroup, type ImportedPart } from './meshParse';
 
 export { geometryToMeshData, type ImportedPart } from './meshParse';
 
@@ -20,66 +22,80 @@ function readMeshFile(a: Parameters<typeof parseMeshFile>[0]): Promise<ImportedP
 /**
  * Split a welded mesh into its separate solid pieces: groups of triangles
  * connected through shared vertices, largest first. A hollow's inside surface
- * (inside-out, so negative volume) stays with the smallest piece around it.
- * Works on plain triangle data, so it also copes with meshes that are not a
- * valid solid. A mesh in one piece comes back as it is.
+ * (inside-out, so negative volume) goes with the piece that really contains it
+ * (see nestShells); an inside-out surface with nothing around it stays a piece
+ * of its own. Works on plain triangle data, so it also copes with meshes that
+ * are not a valid solid. A mesh in one piece comes back as it is.
  */
 export function splitPieces(mesh: MeshData): MeshData[] {
   const idx = mesh.indices;
   const p = mesh.positions;
-  const n = p.length / 3;
-  const parent = new Int32Array(n).map((_, i) => i);
-  const find = (i: number): number => {
-    while (parent[i] !== i) i = parent[i] = parent[parent[i]];
-    return i;
-  };
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = find(idx[t]);
-    parent[find(idx[t + 1])] = a;
-    parent[find(idx[t + 2])] = a;
-  }
-  const groups = new Map<number, { tris: number[]; volume: number; min: number[]; max: number[] }>();
-  for (let t = 0; t < idx.length; t += 3) {
-    const root = find(idx[t]);
-    let g = groups.get(root);
-    if (!g) groups.set(root, (g = { tris: [], volume: 0, min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }));
-    g.tris.push(t);
-    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-    g.volume += (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1])
-      - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c])
-      + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6;
-    for (const o of [a, b, c]) for (let k = 0; k < 3; k++) {
-      g.min[k] = Math.min(g.min[k], p[o + k]);
-      g.max[k] = Math.max(g.max[k], p[o + k]);
+  const shells = shellsOf(mesh);
+  if (shells.length <= 1) return [mesh];
+  const { depth, parent } = nestShells(mesh, shells);
+  // Each outside surface (even depth) is a piece; the hollows directly inside it join it.
+  const pieces = new Map<number, { shells: number[]; volume: number }>();
+  shells.forEach((s, i) => { if (depth[i] % 2 === 0) pieces.set(i, { shells: [i], volume: s.volume }); });
+  shells.forEach((s, i) => {
+    if (depth[i] % 2 === 0) return;
+    const owner = pieces.get(parent[i]);
+    if (owner) {
+      owner.shells.push(i);
+      owner.volume += s.volume;
+    } else {
+      pieces.set(i, { shells: [i], volume: s.volume }); // nothing around it: a piece of its own
     }
-  }
-  if (groups.size <= 1) return [mesh];
-  const all = [...groups.values()];
-  const solids = all.filter((g) => g.volume > 0).sort((a, b) => b.volume - a.volume);
-  if (solids.length === 0) return [mesh];
-  const within = (a: { min: number[]; max: number[] }, b: { min: number[]; max: number[] }) =>
-    [0, 1, 2].every((k) => a.min[k] >= b.min[k] - 1e-6 && a.max[k] <= b.max[k] + 1e-6);
-  for (const h of all.filter((g) => g.volume <= 0)) {
-    const owner = [...solids].reverse().find((s) => within(h, s));
-    if (owner) owner.tris.push(...h.tris);
-    else solids.push(h); // an inside-out surface with nothing around it stays a piece of its own
-  }
-  return solids.map(({ tris }) => {
+  });
+  return [...pieces.values()].sort((a, b) => b.volume - a.volume).map(({ shells: members }) => {
     const remap = new Map<number, number>();
     const positions: number[] = [];
     const indices: number[] = [];
-    for (const t of tris) for (let k = 0; k < 3; k++) {
-      const v = idx[t + k];
-      let m = remap.get(v);
-      if (m === undefined) {
-        m = positions.length / 3;
-        remap.set(v, m);
-        positions.push(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+    for (const s of members) {
+      for (const t of shells[s].tris) {
+        for (let k = 0; k < 3; k++) {
+          const v = idx[t * 3 + k];
+          let m = remap.get(v);
+          if (m === undefined) {
+            m = positions.length / 3;
+            remap.set(v, m);
+            positions.push(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+          }
+          indices.push(m);
+        }
       }
-      indices.push(m);
     }
     return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
   });
+}
+
+/** Millimetres per 3MF unit name. */
+const THREE_MF_UNITS: Record<string, number> = { micron: 0.001, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 };
+
+/**
+ * The factor that turns a 3MF file's own numbers into millimetres, from the
+ * unit named on its root model (millimetre when it names none or an unknown one).
+ */
+export function threeMfUnitScale(bytes: Uint8Array): number {
+  const files = unzipSync(bytes, { filter: (f) => f.name.toLowerCase().endsWith('.model') });
+  const names = Object.keys(files);
+  const root = names.find((n) => n.toLowerCase().endsWith('3dmodel.model')) ?? names[0];
+  if (!root) return 1;
+  const head = new TextDecoder().decode(files[root].subarray(0, 2048));
+  const tag = /<(?:\w+:)?model\b[^>]*>/.exec(head)?.[0] ?? '';
+  const unit = /\bunit\s*=\s*["']([^"']*)["']/.exec(tag)?.[1].toLowerCase();
+  return (unit && THREE_MF_UNITS[unit]) || 1;
+}
+
+async function import3mf(buffer: ArrayBuffer, name: string): Promise<ImportedPart[]> {
+  const scale = threeMfUnitScale(new Uint8Array(buffer));
+  const parts = checkParts(partsFromGroup(new ThreeMFLoader().parse(buffer), name));
+  if (scale !== 1) {
+    for (const p of parts) {
+      const pos = p.data.positions;
+      for (let i = 0; i < pos.length; i++) pos[i] *= scale;
+    }
+  }
+  return parts;
 }
 
 export async function importFile(file: File): Promise<ImportedPart[]> {
@@ -89,7 +105,7 @@ export async function importFile(file: File): Promise<ImportedPart[]> {
     case '.stl':
       return readMeshFile({ format: 'stl', buffer: await file.arrayBuffer(), name: baseName });
     case '.3mf':
-      return partsFromGroup(new ThreeMFLoader().parse(await file.arrayBuffer()), baseName);
+      return import3mf(await file.arrayBuffer(), baseName);
     case '.obj':
       return readMeshFile({ format: 'obj', text: await file.text(), name: baseName });
     default:

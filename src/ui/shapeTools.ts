@@ -115,10 +115,11 @@ export class ShapeTools {
       compute: async (v) => createPrimitive(this.wasm, kind, Object.fromEntries(Object.entries(v).map(([k, x]) => [k, Number(x)])) as Partial<PrimitiveDims>),
       show: (mesh) => [previewMesh(mesh, place(mesh))],
       apply: (mesh) => {
-        this.doc.checkpoint();
-        const obj = this.doc.add(PRIMITIVE_NAMES[kind], mesh);
-        obj.mesh.position.set(...place(mesh));
-        this.doc.setSelection([obj]);
+        this.doc.transact(() => {
+          const obj = this.doc.add(PRIMITIVE_NAMES[kind], mesh);
+          obj.mesh.position.set(...place(mesh));
+          this.doc.setSelection([obj]);
+        });
       },
     });
   }

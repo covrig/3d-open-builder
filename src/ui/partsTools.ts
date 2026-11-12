@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
 import type { MeshData } from '../geometry/meshData';
 import { flatFaceCentre } from '../geometry/faceRegion';
-import { FONTS, loadFont, textOutlines, type FontName } from '../geometry/text';
-import { ISO_THREADS, threadLabel, type ThreadKind, type ThreadSize } from '../geometry/threads';
+import { FONTS, loadFont, missingCharacters, textOutlines, type FontName } from '../geometry/text';
+import { ISO_THREADS, threadLabel, type ThreadKind, type ThreadQuality, type ThreadSize } from '../geometry/threads';
 import { runOp } from '../geometry/workerClient';
 import { buildGeometry, type SceneDocument, type SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
@@ -156,22 +156,29 @@ export class PartsTools {
           tip: 'Extra room all round the thread so a bolt fits. About 0.2 mm suits most FDM printers.',
           ...(kind === 'rod' ? { showIf: ['hole', 'true'] as [string, string] } : {}),
         }] : []),
+        {
+          key: 'quality', label: 'Quality', type: 'select', value: 'normal',
+          options: [['draft', 'Draft'], ['normal', 'Normal'], ['fine', 'Fine']],
+          tip: 'How finely the thread is drawn. Draft has half the triangles (quicker to merge and cut); Fine has twice as many.',
+        },
       ],
-      compute: (v) => runOp('threaded', {
+      compute: (v, signal) => runOp('threaded', {
         kind: forHole(v) ? 'tap' : kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v),
-      }),
+        quality: v.quality as ThreadQuality,
+      }, { signal }),
       show: (p) => [previewMesh(p.mesh, place(p))],
       apply: (p, v) => {
-        this.doc.checkpoint();
-        const label = threadLabel(v.size as ThreadSize);
-        const obj = this.doc.add(forHole(v) ? `${label} thread for a hole` : `${label} ${KIND_NAMES[kind]}`, p.mesh);
-        // Remember how it was made, so Shell can hollow it from a plain stand-in.
-        // (A thread for a hole is only a cutter, not a solid to hollow, so it gets none.)
-        if (!forHole(v)) {
-          obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v), origin: p.center };
-        }
-        obj.mesh.position.set(...place(p));
-        this.doc.setSelection([obj]);
+        this.doc.transact(() => {
+          const label = threadLabel(v.size as ThreadSize);
+          const obj = this.doc.add(forHole(v) ? `${label} thread for a hole` : `${label} ${KIND_NAMES[kind]}`, p.mesh);
+          // Remember how it was made, so Shell can hollow it from a plain stand-in.
+          // (A thread for a hole is only a cutter, not a solid to hollow, so it gets none.)
+          if (!forHole(v)) {
+            obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v), origin: p.center };
+          }
+          obj.mesh.position.set(...place(p));
+          this.doc.setSelection([obj]);
+        });
       },
     });
   }
@@ -192,11 +199,13 @@ export class PartsTools {
       return [x.x, x.y, x.z, 0, y.x, y.y, y.z, 0, n.x, n.y, n.z, 0, o.x, o.y, o.z, 1];
     };
 
+    /** The characters last reported as missing, so the message shows once per change */
+    let reported = '';
     this.bar.open<Piece & { letters: MeshData }>({
       title: 'Text on a face',
       hint: 'Text: click the face where the text should go. Arrow keys move it; Apply when it looks right.',
       fields: [
-        { key: 'text', label: 'Text', type: 'text', value: 'Text', prominent: true, tip: 'The letters to add.' },
+        { key: 'text', label: 'Text', type: 'text', value: 'Text', maxLength: 200, prominent: true, tip: 'The letters to add (up to 200).' },
         { key: 'font', label: 'Font', type: 'select', value: 'sans', options: fonts, tip: 'Typeface (bold, for clean printing).' },
         { key: 'size', label: 'Size', type: 'number', value: 8, min: 1, step: 1, unit: 'mm', tip: 'Height of capital letters.' },
         { key: 'mode', label: 'Type', type: 'select', value: 'emboss', options: [['emboss', 'Raised (emboss)'], ['deboss', 'Cut in (deboss)']], tip: 'Raise the letters out of the face or cut them into it.' },
@@ -213,17 +222,22 @@ export class PartsTools {
       ],
       hide: [],
       targets: [obj],
-      compute: async (v) => {
+      compute: async (v, signal) => {
         this.setApplyEnabled(at.placed);
         if (!at.placed) return null;
         const text = String(v.text).trim();
         if (!text) return null;
         const font = await loadFont(v.font as FontName);
+        const missing = missingCharacters(font, text).join(' ');
+        if (missing !== reported) {
+          reported = missing;
+          if (missing) this.toast(`Not in this font, left out: ${missing}`);
+        }
         const polygons = textOutlines(font, text, Number(v.size));
         return runOp('text', {
           item: this.doc.placed(obj), polygons, depth: Number(v.depth),
           mode: v.mode as 'emboss' | 'deboss', frame: frame(Number(v.angle)),
-        });
+        }, { signal });
       },
       show: (p) => {
         const shown = [previewMesh(p.mesh, p.center)];
@@ -233,12 +247,10 @@ export class PartsTools {
       },
       apply: (p) => {
         if (!this.doc.objects.includes(obj)) return;
-        this.doc.checkpoint();
-        this.doc.setData(obj, p.mesh);
-        obj.mesh.position.set(...p.center);
-        obj.mesh.quaternion.identity();
-        obj.mesh.scale.set(1, 1, 1);
-        this.doc.emit('transform');
+        this.doc.transact(() => {
+          this.doc.replaceWithPiece(obj, p);
+          this.doc.emit('transform');
+        });
       },
       onClose: () => this.release(),
     });

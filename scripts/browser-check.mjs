@@ -1,8 +1,10 @@
 // Automated checks in real Chrome, Edge and Firefox (installed copies, driven by
 // puppeteer-core; Firefox over WebDriver BiDi). Builds the app, serves dist/,
 // runs each check and prints a pass/fail table. Usage: npm run check:browsers
-import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const PORT = 4173;
@@ -10,11 +12,36 @@ const URL = `http://localhost:${PORT}/`;
 const SHOTS = 'test-results';
 mkdirSync(SHOTS, { recursive: true });
 
-const BROWSERS = [
-  { name: 'Chrome', browser: 'chrome', path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
-  { name: 'Edge', browser: 'chrome', path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' },
-  { name: 'Firefox', browser: 'firefox', path: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe' },
-];
+/** The first of these paths that exists (or the first one, if none does). */
+const firstExisting = (paths) => paths.find((p) => existsSync(p)) ?? paths[0];
+
+/** Where the browsers are installed on this system. */
+function browserList() {
+  if (process.platform === 'win32') {
+    return [
+      { name: 'Chrome', browser: 'chrome', path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
+      { name: 'Edge', browser: 'chrome', path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' },
+      { name: 'Firefox', browser: 'firefox', path: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe' },
+    ];
+  }
+  if (process.platform === 'darwin') {
+    return [
+      { name: 'Chrome', browser: 'chrome', path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' },
+      { name: 'Edge', browser: 'chrome', path: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' },
+      { name: 'Firefox', browser: 'firefox', path: '/Applications/Firefox.app/Contents/MacOS/firefox' },
+    ];
+  }
+  return [
+    {
+      name: 'Chrome',
+      browser: 'chrome',
+      path: process.env.CHROME_PATH
+        || firstExisting(['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium-browser', '/usr/bin/chromium']),
+    },
+    { name: 'Edge', browser: 'chrome', path: '/usr/bin/microsoft-edge' },
+    { name: 'Firefox', browser: 'firefox', path: process.env.FIREFOX_PATH || '/usr/bin/firefox' },
+  ];
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Optional filters: ONLY="Loads,Split" runs the checks whose names start so; BROWSERS="Chrome". */
@@ -22,12 +49,15 @@ const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 const ONLY_BROWSERS = process.env.BROWSERS ? process.env.BROWSERS.split(',') : null;
 
 function launch(b, extra = {}) {
+  // Software WebGL so the 3D view renders without a GPU in headless mode.
+  const chromeArgs = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+  // The CI container has no sandbox for the browser.
+  if (process.platform === 'linux') chromeArgs.push('--no-sandbox');
   return puppeteer.launch({
     browser: b.browser,
     executablePath: b.path,
     headless: true,
-    // Software WebGL so the 3D view renders without a GPU in headless mode.
-    args: b.browser === 'chrome' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [],
+    args: b.browser === 'chrome' ? chromeArgs : [],
     // Headless Firefox blocks WebGL 2 on some systems; allow it for the test.
     extraPrefsFirefox: { 'webgl.force-enabled': true, 'webgl.disabled': false, ...(extra.extraPrefsFirefox ?? {}) },
     ...extra,
@@ -76,6 +106,23 @@ async function applyFeature(page) {
   throw new Error('the preview never became ready');
 }
 
+/**
+ * Press a tool's button. Tools such as Shell sit in the toolbar when there is
+ * room and in the More menu otherwise, so the first visible button is clicked
+ * with the mouse; if none is visible, the button is pressed directly.
+ */
+async function pressTool(page, selector) {
+  const handles = await page.$$(selector);
+  for (const h of handles) {
+    if (await h.isVisible()) {
+      await h.click();
+      return;
+    }
+  }
+  if (handles.length === 0) throw new Error(`no button matches ${selector}`);
+  await page.evaluate((sel) => document.querySelector(sel).click(), selector);
+}
+
 /** Add a shape from the Add object menu: its bar opens, so press Apply once the preview is ready. */
 async function addShape(page, kind) {
   await page.evaluate((kind) => document.querySelector(`[data-insert="${kind}"]`).click(), kind);
@@ -118,16 +165,22 @@ async function runChecks(b) {
     });
     if (r.names.length !== 1 || !r.names[0].startsWith('Torus')) throw new Error(`objects: ${JSON.stringify(r.names)}`);
     if (Math.abs(r.minZ) > 0.2 || Math.abs(r.cx) > 0.2) throw new Error(`not centred on the plate (x ${r.cx}, bottom ${r.minZ})`);
-    // Single-key shortcuts start off: D does nothing.
+    // Single-key shortcuts start on: D duplicates the selection.
     await page.evaluate(() => window.app.doc.setSelection(window.app.doc.objects));
     await page.mouse.click(5, 300);
     await page.evaluate(() => window.app.doc.setSelection(window.app.doc.objects));
     await page.keyboard.press('d');
     const afterD = await page.evaluate(() => window.app.doc.objects.length);
-    if (afterD !== 1) throw new Error('D duplicated although single-key shortcuts start off');
-    // The remaining checks start from an empty plate.
-    await page.evaluate(() => window.app.doc.clear());
-    return 'one torus, centred, on the plate; single-key shortcuts off';
+    if (afterD !== 2) throw new Error(`D did not duplicate although single-key shortcuts start on (${afterD} objects)`);
+    // The remaining checks type into the page, so they run with single-key shortcuts switched
+    // off in Settings (the ones about shortcuts switch them on themselves), from an empty plate.
+    await page.evaluate(() => {
+      const i = document.querySelector('input[name="shortcuts"]');
+      i.checked = false;
+      i.dispatchEvent(new Event('change'));
+      window.app.doc.clear();
+    });
+    return 'one torus, centred, on the plate; single-key shortcuts on (D duplicates)';
   });
 
   await check('Add object from menu', async () => {
@@ -163,7 +216,8 @@ async function runChecks(b) {
       });
       await page.evaluate((k) => document.querySelector(`[data-insert="${k}"]`).click(), kind);
       await page.waitForSelector('#feature-bar:not([hidden])');
-      const field = '#feature-bar .feature-fields input[type="number"]';
+      // Number fields are text inputs marked data-number (they take a decimal comma too).
+      const field = '#feature-bar .feature-fields input[data-number]';
       if (typed !== null) {
         await page.focus(field);
         await page.keyboard.down('Control');
@@ -198,11 +252,11 @@ async function runChecks(b) {
     await page.hover('.items li');
     await sleep(100);
     const shown = await page.$$eval('.items li .row-action', (els) => els.map((e) => getComputedStyle(e).display));
-    if (shown.length !== 2 || shown.some((d) => d === 'none')) throw new Error(`row buttons: ${JSON.stringify(shown)}`);
+    if (shown.length !== 3 || shown.some((d) => d === 'none')) throw new Error(`row buttons: ${JSON.stringify(shown)}`);
     await page.hover('.items li .row-action');
     await sleep(400);
     if (!(await visible(page, '#tooltip'))) throw new Error('row button tooltip did not appear');
-    return 'Duplicate + Delete shown, tooltip ok';
+    return 'Duplicate, Delete and Hide shown, tooltip ok';
   });
 
   await check('Tooltip on toolbar button', async () => {
@@ -223,11 +277,16 @@ async function runChecks(b) {
   });
 
   await check('Shortcuts overlay from File menu', async () => {
-    await clickSel(page, '[data-menu="file-menu"]');
-    await clickSel(page, '#file-menu [data-action="shortcuts"]');
-    if (!(await visible(page, '#shortcuts-panel'))) throw new Error('panel not shown');
+    // The panel starts shown; its own button hides it, the File menu shows it again.
+    if (!(await visible(page, '#shortcuts-panel'))) throw new Error('panel not shown at the start');
     await clickSel(page, '#shortcuts-panel [data-action="shortcuts"]');
     if (await visible(page, '#shortcuts-panel')) throw new Error('panel did not hide');
+    await clickSel(page, '[data-menu="file-menu"]');
+    await clickSel(page, '#file-menu [data-action="shortcuts"]');
+    if (!(await visible(page, '#shortcuts-panel'))) throw new Error('panel not shown from the menu');
+    // Hidden for the rest of the run, so it covers nothing the later checks click.
+    await clickSel(page, '#shortcuts-panel [data-action="shortcuts"]');
+    if (await visible(page, '#shortcuts-panel')) throw new Error('panel did not hide again');
   });
 
   await check('Smooth drag far from the origin (no jitter)', async () => {
@@ -315,7 +374,7 @@ async function runChecks(b) {
     return { min: b.min.toArray(), max: b.max.toArray() };
   }, id);
   const near = (a, b, tol = 0.2) => Math.abs(a - b) <= tol;
-  /** Switch single-key shortcuts on or off (Settings; off by default). */
+  /** Switch single-key shortcuts on or off (Settings; on by default, switched off at the start of this run). */
   const shortcuts = (on) => page.evaluate((on) => {
     const i = document.querySelector('input[name="shortcuts"]');
     i.checked = on;
@@ -328,11 +387,12 @@ async function runChecks(b) {
     const bId = await addCube(30, 0, 20);
     const bar = await addCube(0, 15, 37, [3, 0.2, 0.2]); // 120 × 8 × 8 mm bar through both, sticking out of their tops
     const away = await addCube(0, -120, 20); // nowhere near the bar: must stay exactly as it is
-    const before = await page.evaluate((id) => window.app.doc.objects.find((o) => o.id === id).data, away);
+    // (Mesh data does not survive the trip out of the page: compare its triangle count.)
+    const before = await page.evaluate((id) => window.app.doc.objects.find((o) => o.id === id).data.indices.length, away);
     await select([bar]);
     await page.click('[data-boolean="difference"]');
     await page.waitForFunction(() => window.app.doc.objects.length === 3, { timeout: 15000 });
-    const same = await page.evaluate(([id, data]) => window.app.doc.objects.find((o) => o.id === id)?.data.indices.length === data.indices.length, [away, before]);
+    const same = await page.evaluate(([id, data]) => window.app.doc.objects.find((o) => o.id === id)?.data.indices.length === data, [away, before]);
     if (!same) throw new Error('an object the cutter does not touch was changed');
     await page.evaluate((id) => window.app.doc.remove([window.app.doc.objects.find((o) => o.id === id)]), away);
     const tris = await page.evaluate(() => window.app.doc.objects.map((o) => o.data.indices.length / 3));
@@ -384,17 +444,16 @@ async function runChecks(b) {
     const keepBoth = await page.$eval('[data-split-keep="both"]', (e) => e.classList.contains('active'));
     if (!keepBoth) throw new Error('split does not default to keeping both');
     // Other tools are locked while Split is open; Esc ends it, then Shell opens.
-    await page.click('.toolbar [data-menu="modify-menu"]');
-    if (!(await visible(page, '#split-bar'))) throw new Error('split closed when More was clicked');
-    if (await visible(page, '#modify-menu')) throw new Error('More opened during Split');
+    await pressTool(page, '[data-modify="shell"]');
+    if (!(await visible(page, '#split-bar'))) throw new Error('split closed when Shell was clicked');
+    if (await visible(page, '#feature-bar')) throw new Error('Shell opened during Split');
     await page.keyboard.press('Escape');
     if (await visible(page, '#split-bar')) throw new Error('Esc did not close split');
-    await clickSel(page, '[data-menu="modify-menu"]');
-    await clickSel(page, '[data-modify="shell"]');
+    await pressTool(page, '[data-modify="shell"]');
     if (!(await visible(page, '#feature-bar'))) throw new Error('shell did not open');
     await page.keyboard.press('Escape');
     if (await visible(page, '#feature-bar')) throw new Error('Esc did not close shell');
-    return 'More refused during Split; after Esc, Shell opened and Esc closed it';
+    return 'Shell refused during Split; after Esc, Shell opened and Esc closed it';
   });
 
   await check('Split shows the part that will go', async () => {
@@ -414,8 +473,7 @@ async function runChecks(b) {
   await check('Cut and Delete are refused inside a tool', async () => {
     const id = await page.evaluate(() => window.app.doc.objects[0].id);
     await select([id]);
-    await clickSel(page, '[data-menu="modify-menu"]');
-    await clickSel(page, '[data-modify="shell"]');
+    await pressTool(page, '[data-modify="shell"]');
     if (!(await visible(page, '#feature-bar'))) throw new Error('Shell did not open');
     await page.evaluate(() => document.activeElement?.blur());
     await page.keyboard.down('Control');
@@ -782,8 +840,12 @@ async function runChecks(b) {
         + 'facet normal 0 -1 0\nouter loop\nvertex 0 0 0\nvertex 10 0 0\nvertex 0 0 10\nendloop\nendfacet\n'
         + 'facet normal -1 0 0\nouter loop\nvertex 0 0 0\nvertex 0 0 10\nvertex 0 10 0\nendloop\nendfacet\n'
         + 'facet normal 1 1 1\nouter loop\nvertex 10 0 0\nvertex 0 10 0\nvertex 0 0 10\nendloop\nendfacet\nendsolid t\n';
-      await window.app.openFiles([new File([stl], 'bracket.stl')]);
+      // Importing asks for the file's unit first: start it, then answer the box below.
+      void window.app.openFiles([new File([stl], 'bracket.stl')]);
     });
+    await page.waitForSelector('#import-dialog[open]', { timeout: 5000 });
+    await page.click('#import-dialog button[value="import"]');
+    await page.waitForFunction(() => window.app.doc.objects.length === 2, { timeout: 15000 });
     const imported = await nameShown();
     if (fresh !== 'open_builder') throw new Error(`fresh drawing proposes "${fresh}"`);
     if (imported !== 'bracket_open_builder') throw new Error(`after importing bracket.stl: "${imported}"`);
@@ -795,11 +857,17 @@ async function runChecks(b) {
     await reset();
     await page.mouse.click(5, 300);
     const count = () => page.evaluate(() => window.app.doc.objects.length);
-    await page.keyboard.press('1');
-    await page.keyboard.press('2');
-    await page.keyboard.press('3');
+    // 1, 2 and 3 open the shape's bar (its measurements come first); Apply adds the shape.
+    for (const [key, n] of [['1', 1], ['2', 2], ['3', 3]]) {
+      await page.keyboard.press(key);
+      await page.waitForSelector('#feature-bar:not([hidden])', { timeout: 5000 });
+      await applyFeature(page);
+      await page.waitForFunction((n) => window.app.doc.objects.length === n, { timeout: 15000 }, n);
+      await page.mouse.click(5, 300);
+    }
     const names = await page.evaluate(() => window.app.doc.objects.map((o) => o.name.replace(/ \d+$/, '')));
     if (names.join() !== 'Cube,Cylinder,Sphere') throw new Error(`1, 2, 3 added: ${names.join(', ')}`);
+    await page.evaluate(() => window.app.doc.setSelection([window.app.doc.objects[0]]));
     await page.keyboard.press('d');
     if ((await count()) !== 4) throw new Error('D did not duplicate');
     const titles = {};
@@ -953,6 +1021,7 @@ async function runChecks(b) {
     await shortcuts(false);
     await reset();
     const id = await addCube(0, 0, 20);
+    await addCube(60, 0, 20); // Intersect is only offered with two objects in the drawing
     // [name, how to open, what shows while open]
     const tools = [
       ['Split', () => document.querySelector('[data-action="split"]').click(), '#split-bar'],
@@ -973,7 +1042,8 @@ async function runChecks(b) {
     for (const [name, open, shows] of tools) {
       await select([id]);
       await page.evaluate(open);
-      await sleep(150);
+      // Bevel and Round look for the object's edges in the background first, so their bar comes a moment later.
+      for (let i = 0; i < 40 && !(await visible(page, shows)); i++) await sleep(100);
       if (!(await visible(page, shows))) throw new Error(`${name} did not open`);
       // Put the keyboard focus in the tool's own field when it has one.
       await page.evaluate((shows) => {
@@ -1077,13 +1147,17 @@ async function runChecks(b) {
     const during = await page.evaluate(() => ({
       info: document.querySelector('#feature-bar .feature-info').textContent,
       busyShown: !document.querySelector('#busy').hidden,
+      busyText: document.querySelector('#busy span').textContent,
+      ownCancel: !document.querySelector('#busy [data-action="cancel-op"]').hidden,
     }));
     await page.click('#feature-bar [data-feature="cancel"]');
     await sleep(3500);
     const after = await page.evaluate(() => ({ same: window.app.doc.objects[0].data === window.dataBefore, bar: !document.querySelector('#feature-bar').hidden }));
     void before;
-    if (during.info !== 'Working…') throw new Error(`bar info "${during.info}"`);
-    if (during.busyShown) throw new Error('a second "Working…" box was shown');
+    // "Working…" has its own box under the bar; inside a tool it has no Cancel button of its own.
+    if (!during.busyShown || during.busyText !== 'Working…') throw new Error(`the Working… box: shown ${during.busyShown}, "${during.busyText}"`);
+    if (during.info !== '') throw new Error(`the bar itself also says "${during.info}"`);
+    if (during.ownCancel) throw new Error('the Working… box shows a second Cancel inside a tool');
     if (after.bar) throw new Error('bar still open');
     if (!after.same) throw new Error('the shell was applied after Cancel');
     return 'one Working…, Cancel closed the bar and stopped the calculation';
@@ -1229,6 +1303,7 @@ async function runChecks(b) {
     };
     const before = await tris();
     await page.evaluate(() => document.querySelector('[data-modify="fillet"]').click());
+    await page.waitForSelector('#feature-bar:not([hidden])', { timeout: 10000 });
     if (await page.$('#feature-bar [data-key="scope"]')) throw new Error('"All sharp edges" choice still there');
     await pickTopEdge('front');
     await applyFeature(page);
@@ -1236,6 +1311,8 @@ async function runChecks(b) {
     const rounded = await tris();
     // Then bevel a different edge of the same object.
     await page.evaluate(() => document.querySelector('[data-modify="chamfer"]').click());
+    // The edges are looked for in the background first, so the bar comes a moment later.
+    for (let i = 0; i < 100 && !(await visible(page, '#feature-bar')); i++) await sleep(100);
     if (!(await visible(page, '#feature-bar'))) throw new Error('Edge bevel did not open on a rounded object');
     await pickTopEdge('back');
     await applyFeature(page);
@@ -1461,6 +1538,138 @@ async function runChecks(b) {
     return 'full-width view; › left of the open panel, closes it';
   });
 
+  // --- Checks for saving, exporting and typing numbers -------------------------
+
+  /** A normal desktop window and an empty scene, so each of these checks stands on its own. */
+  const fresh = async () => {
+    await page.setViewport({ width: 1400, height: 900 });
+    await sleep(300);
+    await reset();
+  };
+  /** Click a menu item without opening its menu (the item may be hidden inside it). */
+  const clickItem = (selector) => page.evaluate((s) => document.querySelector(s).click(), selector);
+
+  await check('Esc does not discard the saved drawing', async () => {
+    await fresh();
+    await addCube(0, 0, 20);
+    await page.evaluate(() => window.app.autosave.saveNow());
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('#restore-dialog[open]', { timeout: 15000 });
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    const stillOpen = await page.evaluate(() => document.querySelector('#restore-dialog').open);
+    if (!stillOpen) throw new Error('Esc closed the restore box');
+    await page.click('#restore-dialog button[value="restore"]');
+    await page.waitForFunction(() => window.app.doc.objects.length >= 1, { timeout: 5000 });
+    return 'Esc left the box open; Restore brought the drawing back';
+  });
+
+  await check('An empty Move field keeps the value', async () => {
+    await fresh();
+    const id = await addCube(25, 10, 20);
+    await select([id]);
+    await page.click('[data-mode="translate"]');
+    const read = () => page.evaluate((id) => window.app.doc.objects.find((o) => o.id === id).mesh.position.toArray(), id);
+    const before = await read();
+    await page.evaluate(() => {
+      const input = document.querySelector('#transform-bar .field input');
+      input.value = '';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await sleep(100);
+    const after = await read();
+    const shown = await page.$eval('#transform-bar .field input', (e) => e.value);
+    if (after.some((v, i) => Math.abs(v - before[i]) > 1e-9)) throw new Error(`position went from ${before} to ${after}`);
+    if (shown === '') throw new Error('the field stayed empty');
+    return `stayed at ${after.map((v) => v.toFixed(1)).join(', ')}; the field shows "${shown}" again`;
+  });
+
+  await check('Project file round trip', async () => {
+    if (b.browser !== 'chrome') return 'skipped: downloads cannot be captured in Firefox here';
+    await fresh();
+    await addCube(-30, 0, 20);
+    await addCube(30, 0, 20);
+    const before = await page.evaluate(() => {
+      const { doc } = window.app;
+      doc.group(doc.objects);
+      doc.setHidden([doc.objects[1]], true);
+      return doc.objects.map((o) => ({ name: o.name, groupId: o.groupId, hidden: o.hidden === true }));
+    });
+    // Let the browser save downloads into a folder of ours.
+    const dir = mkdtempSync(join(tmpdir(), 'open-builder-'));
+    const client = await page.createCDPSession();
+    await client.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dir });
+    await clickItem('[data-action="save-project"]');
+    await page.waitForSelector('#export-dialog[open]', { timeout: 5000 });
+    await page.click('#export-go');
+    let file = null;
+    for (let i = 0; i < 40 && !file; i++) {
+      await sleep(250);
+      file = readdirSync(dir).find((f) => f.endsWith('.3dob')) ?? null;
+    }
+    await client.detach();
+    if (!file) throw new Error(`no .3dob file was downloaded (folder has: ${readdirSync(dir).join(', ') || 'nothing'})`);
+    const path = join(dir, file);
+    const size = readFileSync(path).length;
+    if (size === 0) throw new Error(`${file} is empty`);
+    // Open it again in place of an empty scene (accept the "lose changes" question if it comes).
+    await reset();
+    const accept = (d) => d.accept().catch(() => {});
+    page.on('dialog', accept);
+    try {
+      const input = await page.$('#project-input');
+      await input.uploadFile(path);
+      await page.waitForFunction(() => window.app.doc.objects.length === 2, { timeout: 15000 });
+    } finally {
+      page.off('dialog', accept);
+    }
+    const after = await page.evaluate(() => window.app.doc.objects.map((o) => ({ name: o.name, groupId: o.groupId, hidden: o.hidden === true })));
+    if (after.some((o) => o.groupId === undefined) || after[0].groupId !== after[1].groupId) throw new Error(`group lost: ${JSON.stringify(after)}`);
+    if (after.filter((o) => o.hidden).length !== 1) throw new Error(`hidden flags: ${JSON.stringify(after)}`);
+    if (after[1].hidden !== before[1].hidden || after[0].hidden !== before[0].hidden) throw new Error(`wrong object hidden: ${JSON.stringify(after)}`);
+    return `${file} (${size} bytes): 2 objects, one group, one hidden`;
+  });
+
+  await check('Export leaves hidden objects out', async () => {
+    await fresh();
+    await addCube(-30, 0, 20);
+    await addCube(30, 0, 20);
+    await page.evaluate(() => {
+      const { doc } = window.app;
+      doc.setHidden([doc.objects[1]], true);
+    });
+    await clickItem('[data-action="export-stl"]');
+    await page.waitForSelector('#export-dialog[open]', { timeout: 5000 });
+    const rowShown = await visible(page, '#export-hidden-row');
+    const summary = await page.$eval('#export-summary', (e) => e.textContent);
+    await page.click('#export-dialog button[value="cancel"]');
+    if (!rowShown) throw new Error('the "Include hidden objects" row is not shown');
+    if (!summary.includes('hidden object')) throw new Error(`summary: "${summary}"`);
+    return summary;
+  });
+
+  await check('A decimal comma is accepted', async () => {
+    await fresh();
+    const unit = await page.$eval('#transform-bar [data-action="unit"]', (e) => e.textContent);
+    if (unit !== 'mm') throw new Error(`the unit is ${unit}, not mm`);
+    await clickItem('[data-insert="cube"]');
+    await page.waitForSelector('#feature-bar:not([hidden])', { timeout: 5000 });
+    const field = '#feature-bar input[data-number]';
+    await page.focus(field);
+    await page.keyboard.down('Control');
+    await page.keyboard.press('a');
+    await page.keyboard.up('Control');
+    await page.keyboard.type('12,5');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.app.doc.objects.length === 1, { timeout: 15000 });
+    const width = await page.evaluate(() => {
+      const { doc } = window.app;
+      return doc.worldBox(doc.objects).getSize(new doc.objects[0].mesh.position.constructor()).x;
+    });
+    if (!near(width, 12.5, 0.01)) throw new Error(`the cube is ${width.toFixed(2)} mm wide`);
+    return `typed 12,5: the cube is ${width.toFixed(2)} mm wide`;
+  });
+
   await browser.close();
 
   await check('No-JavaScript message', async () => {
@@ -1488,13 +1697,50 @@ const run = (cmd, args) => new Promise((resolve, reject) => {
   p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(' ')} failed`))));
 });
 
+/** Wait until the preview server answers (up to about 20 s). */
+async function waitForServer() {
+  for (let i = 0; i < 80; i++) {
+    try {
+      const res = await fetch(URL);
+      if (res.ok) return;
+    } catch {
+      // not up yet
+    }
+    await sleep(250);
+  }
+  throw new Error(`the preview server did not answer at ${URL} within 20 s`);
+}
+
+// Only browsers that are installed (and wanted) are used; the others are noted and skipped.
+const wanted = browserList().filter((x) => !ONLY_BROWSERS || ONLY_BROWSERS.includes(x.name));
+const installed = wanted.filter((x) => existsSync(x.path));
+for (const x of wanted) if (!installed.includes(x)) console.log(`Skipping ${x.name}: not found at ${x.path}`);
+if (installed.length === 0) {
+  console.error('No browser found to run the checks in. Install Chrome (or set CHROME_PATH / FIREFOX_PATH), or check the BROWSERS filter.');
+  process.exit(1);
+}
+
+// Something already answering on the port would be checked in place of this build.
+try {
+  await fetch(URL);
+  console.error(`Port ${PORT} is already in use (an old preview server?). Stop it and run the checks again.`);
+  process.exit(1);
+} catch {
+  // free, as it should be
+}
+
 await run('npm', ['run', 'build']);
-const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { shell: true, stdio: 'ignore' });
-await sleep(2500);
+// On Linux and macOS the server gets its own process group, so the whole group can be stopped.
+const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+  shell: true,
+  stdio: 'ignore',
+  detached: process.platform !== 'win32',
+});
 
 let failed = 0;
 try {
-  for (const b of BROWSERS.filter((x) => !ONLY_BROWSERS || ONLY_BROWSERS.includes(x.name))) {
+  await waitForServer();
+  for (const b of installed) {
     console.log(`\n=== ${b.name} ===`);
     let results;
     try {
@@ -1508,8 +1754,19 @@ try {
     }
   }
 } finally {
-  server.kill();
-  if (process.platform === 'win32') spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], { shell: true });
+  try {
+    // Wait for the whole process tree to be stopped: the script exits right after, and a
+    // server left behind would answer the next run from this port with an old build.
+    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(server.pid), '/T', '/F'], { shell: true });
+    else process.kill(-server.pid);
+  } catch {
+    // already stopped
+  }
+  try {
+    server.kill();
+  } catch {
+    // already stopped
+  }
 }
 console.log(`\n${failed === 0 ? 'All checks passed' : `${failed} check(s) failed`}. Screenshots in ${SHOTS}/`);
 process.exit(failed ? 1 : 0);

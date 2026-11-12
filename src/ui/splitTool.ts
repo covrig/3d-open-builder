@@ -6,6 +6,7 @@ import { AXIS_COLORS, type Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { fromUnit, settings, toUnit } from '../settings';
 import { hideHint, showHint } from './hint';
+import { parseNumber } from './numberInputs';
 import { beginTool, endTool } from './toolLock';
 
 type Axis = 0 | 1 | 2;
@@ -16,6 +17,8 @@ const SIDE_NAMES: Record<Axis, [string, string]> = {
   1: ['Back', 'Front'],
   2: ['Top', 'Bottom'],
 };
+/** What splitting one object gives: its loose pieces on each side of the plane (none where the plane misses). */
+type SplitResult = { positive: Piece[]; negative: Piece[] };
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PLANE_COLOR = 0xf2a33a;
 
@@ -99,10 +102,16 @@ export class SplitTool {
       b.addEventListener('click', () => this.setKeep(b.dataset.splitKeep as Keep));
     }
     this.range.addEventListener('input', () => this.setOffset(fromUnit(Number(this.range.value))));
-    this.value.addEventListener('change', () => this.setOffset(fromUnit(Number(this.value.value))));
+    this.value.addEventListener('change', () => {
+      const typed = parseNumber(this.value.value);
+      // An empty or non-numeric entry keeps the plane where it is.
+      if (Number.isFinite(typed)) this.setOffset(fromUnit(typed));
+      else this.value.value = String(Math.round(toUnit(this.offset) * 100) / 100);
+    });
     this.tiltInputs.forEach((input, i) =>
       input.addEventListener('change', () => {
-        const v = THREE.MathUtils.clamp(Number(input.value) || 0, -90, 90);
+        const typed = parseNumber(input.value);
+        const v = Number.isFinite(typed) ? THREE.MathUtils.clamp(typed, -90, 90) : i === 0 ? this.tiltA : this.tiltB;
         if (i === 0) this.tiltA = v;
         else this.tiltB = v;
         input.value = String(v);
@@ -332,14 +341,23 @@ export class SplitTool {
    * on one side stay as they are (or go, if that side is not kept). The pieces
    * and whole objects of a group on each side form a group of their own.
    */
-  private finish(objs: SceneObject[], keep: Keep, results: { positive: Piece | null; negative: Piece | null }[]): void {
-    if (!results.some((r) => r.positive && r.negative)) {
+  private finish(objs: SceneObject[], keep: Keep, results: SplitResult[]): void {
+    if (!results.some((r) => r.positive.length && r.negative.length)) {
       return this.toast(objs.length > 1 ? 'Move the plane so it cuts through the objects' : 'Move the plane so it cuts through the object');
     }
-    this.doc.checkpoint();
+    let extra = 0;
+    this.doc.transact(() => (extra = this.replaceWithPieces(objs, keep, results)));
+    if (extra > 0) {
+      this.toast(`${extra} more separate piece${extra === 1 ? '' : 's'} became ${extra === 1 ? 'its own object' : 'their own objects'}.`);
+    }
+  }
+
+  /** Returns how many separate pieces beyond one per kept side became objects of their own. */
+  private replaceWithPieces(objs: SceneObject[], keep: Keep, results: SplitResult[]): number {
     this.stop();
     const removed: SceneObject[] = [];
     const kept: SceneObject[] = [];
+    let extra = 0;
     // Side lists per original group (or per object without a group).
     const groupKey = (o: SceneObject) => (o.groupId !== undefined ? `g${o.groupId}` : `o${o.id}`);
     const bySide = { positive: new Map<string, SceneObject[]>(), negative: new Map<string, SceneObject[]>() };
@@ -352,28 +370,37 @@ export class SplitTool {
     objs.forEach((obj, i) => {
       const r = results[i];
       for (const side of ['positive', 'negative'] as const) {
-        const piece = r[side];
+        const pieces = r[side];
         const wanted = keep === 'both' || keep === side;
-        if (!piece || !wanted) continue;
-        if (!r.positive || !r.negative) {
+        if (!pieces.length || !wanted) continue;
+        if (!r.positive.length || !r.negative.length) {
           add(side, obj, obj); // wholly on this side: stays as it is
           continue;
         }
         // A cut object's second piece gets a new colour, so the two are easy to tell apart (when not in a group).
         const fresh = side === 'negative' && keep === 'both' && obj.groupId === undefined;
-        const o = this.doc.add(obj.name.replace(/ \d+$/, ''), piece.mesh, fresh ? undefined : obj.color);
-        o.mesh.position.set(...piece.center);
-        add(side, obj, o);
+        // Every loose piece of the side becomes an object; they share the first one's colour.
+        let color = fresh ? undefined : obj.color;
+        for (const piece of pieces) {
+          const o = this.doc.add(obj.name.replace(/ \d+$/, ''), piece.mesh, color);
+          color = o.color;
+          o.mesh.position.set(...piece.center);
+          add(side, obj, o);
+        }
+        extra += pieces.length - 1;
       }
-      const whole = !r.positive || !r.negative;
-      const onKeptSide = keep === 'both' || (keep === 'positive' ? !!r.positive : !!r.negative);
+      const whole = !r.positive.length || !r.negative.length;
+      const onKeptSide = keep === 'both' || (keep === 'positive' ? r.positive.length > 0 : r.negative.length > 0);
       if (!whole || !onKeptSide) removed.push(obj);
     });
     this.doc.remove(removed);
     for (const side of ['positive', 'negative'] as const) {
-      for (const list of bySide[side].values()) {
-        if (list.length > 1) this.doc.group(list);
+      for (const [groupOf, list] of bySide[side]) {
+        // Only the pieces of a group form a group again; loose pieces of one object stay apart.
+        if (list.length > 1 && groupOf.startsWith('g')) this.doc.group(list);
       }
     }
     this.doc.setSelection(kept.filter((o) => this.doc.objects.includes(o)));
-  }}
+    return extra;
+  }
+}

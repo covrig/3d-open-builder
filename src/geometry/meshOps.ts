@@ -1,5 +1,6 @@
 import type { ManifoldToplevel } from 'manifold-3d';
-import { bakeMesh, manifoldToMeshData, type MeshData } from './meshData';
+import { bakeMesh, type MeshData } from './meshData';
+import { hullFaces } from './triangles';
 
 export type Vec3 = [number, number, number];
 
@@ -22,6 +23,7 @@ export function bounds(data: MeshData): { min: Vec3; max: Vec3 } {
  * Returns the new mesh and where that centre used to be.
  */
 export function recenter(data: MeshData): { mesh: MeshData; center: Vec3 } {
+  if (data.positions.length === 0) return { mesh: data, center: [0, 0, 0] }; // nothing to centre
   const { min, max } = bounds(data);
   const center: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
   const positions = new Float32Array(data.positions.length);
@@ -90,40 +92,12 @@ export function reflectMesh(data: MeshData, n: Vec3): MeshData {
  * broadest stable face ("lay flat").
  */
 export function largestFlatFaceNormal(wasm: ManifoldToplevel, data: MeshData): Vec3 {
-  // Hull of the raw points, so this also works for imported meshes that
-  // aren't closed solids.
-  const points: Vec3[] = [];
-  for (let i = 0; i < data.positions.length; i += 3) {
-    points.push([data.positions[i], data.positions[i + 1], data.positions[i + 2]]);
-  }
-  const hullManifold = wasm.Manifold.hull(points);
-  const hull = manifoldToMeshData(hullManifold);
-  hullManifold.delete();
-
-  // Hull faces with the same normal are coplanar, so summing triangle areas
-  // per (rounded) normal gives each flat face's area.
-  const areas = new Map<string, { area: number; normal: Vec3 }>();
-  const p = hull.positions;
-  const idx = hull.indices;
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const len = Math.hypot(nx, ny, nz);
-    if (len === 0) continue;
-    const normal: Vec3 = [nx / len, ny / len, nz / len];
-    const key = normal.map((v) => Math.round(v * 1000)).join(',');
-    const entry = areas.get(key) ?? { area: 0, normal };
-    entry.area += len / 2;
-    areas.set(key, entry);
-  }
-  let best: { area: number; normal: Vec3 } = { area: -1, normal: [0, 0, -1] };
-  for (const entry of areas.values()) {
+  let best: { area: number; n: Vec3 } = { area: -1, n: [0, 0, -1] };
+  for (const face of hullFaces(wasm, data.positions)) {
     // Prefer the face already facing down when areas tie (within 0.1%).
-    if (entry.area > best.area * 1.001 || (entry.area > best.area * 0.999 && entry.normal[2] < best.normal[2])) {
-      best = entry;
+    if (face.area > best.area * 1.001 || (face.area > best.area * 0.999 && face.n[2] < best.n[2])) {
+      best = face;
     }
   }
-  return best.normal;
+  return best.n;
 }

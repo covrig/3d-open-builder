@@ -23,15 +23,21 @@ function shift(objs: SceneObject[], axis: number, by: number): void {
   for (const o of objs) o.mesh.position.setComponent(axis, o.mesh.position.getComponent(axis) + by);
 }
 
+/** What Pack lays out: the selection, or with nothing selected every object that is not hidden. */
+export function packTargets(doc: SceneDocument): SceneObject[] {
+  return doc.selection.length ? doc.selection : doc.objects.filter((o) => !o.hidden);
+}
+
 /**
  * Align, distribute and pack for the Arrange section. Every action is one
  * undo step and treats a group as a single piece.
  */
 export function setupArrange(doc: SceneDocument, toast: (msg: string) => void): void {
   const run = (fn: () => void) => {
-    doc.checkpoint();
-    fn();
-    doc.emit('transform');
+    doc.transact(() => {
+      fn();
+      doc.emit('transform');
+    });
   };
 
   /** Line up the pieces' left/centre/right (etc.) with the selection's own outline. */
@@ -69,7 +75,7 @@ export function setupArrange(doc: SceneDocument, toast: (msg: string) => void): 
 
   /** Lay pieces out side by side on the plate in rows, without overlapping, centred on the origin. */
   document.querySelector('[data-action="pack"]')!.addEventListener('click', () => {
-    const objs = doc.selection.length ? doc.selection : doc.objects;
+    const objs = packTargets(doc);
     const parts = units(doc, objs);
     if (parts.length < 2) return toast('Pack needs two or more objects');
     parts.sort((p, q) => (q.box.max.y - q.box.min.y) - (p.box.max.y - p.box.min.y)); // tallest rows first

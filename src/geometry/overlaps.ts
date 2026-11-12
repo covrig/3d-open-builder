@@ -1,5 +1,6 @@
 import type { Manifold, ManifoldToplevel } from 'manifold-3d';
 import { matrixKey, meshDataToManifold, type PlacedMesh } from './meshData';
+import { triangleNormal } from './triangles';
 
 /** Stop looking for more overlaps once the pairs worked out add up to this many triangles. */
 const TRIANGLE_BUDGET = 600_000;
@@ -126,9 +127,8 @@ function crossings(both: Manifold, idA: number, idB: number, out: number[]): voi
   };
   const normal = (t: number): [number, number, number] => {
     const [a, b, c] = [tri[t * 3] * np, tri[t * 3 + 1] * np, tri[t * 3 + 2] * np];
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const n: [number, number, number] = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    const n: [number, number, number] = [0, 0, 0];
+    triangleNormal(p, a, b, c, n);
     const len = Math.hypot(...n) || 1;
     return [n[0] / len, n[1] / len, n[2] / len];
   };

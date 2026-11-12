@@ -44,8 +44,9 @@ export class ColorPopover {
       this.onPickStart(true);
     });
     this.el.querySelector('[data-action="reset-color"]')!.addEventListener('click', () => {
-      this.doc.checkpoint();
-      for (const o of this.targets) this.doc.setColor([o], o.defaultColor);
+      this.doc.transact(() => {
+        for (const o of this.targets) this.doc.setColor([o], o.defaultColor);
+      });
       this.close();
     });
     document.addEventListener('pointerdown', (e) => {
@@ -77,8 +78,7 @@ export class ColorPopover {
   }
 
   private apply(color: string): void {
-    this.doc.checkpoint();
-    this.doc.setColor(this.targets, color);
+    this.doc.transact(() => this.doc.setColor(this.targets, color));
     this.close();
   }
 
@@ -89,7 +89,6 @@ export class ColorPopover {
     endTool('eyedropper');
     this.onPickStart(false);
     if (!source || !targets) return;
-    this.doc.checkpoint();
-    this.doc.setColor(targets, source.color);
+    this.doc.transact(() => this.doc.setColor(targets, source.color));
   }
 }

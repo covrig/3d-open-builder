@@ -2,6 +2,7 @@ import type { Gizmo } from '../scene/gizmo';
 import { setOverhangs } from '../scene/overhang';
 import type { Viewport } from '../scene/viewport';
 import { settings, updateUi } from '../settings';
+import { parseNumber } from './numberInputs';
 import { beginViewTool, endViewTool } from './toolLock';
 
 /**
@@ -29,7 +30,7 @@ export class OverhangTool {
       this.apply();
     });
     this.angle.addEventListener('change', () => {
-      const v = Math.min(80, Math.max(10, Number(this.angle.value) || 45));
+      const v = Math.min(80, Math.max(10, parseNumber(this.angle.value) || settings.ui.overhang.angle));
       updateUi((ui) => (ui.overhang.angle = v));
       this.apply();
     });

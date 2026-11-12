@@ -3,21 +3,21 @@ import './style.css';
 import type { BooleanOp } from './geometry/booleans';
 import { loadManifold } from './geometry/loadManifold';
 import { cancelAll, onBusyChange, runOp } from './geometry/workerClient';
-import { Autosave, clearAutosave, fromSaved, loadAutosave, type SavedScene } from './app/autosave';
+import { Autosave, clearAutosave, loadAutosave, restoreChoice } from './app/autosave';
+import { setupEditActions, PASTE_OFFSET } from './app/clipboard';
+import { setupFileActions } from './app/fileActions';
+import { setupKeyboard } from './app/keyboard';
+import { friendlyError } from './app/messages';
 import { installErrorHandlers, watchGraphicsContext } from './app/errors';
-import { bakeMesh, meshDataToManifold, meshId, type MeshData } from './geometry/meshData';
-import { bounds, largestFlatFaceNormal, recenter } from './geometry/meshOps';
+import { bakeMesh } from './geometry/meshData';
+import { largestFlatFaceNormal } from './geometry/meshOps';
 import { countPieces } from './geometry/meshCheck';
 import { createPrimitive, PRIMITIVE_NAMES } from './geometry/primitives';
-import { IMPORT_EXTENSIONS, importFile, splitPieces } from './io/importFile';
-import { exportStl } from './io/stl';
-import { export3mf } from './io/threemf';
-import { OBJECT_COLORS, SceneDocument, setEdgeColor, type ObjectState, type SceneObject } from './scene/document';
+import { OBJECT_COLORS, SceneDocument, setEdgeColor, type SceneObject } from './scene/document';
 import { Gizmo } from './scene/gizmo';
 import { Ruler } from './scene/ruler';
 import { Viewport } from './scene/viewport';
-import { IMPORT_UNITS, MM_PER_UNIT, settings, settingsEvents, toUnit, updateSettings, updateUi, watchTheme, type ImportUnit } from './settings';
-import { loadClipboard, saveClipboard } from './ui/clipboardStore';
+import { settings, settingsEvents, watchTheme } from './settings';
 import { ColorPopover } from './ui/colorPopover';
 import { CombineTool } from './ui/combineTool';
 import { CrossSection } from './ui/crossSection';
@@ -31,6 +31,7 @@ import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelT
 import { restrictNumberInputs } from './ui/numberInputs';
 import { setupArrange, units } from './ui/arrange';
 import { hideHint, showHint, watchCorner, watchTopBars } from './ui/hint';
+import { setupDetailsPanel } from './ui/detailsPanel';
 import { setupItemsPanel } from './ui/itemsPanel';
 import { MeasureTool } from './ui/measureTool';
 import { CheckTools } from './ui/checkTools';
@@ -45,10 +46,10 @@ import { setupMenus } from './ui/menu';
 import { setupSettingsDialog } from './ui/settingsDialog';
 import { SplitTool } from './ui/splitTool';
 import { setupTooltips } from './ui/tooltip';
-import { isBusy, isLocked, isToolOpen, onlyViewLocked, onToolChange, setBusy, stopActiveTool } from './ui/toolLock';
+import { isBusy, isLocked, onlyViewLocked, onToolChange, setBusy } from './ui/toolLock';
 import { OverlapLines } from './ui/overlapLines';
 import { setupToolbarFit } from './ui/toolbarFit';
-import { BUSY_MESSAGE, LOCKED_MESSAGE, setupToolGuard } from './ui/toolGuard';
+import { BUSY_MESSAGE, setupToolGuard } from './ui/toolGuard';
 import { TransformBar } from './ui/transformBar';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -85,6 +86,7 @@ try {
   );
 }
 const doc = new SceneDocument(viewport.objectRoot);
+const { updateDetails, volumeOf } = setupDetailsPanel({ doc, wasm });
 const gizmo = new Gizmo(viewport, doc);
 new TransformBar($('#transform-bar'), gizmo, doc);
 setupSettingsDialog($('[data-action="settings"]'));
@@ -141,8 +143,6 @@ function toast(message: string): void {
   toastTimer = window.setTimeout(() => (el.hidden = true), 4000);
 }
 
-const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
 /**
  * Run a heavy geometry job in the background worker, then apply its result.
  * One job at a time; while it runs a "Working…" hint shows. If the objects
@@ -167,7 +167,7 @@ async function heavy<T>(objs: SceneObject[], compute: () => Promise<T>, apply: (
     if (!same) return toast('The objects changed while computing; nothing was applied');
     apply(result);
   } catch (err) {
-    toast(errorText(err));
+    toast(friendlyError(err));
   } finally {
     setBusy(false);
   }
@@ -212,18 +212,9 @@ const colors = new ColorPopover(doc, (picking) => {
   else hideHint('eyedropper');
 });
 setupItemsPanel($('#sidebar'), doc, colors, {
-  toggleHidden: (obj) => {
-    doc.checkpoint();
-    doc.setHidden([obj], !obj.hidden);
-  },
-  duplicate: (obj) => {
-    doc.checkpoint();
-    pasteStates([doc.capture(obj)], PASTE_OFFSET);
-  },
-  remove: (obj) => {
-    doc.checkpoint();
-    doc.remove([obj]);
-  },
+  toggleHidden: (obj) => doc.transact(() => doc.setHidden([obj], !obj.hidden)),
+  duplicate: (obj) => doc.transact(() => pasteStates([doc.capture(obj)], PASTE_OFFSET)),
+  remove: (obj) => doc.transact(() => doc.remove([obj])),
 });
 
 /** Run an action that needs a selection, with one undo step. */
@@ -232,9 +223,10 @@ function withSelection(action: (objs: SceneObject[]) => void, min = 1): void {
     toast(min === 1 ? 'Select an object first' : `Select at least ${min} objects (Ctrl+click adds to the selection)`);
     return;
   }
-  doc.checkpoint();
-  action(doc.selection);
-  doc.emit('transform');
+  doc.transact(() => {
+    action(doc.selection);
+    doc.emit('transform');
+  });
 }
 
 // --- Add objects ----------------------------------------------------------
@@ -260,14 +252,15 @@ for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
     if (selected.length < 2) return toast('Select at least two objects (Ctrl+click adds to the selection)');
     void heavy(selected, () => runOp('boolean', { op, items: selected.map((o) => doc.placed(o)) }), (result) => {
       if (result.empty) return toast('Nothing is left: the objects do not overlap');
-      doc.checkpoint();
-      const color = selected[0].color;
-      doc.remove(selected);
-      const obj = doc.add('Object', result.mesh, color);
-      const pieces = countPieces(result.mesh);
-      if (pieces > 1) toast(`The objects don't touch, so the merged object is made of ${pieces} separate pieces.`);
-      obj.mesh.position.set(...result.center);
-      doc.setSelection([obj]);
+      doc.transact(() => {
+        const color = selected[0].color;
+        doc.remove(selected);
+        const obj = doc.add('Object', result.mesh, color);
+        const pieces = countPieces(result.mesh);
+        if (pieces > 1) toast(`The objects don't touch, so the merged object is made of ${pieces} separate pieces.`);
+        obj.mesh.position.set(...result.center);
+        doc.setSelection([obj]);
+      });
     });
   });
 }
@@ -313,56 +306,8 @@ new ExtrudeTool(viewport, doc, featureBar, toast);
 
 // --- Clipboard ------------------------------------------------------------
 
-let clipboard: ObjectState[] = await loadClipboard();
-let pasteCount = 0;
-const PASTE_OFFSET = 10; // mm, so pasted copies don't hide the original
-
-function pasteStates(states: ObjectState[], offset: number): void {
-  const copies = doc.addCopies(states);
-  for (const c of copies) c.mesh.position.x += offset;
-  doc.setSelection(copies);
-}
-
-function setClipboard(objs: SceneObject[]): void {
-  clipboard = objs.map((o) => doc.capture(o));
-  pasteCount = 0;
-  void saveClipboard(clipboard);
-}
-
-const actions = {
-  copy: () => {
-    if (doc.selection.length === 0) return toast('Select an object first');
-    setClipboard(doc.selection);
-    toast(`Copied ${clipboard.length} object${clipboard.length > 1 ? 's' : ''}`);
-  },
-  cut: () => withSelection((objs) => {
-    setClipboard(objs);
-    doc.remove(objs);
-  }),
-  paste: () => {
-    if (clipboard.length === 0) return toast('Nothing has been copied yet');
-    doc.checkpoint();
-    pasteCount++;
-    pasteStates(clipboard, PASTE_OFFSET * pasteCount);
-  },
-  duplicate: () => withSelection((objs) => pasteStates(objs.map((o) => doc.capture(o)), PASTE_OFFSET)),
-  delete: () => withSelection((objs) => doc.remove(objs)),
-  undo: () => {
-    splitTool.stop();
-    doc.undo();
-  },
-  redo: () => {
-    splitTool.stop();
-    doc.redo();
-  },
-};
-for (const [name, fn] of Object.entries(actions)) {
-  // Some actions (Delete) are keyboard and row-button only, with no toolbar button.
-  document.querySelector(`[data-action="${name}"]`)?.addEventListener('click', fn);
-}
-
-// The Delete button in the view's corner (touch screens have no Delete key).
-on('[data-action="delete-selection"]', actions.delete);
+// Copy, cut, paste, duplicate, delete, undo and redo (and their buttons): see app/clipboard.ts.
+const { actions, pasteStates } = await setupEditActions({ doc, gizmo, splitTool, toast, withSelection });
 
 // --- Groups ---------------------------------------------------------------
 
@@ -434,107 +379,18 @@ function updateShadows(): void {
 
 let sceneName = 'scene';
 
-function download(data: BlobPart, filename: string, type: string): void {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** True once the scene has changed since it was last exported (or started). */
-let unexported = false;
-for (const type of ['change', 'transform'] as const) doc.addEventListener(type, () => (unexported = true));
-
-/** The file name used for the last export in this visit; proposed again next time. */
-let lastExportName: string | null = null;
-const EXPORT_SUFFIX = '_open_builder';
-
-/** Proposed name: the last one used, else the imported file's name plus _open_builder, else open_builder. */
-function defaultExportName(): string {
-  if (lastExportName) return lastExportName;
-  if (sceneName === 'scene') return 'open_builder';
-  return sceneName.endsWith(EXPORT_SUFFIX) ? sceneName : sceneName + EXPORT_SUFFIX;
-}
-
-/** Ask for the file name in a small box; null if cancelled. */
-async function askExportName(ext: '3mf' | 'stl'): Promise<string | null> {
-  const dialog = $<HTMLDialogElement>('#export-dialog');
-  const input = $<HTMLInputElement>('#export-name');
-  $('#export-title').textContent = ext === '3mf' ? 'Export 3MF' : 'Export STL';
-  $('#export-ext').textContent = `.${ext}`;
-  $('#export-note').textContent = ext === '3mf'
-    ? 'All objects, each with its own colour. Opens in most slicers.'
-    : 'All objects as one mesh, without colours.';
-  input.value = defaultExportName();
-  dialog.returnValue = '';
-  dialog.showModal();
-  input.focus();
-  input.select();
-  await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
-  if (dialog.returnValue !== 'export') return null;
-  // No folders or characters that file systems refuse; a typed extension is dropped.
-  const name = input.value.trim().replace(/\.(3mf|stl)$/i, '').replace(/[\\/:*?"<>|]+/g, '_').trim();
-  return name || defaultExportName();
-}
-{
-  const dialog = $<HTMLDialogElement>('#export-dialog');
-  // Enter in the name field exports (the form's first button is Cancel).
-  $('#export-name').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      dialog.close('export');
-    }
-  });
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close('cancel');
-  });
-}
-
-async function exportThreeMf(): Promise<void> {
-  if (doc.objects.length === 0) return toast('The scene is empty');
-  const name = await askExportName('3mf');
-  if (!name) return;
-  const bytes = export3mf(doc.objects.map((o) => doc.placed(o)));
-  download(bytes as Uint8Array<ArrayBuffer>, `${name}.3mf`, 'model/3mf');
-  lastExportName = name;
-  unexported = false;
-}
-
-on('[data-action="new"]', () => {
-  if (doc.objects.length > 0 && unexported
-    && !confirm('Start a new scene? Changes you have not exported will be lost, including the autosaved copy.')) return;
-  splitTool.stop();
-  measure.setKind(null);
-  doc.clear();
-  reference.restore(null);
-  sceneName = 'scene';
-  lastExportName = null;
-  unexported = false;
-  void clearAutosave();
-  viewport.fit();
-});
-on('[data-action="export-3mf"]', () => void exportThreeMf());
-on('[data-action="export-stl"]', async () => {
-  if (doc.objects.length === 0) return toast('The scene is empty');
-  const name = await askExportName('stl');
-  if (!name) return;
-  download(exportStl(doc.objects.map((o) => doc.placed(o))), `${name}.stl`, 'model/stl');
-  lastExportName = name;
-  unexported = false;
-});
-
 // --- Autosave, restore and error recovery ------------------------------------
 
-const autosave = new Autosave(doc, () => sceneName);
+const autosave = new Autosave(doc, () => sceneName, () =>
+  toast('Autosave is not working: the browser storage is blocked or full. Use Export or Save project to keep your work.'));
 /** Features that keep their own data in the autosave register how to restore it here. */
 const extraRestorers = new Map<string, (value: unknown) => void>();
 const reference = new ReferenceImage(viewport, doc, featureBar, toast, () => autosave.markDirty());
 autosave.extras.set('reference', () => reference.serialize());
 
 /** Save in the browser right away (Menu → Save, Ctrl+S); it also saves on its own every minute. */
-const saveNow = () => void autosave.saveNow().then(() => {
+const saveNow = () => void autosave.saveNow().then((ok) => {
+  if (!ok) return toast('Could not save in this browser (its storage is blocked or full). Use Export or Save project to keep your work.');
   autosave.markClean();
   toast('Saved in this browser. To keep a file, use Export 3MF.');
 });
@@ -544,15 +400,21 @@ function restoreExtras(extras: Record<string, unknown>): void {
   for (const [key, restore] of extraRestorers) restore(extras[key]);
 }
 
-async function restoreSaved(saved: SavedScene): Promise<void> {
-  splitTool.stop();
-  measure.setKind(null);
-  doc.loadState(fromSaved(saved));
-  sceneName = saved.name;
-  lastExportName = null;
-  restoreExtras(saved.extras ?? {});
-  viewport.fit(doc.worldBox(doc.objects));
-}
+const { openFiles, restoreSaved, markExported } = setupFileActions({
+  doc,
+  viewport,
+  toast,
+  autosave,
+  stopTools: () => {
+    splitTool.stop();
+    measure.setKind(null);
+  },
+  resetExtras: () => reference.restore(null),
+  restoreExtras,
+  solidState: volumeOf,
+  getSceneName: () => sceneName,
+  setSceneName: (name) => (sceneName = name),
+});
 
 installErrorHandlers({
   restoreLastSave: async () => {
@@ -573,7 +435,7 @@ function addStarter(): void {
   doc.emit('transform');
   // Not something to warn about losing when starting a new drawing, nor to
   // offer to restore next time unless it gets changed.
-  unexported = false;
+  markExported();
   autosave.markClean();
 }
 
@@ -586,137 +448,21 @@ async function offerRestore(): Promise<void> {
   const n = saved.objects.length;
   $('#restore-text').textContent =
     `The last scene (${n} object${n > 1 ? 's' : ''}, saved ${new Date(saved.savedAt).toLocaleString()}) was kept in this browser.`;
+  dialog.returnValue = '';
+  // Esc must not count as an answer: only the two buttons close this question.
+  dialog.addEventListener('cancel', (e) => e.preventDefault());
   dialog.showModal();
   await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
   autosave.suspend(false);
-  if (dialog.returnValue === 'restore') await restoreSaved(saved);
-  else await clearAutosave();
-}
-
-const supported = (f: File) => IMPORT_EXTENSIONS.some((ext) => f.name.toLowerCase().endsWith(ext));
-
-/** Ask which unit an imported file's numbers are in; null if cancelled. */
-async function askImportUnit(only3mf: boolean): Promise<{ unit: ImportUnit; separate: boolean } | null> {
-  const dialog = $<HTMLDialogElement>('#import-dialog');
-  const separateBox = $<HTMLInputElement>('#import-separate');
-  separateBox.checked = settings.ui.importSeparate;
-  // 3MF files carry their own size: the unit only matters for STL and OBJ.
-  $('#import-unit-note').hidden = !only3mf;
-  for (const r of [...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')]) {
-    r.checked = r.value === settings.ui.importUnit;
-    r.disabled = only3mf;
-  }
-  dialog.returnValue = '';
-  dialog.showModal();
-  await new Promise<void>((resolve) => dialog.addEventListener('close', () => resolve(), { once: true }));
-  if (dialog.returnValue !== 'import') return null;
-  const unit = only3mf
-    ? settings.ui.importUnit
-    : ([...dialog.querySelectorAll<HTMLInputElement>('input[name="import-unit"]')].find((r) => r.checked)?.value ?? 'mm') as ImportUnit;
-  const separate = separateBox.checked;
-  updateUi((ui) => {
-    ui.importUnit = unit;
-    ui.importSeparate = separate;
-  });
-  return { unit, separate };
-}
-{
-  const dialog = $<HTMLDialogElement>('#import-dialog');
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close('cancel');
-  });
-}
-
-async function openFiles(all: File[]): Promise<void> {
-  const files = all.filter(supported);
-  const rejected = all.filter((f) => !supported(f));
-  if (rejected.length) {
-    const names = rejected.map((f) => f.name).join(', ');
-    toast(`File not supported: ${names}. Open 3MF, STL or OBJ files.`);
-  }
-  if (files.length === 0) return;
-  if (isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
-  const is3mf = (f: File) => f.name.toLowerCase().endsWith('.3mf');
-  const choice = await askImportUnit(files.every(is3mf));
-  if (!choice) return;
-  const factor = IMPORT_UNITS[choice.unit];
-  const added: SceneObject[] = [];
-  let checkpointed = false;
-  /** An STL or OBJ file was opened in the chosen unit */
-  let unitFromFile = false;
-  for (const file of files) {
-    let parts;
-    try {
-      parts = await importFile(file);
-    } catch (err) {
-      toast(`${file.name}: ${errorText(err)}`);
-      continue;
-    }
-    if (parts.length === 0) {
-      toast(`${file.name} has no geometry`);
-      continue;
-    }
-    if (!checkpointed) {
-      doc.checkpoint();
-      checkpointed = true;
-    }
-    // Optionally one object per separate piece (named like the part, numbered by doc.add).
-    if (choice.separate) parts = parts.flatMap((p) => splitPieces(p.data).map((data) => ({ ...p, data })));
-    // The file's numbers are in its own unit; everything here is in mm.
-    if (factor !== 1 && !is3mf(file)) {
-      for (const p of parts) {
-        const pos = p.data.positions;
-        for (let i = 0; i < pos.length; i++) pos[i] *= factor;
-      }
-    }
-    // Keep the parts' layout relative to each other, but centre the whole
-    // file on the plate and rest it on the plate surface.
-    const all = parts.map((p) => bounds(p.data));
-    const min = [0, 1, 2].map((k) => Math.min(...all.map((b) => b.min[k])));
-    const max = [0, 1, 2].map((k) => Math.max(...all.map((b) => b.max[k])));
-    const shift = [-(min[0] + max[0]) / 2, -(min[1] + max[1]) / 2, -min[2]];
-    for (const part of parts) {
-      const { mesh, center } = recenter(part.data);
-      const obj = doc.add(part.name, mesh, part.color);
-      obj.mesh.position.set(center[0] + shift[0], center[1] + shift[1], center[2] + shift[2]);
-      added.push(obj);
-    }
-    sceneName = file.name.replace(/\.[^.]+$/, '');
-    lastExportName = null;
-    if (!is3mf(file)) unitFromFile = true;
-  }
-  // The unit the file was made in is most likely the one to work in: the page
-  // switches to it (rulers, grid, sizes and tool bars). 3MF files store their size, so they don't.
-  if (unitFromFile && settings.unit !== choice.unit) updateSettings({ unit: choice.unit });
-  if (added.length) {
-    doc.setSelection(added);
-    viewport.fit(doc.worldBox(added));
+  if (restoreChoice(dialog.returnValue) === 'discard') return clearAutosave();
+  try {
+    await restoreSaved(saved);
+  } catch (err) {
+    toast(friendlyError(err));
+    addStarter();
   }
 }
 
-const fileInput = $<HTMLInputElement>('#file-input');
-const openDialog = () => fileInput.click();
-on('[data-action="open"]', openDialog);
-fileInput.addEventListener('change', () => {
-  void openFiles([...(fileInput.files ?? [])]);
-  fileInput.value = '';
-});
-
-const viewportEl = $('#viewport');
-const dropHint = $('#drop-hint');
-viewportEl.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  dropHint.hidden = false;
-});
-viewportEl.addEventListener('dragleave', () => (dropHint.hidden = true));
-viewportEl.addEventListener('drop', (e) => {
-  e.preventDefault();
-  dropHint.hidden = true;
-  const files = [...(e.dataTransfer?.files ?? [])];
-  if (files.length === 0) return;
-  if (isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
-  void openFiles(files);
-});
 
 // --- Undo / redo state ----------------------------------------------------
 
@@ -729,145 +475,10 @@ const updateHistory = () => {
 doc.addEventListener('history', updateHistory);
 updateHistory();
 
-// --- Repeat the last tool (R) ------------------------------------------------
-
-/** Buttons whose tool can be run again with R (e.g. a second brace): edit, combine, add and mirror tools. */
-const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-action="mirror"], [data-action="rotate90"], [data-action="split"], [data-action="extrude-down"]';
-let lastTool: HTMLElement | null = null;
-document.addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>(REPEATABLE);
-  if (el && e.isTrusted) lastTool = el;
-}, true);
-
-/** Single-key shortcuts: key → the button it presses (first match, the toolbar one when there are two). */
-const TOOL_KEYS: Record<string, string> = {
-  '1': '[data-insert="cube"]',
-  '2': '[data-insert="cylinder"]',
-  '3': '[data-insert="sphere"]',
-  d: '[data-action="duplicate"]',
-  s: '[data-action="split"]',
-  m: '[data-boolean="union"]',
-  n: '[data-boolean="difference"]',
-  i: '[data-boolean="intersection"]',
-  e: '[data-action="extrude-down"]',
-  p: '[data-modify="pattern"]',
-  b: '[data-modify="chamfer"]',
-  o: '[data-modify="fillet"]',
-};
-
-/** Run the last tool again, but only once the previous operation is finished. */
-function repeatLastTool(): void {
-  if (!lastTool) return toast('Nothing to repeat yet: use a tool first');
-  if (isBusy() && !isLocked() && !isToolOpen()) return toast(BUSY_MESSAGE);
-  if (isToolOpen() || isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
-  lastTool.click();
-}
-
 // --- Keyboard -------------------------------------------------------------
 
-/**
- * Move the selection with the keyboard: arrows along X (left/right) and Y
- * (up/down, as seen on the plate), Page Up/Down along Z. The step is 1 mm
- * with snapping on (0.1 mm off); Shift moves ten times as far. A burst of
- * key presses is one undo step.
- */
-let lastNudge = 0;
-function nudgeSelection(e: KeyboardEvent): void {
-  const step = (settings.snapping ? 1 : 0.1) * (e.shiftKey ? 10 : 1);
-  const d = new THREE.Vector3(
-    e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0,
-    e.key === 'ArrowUp' ? step : e.key === 'ArrowDown' ? -step : 0,
-    e.key === 'PageUp' ? step : e.key === 'PageDown' ? -step : 0,
-  );
-  const now = performance.now();
-  if (now - lastNudge > 1000) doc.checkpoint();
-  lastNudge = now;
-  for (const o of doc.selection) o.mesh.position.add(d);
-  doc.emit('transform');
-}
+setupKeyboard({ doc, gizmo, featureBar, splitTool, crossSection, overhangs, actions, toast, saveNow, fitView, homeView });
 
-// Esc always closes the open tool, whatever has the keyboard focus (a tool
-// bar's field included) and whether shortcuts are on or not: a dropdown menu
-// closes first, then the tool, then a view panel (cross-section, overhangs);
-// else the selection clears. Dialogs close themselves.
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
-  if (document.querySelector('.menu:not([hidden]), .select-list, .view-popover:not([hidden])')) return; // the menu, list or popover closes itself
-  if (stopActiveTool() || crossSection.close() || overhangs.close()) {
-    e.preventDefault();
-    e.stopPropagation();
-    return;
-  }
-  if (!(e.target as HTMLElement).closest('input, textarea, select')) doc.setSelection([]);
-}, true);
-
-// Enter applies the open tool, like its Apply button. A field being typed in
-// commits its value first (blur fires "change"); the feature bar then waits
-// for the preview of the new value before applying.
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.isComposing || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (document.querySelector('dialog[open], .select-list')) return;
-  const t = e.target as HTMLElement;
-  // Enter on a button or dropdown does that control's own thing.
-  if (t.closest('button, select, textarea, a, [contenteditable]')) return;
-  const inBar = t.closest('#feature-bar, #split-bar');
-  if (t.closest('input') && !inBar) return;
-  if (!featureBar.active && !splitTool.active) return;
-  e.preventDefault();
-  e.stopPropagation();
-  if (t instanceof HTMLInputElement && inBar) t.blur();
-  if (featureBar.active) featureBar.applyWhenReady();
-  else splitTool.applyIfOpen();
-}, true);
-
-document.addEventListener('keydown', (e) => {
-  const t = e.target as HTMLElement;
-  // Leave typing in fields and dialogs alone.
-  if (t.closest('input, textarea, select, dialog')) return;
-  const ctrl = e.ctrlKey || e.metaKey;
-  const key = e.key.toLowerCase();
-  const run = (fn: () => void) => {
-    e.preventDefault();
-    fn();
-  };
-  // While a tool with Apply/Cancel is open (or a calculation runs), only what
-  // can't disturb it works: Copy, the view keys, and the arrow keys the tool
-  // itself uses. Undo, redo, cut, paste and Delete would change or remove what
-  // the tool works on (docs/tool-rules.md).
-  const locked = isLocked() || isBusy();
-  const refuse = () => run(() => toast(LOCKED_MESSAGE));
-  if (ctrl && key === 'c') return run(actions.copy);
-  if (ctrl && key === 's') return run(saveNow);
-  const editing = (ctrl && ['z', 'y', 'x', 'v', 'a'].includes(key)) || (!ctrl && (e.key === 'Delete' || e.key === 'Backspace'));
-  if (editing && locked) return refuse();
-  if (ctrl && key === 'z' && !e.shiftKey) return run(actions.undo);
-  if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) return run(actions.redo);
-  if (ctrl && key === 'x') return run(actions.cut);
-  if (ctrl && key === 'v') return run(actions.paste);
-  if (ctrl && key === 'a') return run(() => doc.setSelection(doc.objects));
-  if (!ctrl && (e.key === 'Delete' || e.key === 'Backspace')) return run(actions.delete);
-  // Single-key shortcuts, if switched on in Settings (off by default).
-  const single = settings.shortcuts && !ctrl && !e.altKey && !e.shiftKey;
-  if (single && key === 'f') return run(fitView);
-  if (single && key === 'h') return run(homeView);
-  if (single && key === 'r') return run(repeatLastTool); // refuses itself while a tool is open
-  // Tool keys press the tool's button (so R can repeat them), only with no tool open.
-  const button = single ? TOOL_KEYS[key] : undefined;
-  if (button && (locked || isToolOpen())) return refuse();
-  if (button) {
-    return run(() => {
-      const el = $(button);
-      if (el.matches(REPEATABLE)) lastTool = el;
-      el.click();
-    });
-  }
-  // Arrow keys: an open tool (text) may use them to nudge;
-  // with no tool open they move the selection.
-  if (e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown') {
-    if (viewClicks.onKey?.(e)) return e.preventDefault();
-    if (doc.selection.length && !locked && !isToolOpen()) return run(() => nudgeSelection(e));
-  }
-});
 // --- Clicking in the view -------------------------------------------------
 
 // A click selects (or places a measuring point); a drag turns the camera.
@@ -904,75 +515,6 @@ canvas.addEventListener('pointerup', (e) => {
 // The outline in the view; the object list in the side panel names the selection.
 function updateSelectionFeedback(): void {
   viewport.setOutlined(doc.selection.map((o) => o.mesh));
-}
-
-// --- Details --------------------------------------------------------------
-
-const fmt = (v: number, digits = 1) => v.toLocaleString(undefined, { maximumFractionDigits: digits });
-
-/**
- * Volume of each mesh, computed once. Moving and turning don't change it and
- * scaling multiplies it, so dragging never has to rebuild the solid.
- */
-const volumeCache = new WeakMap<MeshData, number | null>();
-/** Big meshes whose volume the worker is working out */
-const volumeAsked = new WeakSet<MeshData>();
-/** Above this many triangles, building the solid here would hold up the page. */
-const BIG_MESH = 50_000;
-/** The object's volume, null if it isn't a closed solid, undefined while the worker works it out. */
-function volumeOf(o: SceneObject): number | null | undefined {
-  if (!volumeCache.has(o.data)) {
-    const data = o.data;
-    if (data.indices.length / 3 > BIG_MESH) {
-      if (!volumeAsked.has(data)) {
-        volumeAsked.add(data);
-        runOp('volume', { mesh: { ...data, id: meshId(data) } }, true).then(
-          (v) => {
-            volumeCache.set(data, v);
-            updateDetails();
-          },
-          () => volumeAsked.delete(data), // stopped: ask again next time
-        );
-      }
-      return undefined;
-    }
-    try {
-      const m = meshDataToManifold(wasm, o.data);
-      volumeCache.set(o.data, m.volume());
-      m.delete();
-    } catch {
-      volumeCache.set(o.data, null);
-    }
-  }
-  const base = volumeCache.get(o.data)!;
-  const s = o.mesh.scale;
-  return base === null ? null : base * Math.abs(s.x * s.y * s.z);
-}
-
-function updateDetails(): void {
-  const objs = doc.selection.length ? doc.selection : doc.objects;
-  $('#details-scope').textContent = doc.selection.length ? 'Selection' : 'Whole scene';
-  if (objs.length === 0) {
-    for (const id of ['#detail-size', '#detail-tris', '#detail-volume']) $(id).textContent = '–';
-    return;
-  }
-  const size = doc.worldBox(objs).getSize(new THREE.Vector3());
-  const u = settings.unit;
-  $('#detail-size').textContent = `${fmt(toUnit(size.x), 2)} × ${fmt(toUnit(size.y), 2)} × ${fmt(toUnit(size.z), 2)} ${u}`;
-  $('#detail-tris').textContent = fmt(objs.reduce((n, o) => n + o.data.indices.length / 3, 0), 0);
-  const volumes = objs.map(volumeOf);
-  const open = volumes.filter((v) => v === null).length;
-  const waiting = volumes.some((v) => v === undefined);
-  const volume = volumes.reduce<number>((sum, v) => sum + (v ?? 0), 0);
-  // Metric units show cm³ (what slicers use); imperial shows in³.
-  const imperial = u === 'in';
-  $('#detail-volume').textContent = open
-    ? `${open} object${open > 1 ? 's are' : ' is'} not a closed solid`
-    : waiting
-      ? 'Working out…'
-      : imperial
-      ? `${fmt(volume / MM_PER_UNIT.in ** 3, 2)} in³`
-      : `${fmt(volume / 1000, 2)} cm³`;
 }
 
 function updateSections(): void {
@@ -1016,5 +558,5 @@ updateDetails();
 updateShadows();
 void offerRestore();
 
-// Exposed for debugging in the browser console.
+// Exposed for debugging in the browser console. The browser checks (scripts/browser-check.mjs) rely on these keys.
 Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection, overhangs, overlaps } });

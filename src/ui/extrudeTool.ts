@@ -108,7 +108,7 @@ export class ExtrudeTool {
         },
       ],
       hide: objs,
-      compute: async (v) => {
+      compute: async (v, signal) => {
         this.tiltA = clampTilt(Number(v.tiltA));
         this.tiltB = clampTilt(Number(v.tiltB));
         if (this.tiltA !== Number(v.tiltA)) this.bar.setValue('tiltA', this.tiltA, null);
@@ -119,7 +119,7 @@ export class ExtrudeTool {
         if (round(this.height) !== Number(v.height)) this.bar.setValue('height', round(this.height), null);
         // An object the plane misses stays as it is (null).
         const pieces = await Promise.all(objs.map((o) =>
-          runOp('extrudeDown', { item: this.doc.placed(o), height: this.height, normal: this.normal().toArray() as [number, number, number], centre }).catch(() => null)));
+          runOp('extrudeDown', { item: this.doc.placed(o), height: this.height, normal: this.normal().toArray() as [number, number, number], centre }, { signal }).catch(() => null)));
         if (pieces.every((p) => p === null)) throw new Error('Move the plane so it cuts through the objects');
         return pieces;
       },
@@ -127,16 +127,12 @@ export class ExtrudeTool {
       show: (pieces) => pieces.map((p, i) => p ? previewMesh(p.mesh, p.center) : previewMesh(bakeMesh(this.doc.placed(objs[i])), [0, 0, 0])),
       apply: (pieces) => {
         if (!objs.every((o) => this.doc.objects.includes(o))) return;
-        this.doc.checkpoint();
-        pieces.forEach((p, i) => {
-          if (!p) return;
-          const obj = objs[i];
-          this.doc.setData(obj, p.mesh);
-          obj.mesh.position.set(...p.center);
-          obj.mesh.quaternion.identity();
-          obj.mesh.scale.set(1, 1, 1);
+        this.doc.transact(() => {
+          pieces.forEach((p, i) => {
+            if (p) this.doc.replaceWithPiece(objs[i], p);
+          });
+          this.doc.emit('transform');
         });
-        this.doc.emit('transform');
       },
       onClose: () => this.stop(),
     });

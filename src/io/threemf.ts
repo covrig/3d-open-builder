@@ -7,19 +7,23 @@ export interface ColoredPlacedMesh extends PlacedMesh {
   color: string;
 }
 
-const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
+export const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
 </Types>`;
 
-const RELS = `<?xml version="1.0" encoding="UTF-8"?>
+export const RELS = `<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
 </Relationships>`;
 
+/** Characters XML 1.0 does not allow at all: control codes, U+FFFE, U+FFFF and unpaired surrogates. */
+const XML_FORBIDDEN =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 function escapeXml(s: string): string {
-  return s.replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  return s.replace(XML_FORBIDDEN, '').replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 /** Trim float noise: 6 decimals is 1 nm at mm scale. */

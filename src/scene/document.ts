@@ -17,6 +17,30 @@ const SELECTED_EMISSIVE = 0x1a3050;
 /** Edges sharper than this get hard shading; smoother ones are blended. */
 const CREASE_ANGLE = THREE.MathUtils.degToRad(30);
 const MAX_UNDO = 100;
+/** Undo steps kept whatever the memory budget says. */
+const MIN_UNDO = 5;
+
+/**
+ * The most memory (bytes) that mesh data kept alive only by the undo and redo
+ * history may use. Not more, because a browser tab usually fails somewhere
+ * between 2 and 4 GB in total, and the live scene, its copies on the graphics
+ * card and the geometry worker's copies need that room too. Devices that say
+ * they have 4 GB or less get a quarter of it.
+ */
+function defaultUndoBudget(): number {
+  const mem = typeof navigator !== 'undefined' ? (navigator as { deviceMemory?: number }).deviceMemory : undefined;
+  return mem !== undefined && mem <= 4 ? 128 * 1024 * 1024 : 512 * 1024 * 1024;
+}
+let undoBudgetBytes = defaultUndoBudget();
+
+/** Change the history memory budget (for tests). */
+export function setUndoBudget(bytes: number): void {
+  undoBudgetBytes = bytes;
+}
+
+export function undoBudget(): number {
+  return undoBudgetBytes;
+}
 
 export interface SceneObject {
   id: number;
@@ -118,6 +142,8 @@ export function setEdgeColor(hex: number): void {
 }
 
 type DocEvent = 'change' | 'selection' | 'transform' | 'history';
+/** The order in which events held back by a batch are sent. */
+const EVENT_ORDER: DocEvent[] = ['change', 'transform', 'selection', 'history'];
 
 /**
  * The objects in the scene, the selection, and undo/redo history.
@@ -142,6 +168,9 @@ export class SceneDocument extends EventTarget {
   private readonly extras = new Map<string, UndoExtra>();
   /** Objects drawn faintly while a tool works on others (see setFaded) */
   private readonly faded = new Set<SceneObject>();
+  /** How many batches are open, and the events they are holding back (see batch) */
+  private batchDepth = 0;
+  private pendingEvents = new Set<DocEvent>();
 
   constructor(private readonly root: THREE.Group) {
     super();
@@ -176,14 +205,16 @@ export class SceneDocument extends EventTarget {
   /** Copies of several objects; copies of one group form a new group together. */
   addCopies(states: ObjectState[]): SceneObject[] {
     const groupMap = new Map<number, number>();
-    return states.map((s) => {
-      let groupId: number | undefined;
-      if (s.groupId !== undefined) {
-        if (!groupMap.has(s.groupId)) groupMap.set(s.groupId, this.nextGroupId++);
-        groupId = groupMap.get(s.groupId);
-      }
-      return this.addCopy({ ...s, groupId });
-    });
+    return this.batch(() =>
+      states.map((s) => {
+        let groupId: number | undefined;
+        if (s.groupId !== undefined) {
+          if (!groupMap.has(s.groupId)) groupMap.set(s.groupId, this.nextGroupId++);
+          groupId = groupMap.get(s.groupId);
+        }
+        return this.addCopy({ ...s, groupId });
+      }),
+    );
   }
 
   // --- Groups -------------------------------------------------------------
@@ -257,6 +288,10 @@ export class SceneDocument extends EventTarget {
   }
 
   remove(objs: SceneObject[]): void {
+    this.batch(() => this.removeNow(objs));
+  }
+
+  private removeNow(objs: SceneObject[]): void {
     for (const obj of objs) {
       const i = this.objects.indexOf(obj);
       if (i < 0) continue;
@@ -295,6 +330,14 @@ export class SceneDocument extends EventTarget {
     }
     if (this.view.edges) this.applyView(obj);
     this.emit('change');
+  }
+
+  /** Give an object a computed shape: the piece's mesh, placed at its centre with no turn or scaling. */
+  replaceWithPiece(obj: SceneObject, piece: { mesh: MeshData; center: [number, number, number] }): void {
+    this.setData(obj, piece.mesh);
+    obj.mesh.position.set(...piece.center);
+    obj.mesh.quaternion.identity();
+    obj.mesh.scale.set(1, 1, 1);
   }
 
   setColor(objs: SceneObject[], color: string): void {
@@ -539,6 +582,7 @@ export class SceneDocument extends EventTarget {
     this.undoStack.push(this.snapshot());
     if (this.undoStack.length > MAX_UNDO) this.undoStack.shift();
     this.redoStack = [];
+    this.enforceBudget();
     this.emit('history');
   }
 
@@ -553,24 +597,63 @@ export class SceneDocument extends EventTarget {
   undo(): void {
     const snap = this.undoStack.pop();
     if (!snap) return;
-    this.redoStack.push(this.snapshot());
-    this.restore(snap);
+    this.batch(() => {
+      this.redoStack.push(this.snapshot());
+      this.restore(snap);
+      this.enforceBudget();
+    });
   }
 
   redo(): void {
     const snap = this.redoStack.pop();
     if (!snap) return;
-    this.undoStack.push(this.snapshot());
-    this.restore(snap);
+    this.batch(() => {
+      this.undoStack.push(this.snapshot());
+      this.restore(snap);
+      this.enforceBudget();
+    });
+  }
+
+  /** Bytes of mesh data that only the undo and redo history keeps alive (each mesh counted once). */
+  historyBytes(): number {
+    const seen = new Set<MeshData>(this.objects.map((o) => o.data));
+    let bytes = 0;
+    for (const stack of [this.undoStack, this.redoStack]) {
+      for (const snap of stack) {
+        for (const o of snap.objects) {
+          if (seen.has(o.data)) continue;
+          seen.add(o.data);
+          bytes += o.data.positions.byteLength + o.data.indices.byteLength;
+        }
+      }
+    }
+    return bytes;
+  }
+
+  /** Drop the oldest history while it holds more mesh data than the budget (keeping the newest few undo steps). */
+  private enforceBudget(): void {
+    let dropped = false;
+    while (this.undoStack.length > MIN_UNDO && this.historyBytes() > undoBudgetBytes) {
+      this.undoStack.shift();
+      dropped = true;
+    }
+    // Redo pops from the end, so the start of the list is the farthest from the present.
+    while (this.redoStack.length > 0 && this.historyBytes() > undoBudgetBytes) {
+      this.redoStack.shift();
+      dropped = true;
+    }
+    if (dropped) this.emit('history');
   }
 
   private restore(snap: Snapshot): void {
-    this.remove([...this.objects]);
-    for (const state of snap.objects) this.create(state);
-    this.measurements = snap.measurements;
-    for (const [k, e] of this.extras) if (k in snap.extras) e.restore(snap.extras[k]);
-    this.setSelection(this.objects.filter((o) => snap.selection.includes(o.id)));
-    this.emit('history');
+    this.batch(() => {
+      this.remove([...this.objects]);
+      for (const state of snap.objects) this.create(state);
+      this.measurements = snap.measurements;
+      for (const [k, e] of this.extras) if (k in snap.extras) e.restore(snap.extras[k]);
+      this.setSelection(this.objects.filter((o) => snap.selection.includes(o.id)));
+      this.emit('history');
+    });
   }
 
   /** Replace the measurement list (callers checkpoint first if it should be undoable). */
@@ -586,32 +669,63 @@ export class SceneDocument extends EventTarget {
 
   /** Replace the scene with a saved state; the undo history starts fresh. */
   loadState(state: SceneState): void {
-    this.clear();
-    for (const s of state.objects) this.create(s);
-    this.measurements = state.measurements;
-    // Continue each base name's numbering after the restored objects.
-    for (const o of this.objects) {
-      const m = /^(.*) (\d+)$/.exec(o.name);
-      if (m) this.nameCounters.set(m[1], Math.max(this.nameCounters.get(m[1]) ?? 0, Number(m[2])));
-    }
-    this.colorIndex = this.objects.length;
-    this.setSelection([]);
-    this.emit('change');
+    this.batch(() => {
+      this.clear();
+      for (const s of state.objects) this.create(s);
+      this.measurements = state.measurements;
+      // Continue each base name's numbering after the restored objects.
+      for (const o of this.objects) {
+        const m = /^(.*) (\d+)$/.exec(o.name);
+        if (m) this.nameCounters.set(m[1], Math.max(this.nameCounters.get(m[1]) ?? 0, Number(m[2])));
+      }
+      this.colorIndex = this.objects.length;
+      this.setSelection([]);
+      this.emit('change');
+    });
   }
 
   /** Remove everything and forget the history. */
   clear(): void {
-    this.remove([...this.objects]);
-    this.measurements = [];
-    this.undoStack = [];
-    this.redoStack = [];
-    this.nameCounters.clear();
-    this.colorIndex = 0;
-    this.emit('history');
+    this.batch(() => {
+      this.remove([...this.objects]);
+      this.measurements = [];
+      this.undoStack = [];
+      this.redoStack = [];
+      this.nameCounters.clear();
+      this.colorIndex = 0;
+      this.emit('history');
+    });
+  }
+
+  /**
+   * Run `fn` and tell listeners once at the end, not once per change inside it.
+   * Each event type that was emitted meanwhile fires a single time, when the
+   * outermost batch ends (also when `fn` throws).
+   */
+  batch<T>(fn: () => T): T {
+    this.batchDepth++;
+    try {
+      return fn();
+    } finally {
+      if (--this.batchDepth === 0) {
+        const pending = this.pendingEvents;
+        this.pendingEvents = new Set();
+        for (const type of EVENT_ORDER) if (pending.has(type)) this.dispatchEvent(new Event(type));
+      }
+    }
+  }
+
+  /** One undo step: take a checkpoint, then run `fn` as a batch. The checkpoint stays if `fn` throws. */
+  transact<T>(fn: () => T): T {
+    return this.batch(() => {
+      this.checkpoint();
+      return fn();
+    });
   }
 
   emit(type: DocEvent): void {
-    this.dispatchEvent(new Event(type));
+    if (this.batchDepth > 0) this.pendingEvents.add(type);
+    else this.dispatchEvent(new Event(type));
   }
 }
 

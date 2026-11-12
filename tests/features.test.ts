@@ -244,8 +244,12 @@ describe('gusset and shell', () => {
 
   it('hollows a cube leaving walls of the given thickness', () => {
     const r = shell(wasm, { mesh: createPrimitive(wasm, 'cube'), matrix: IDENTITY }, 2);
-    // Shrinking a box by a sphere keeps its corners sharp: the cavity is exactly a 36 mm cube.
-    expect(volume(r.mesh)).toBeCloseTo(64000 - 36 ** 3, 0);
+    // Shrinking a box by a ball keeps its corners sharp. The ball is made a little bigger than the
+    // sphere it must hold (so no wall is thinner than asked), so the flat walls come out about 2.1 mm:
+    // the cavity is a 35.8 mm cube (45,915 mm³), within 2 % of the 36 mm cube and never larger.
+    const cavity = 64000 - volume(r.mesh);
+    expect(cavity).toBeLessThanOrEqual(36 ** 3);
+    expect(cavity).toBeGreaterThan(36 ** 3 * 0.98);
   });
 
 });

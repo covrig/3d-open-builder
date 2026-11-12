@@ -1,7 +1,8 @@
 import type { Manifold, ManifoldToplevel, Vec3 } from 'manifold-3d';
-import { analyze, fillHoles, gentleWeld, orient, type MeshReport } from './meshCheck';
+import { analyze, fillHoles, gentleWeld, hasInsideOutShell, meshProblem, orient, type MeshReport } from './meshCheck';
 import { bakeMesh, manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
 import { solidPieces } from './pieces';
+import { hullFaces, triangleNormal } from './triangles';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail';
 export interface CheckItem {
@@ -11,6 +12,20 @@ export interface CheckItem {
   detail: string;
   /** Repair can fix this automatically */
   fixable: boolean;
+  /**
+   * The numbers behind `detail`, so the screen can write the sentence in its
+   * own unit. Lengths in mm, areas in mm²; percentages as the text shows them.
+   */
+  values?: {
+    minWall?: number;
+    thinnest?: number;
+    thinPercent?: string;
+    halfPercent?: string;
+    overhang?: number;
+    overhangNow?: number;
+    contact?: number;
+    contactNow?: number;
+  };
 }
 
 export interface CheckResult {
@@ -37,11 +52,10 @@ function printStats(mesh: MeshData, down: Vec3): { area: number; contact: number
   }
   let area = 0;
   let contact = 0;
+  const n = [0, 0, 0];
   for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    triangleNormal(p, idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3, n);
+    const [nx, ny, nz] = n;
     const len = Math.hypot(nx, ny, nz);
     if (len === 0) continue;
     // Component of the face normal along "down" (1 = facing straight down).
@@ -63,27 +77,7 @@ const score = (s: { area: number; contact: number }) => s.area - 0.5 * s.contact
 /** Pick the orientation (among the largest flat faces and the six axis directions) with the least overhang. */
 function suggestOrientation(wasm: ManifoldToplevel, world: MeshData) {
   const candidates: Vec3[] = [[0, 0, -1], [0, 0, 1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];
-  const pts: Vec3[] = [];
-  for (let i = 0; i < world.positions.length; i += 3) pts.push([world.positions[i], world.positions[i + 1], world.positions[i + 2]]);
-  const hull = wasm.Manifold.hull(pts);
-  const h = manifoldToMeshData(hull);
-  hull.delete();
-  const faces = new Map<string, { n: Vec3; area: number }>();
-  for (let t = 0; t < h.indices.length; t += 3) {
-    const a = h.indices[t] * 3, b = h.indices[t + 1] * 3, c = h.indices[t + 2] * 3;
-    const p = h.positions;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const n: Vec3 = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
-    const len = Math.hypot(...n);
-    if (len === 0) continue;
-    const unit: Vec3 = [n[0] / len, n[1] / len, n[2] / len];
-    const key = unit.map((x) => Math.round(x * 1000)).join(',');
-    const f = faces.get(key) ?? { n: unit, area: 0 };
-    f.area += len / 2;
-    faces.set(key, f);
-  }
-  candidates.push(...[...faces.values()].sort((a, b) => b.area - a.area).slice(0, 24).map((f) => f.n));
+  candidates.push(...hullFaces(wasm, world.positions).sort((a, b) => b.area - a.area).slice(0, 24).map((f) => f.n));
   const current = printStats(world, [0, 0, -1]);
   let best = { down: [0, 0, -1] as Vec3, ...current };
   for (const d of candidates) {
@@ -113,11 +107,10 @@ function wallThickness(m: Manifold, mesh: MeshData, minWall: number): { thinArea
   const normals = new Float32Array(triCount * 3);
   const cumulative = new Float64Array(triCount);
   let total = 0;
+  const n3 = [0, 0, 0];
   for (let t = 0; t < triCount; t++) {
-    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    triangleNormal(p, idx[t * 3] * 3, idx[t * 3 + 1] * 3, idx[t * 3 + 2] * 3, n3);
+    const [nx, ny, nz] = n3;
     const len = Math.hypot(nx, ny, nz);
     if (len > 0) {
       normals[t * 3] = nx / len; normals[t * 3 + 1] = ny / len; normals[t * 3 + 2] = nz / len;
@@ -161,6 +154,23 @@ function wallThickness(m: Manifold, mesh: MeshData, minWall: number): { thinArea
 /** Full printability check of one object (geometry in world space). */
 export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: number): CheckResult {
   const world = bakeMesh(item);
+  // Nothing to check without a surface, and numbers that are not numbers cannot be checked.
+  const problem = meshProblem(world);
+  if (problem) {
+    const skip = 'Fix the problem above first.';
+    const later = (id: CheckItem['id'], label: string): CheckItem => ({ id, label, status: 'warn', detail: skip, fixable: false });
+    return {
+      items: [
+        { id: 'watertight', label: 'Watertight', status: 'fail', detail: problem, fixable: false },
+        later('manifold', 'Non-manifold edges'),
+        later('normals', 'Normals'),
+        later('overlaps', 'Overlapping parts'),
+        later('thickness', 'Wall thickness'),
+        later('orientation', 'Print orientation'),
+      ],
+      suggestedDown: null,
+    };
+  }
   // A valid closed solid is judged as it is. Anything else is welded as little
   // as needed first: welding further merges the corners of genuinely small
   // triangles (rounded edges have many) and reports problems that aren't there.
@@ -169,6 +179,8 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
     const welded = solid ? manifoldToMeshData(solid) : gentleWeld(world).mesh;
     solid ??= tryManifold(wasm, welded);
     const r: MeshReport = analyze(welded);
+    // A part can be closed and consistent yet inside out for where it sits (a lone inverted cube).
+    const insideOut = !solid && hasInsideOutShell(welded);
     const items: CheckItem[] = [];
 
     items.push(r.openEdges === 0
@@ -178,9 +190,12 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
       ? { id: 'manifold', label: 'Non-manifold edges', status: 'pass', detail: 'Every edge joins exactly two faces.', fixable: false }
       : { id: 'manifold', label: 'Non-manifold edges', status: 'fail', detail: `${r.nonManifoldEdges} edges are shared by three or more faces.`, fixable: true });
     const inverted = r.signedVolume < 0;
-    items.push(r.flippedEdges === 0 && !inverted
+    items.push(r.flippedEdges === 0 && !inverted && !insideOut
       ? { id: 'normals', label: 'Normals', status: 'pass', detail: 'All faces point outward.', fixable: false }
-      : { id: 'normals', label: 'Normals', status: 'fail', detail: inverted ? 'The model is inside out.' : `${r.flippedEdges} edges join faces pointing opposite ways.`, fixable: true });
+      : {
+        id: 'normals', label: 'Normals', status: 'fail', fixable: true,
+        detail: inverted ? 'The model is inside out.' : r.flippedEdges > 0 ? `${r.flippedEdges} edges join faces pointing opposite ways.` : 'A separate part is inside out.',
+      });
 
     // The remaining checks need a valid solid.
     if (!solid) {
@@ -213,24 +228,33 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
       const wall = wallThickness(solid, welded, minWall);
       const pct = (f: number) => (f > 0 && f < 0.01 ? '<1' : String(Math.round(f * 100)));
       const thinnest = Number.isFinite(wall.thinnest) ? ` (thinnest ${wall.thinnest.toFixed(2)} mm)` : '';
+      const values = {
+        minWall,
+        thinnest: Number.isFinite(wall.thinnest) ? wall.thinnest : undefined,
+        thinPercent: pct(wall.thinArea),
+        halfPercent: pct(wall.halfArea),
+      };
       items.push(wall.halfArea >= 0.02
-        ? { id: 'thickness', label: 'Wall thickness', status: 'fail', detail: `About ${pct(wall.halfArea)}% of the surface is thinner than ${+(minWall / 2).toFixed(2)} mm: such thin parts may not print at all.`, fixable: false }
+        ? { id: 'thickness', label: 'Wall thickness', status: 'fail', detail: `About ${pct(wall.halfArea)}% of the surface is thinner than ${+(minWall / 2).toFixed(2)} mm: such thin parts may not print at all.`, fixable: false, values }
         : wall.thinArea >= 0.01
-          ? { id: 'thickness', label: 'Wall thickness', status: 'warn', detail: `About ${pct(wall.thinArea)}% of the surface is thinner than ${minWall} mm${thinnest}: it prints, but with fewer lines and less strength.`, fixable: false }
-          : { id: 'thickness', label: 'Wall thickness', status: 'pass', detail: `No significant area thinner than ${minWall} mm found${thinnest}.`, fixable: false });
+          ? { id: 'thickness', label: 'Wall thickness', status: 'warn', detail: `About ${pct(wall.thinArea)}% of the surface is thinner than ${minWall} mm${thinnest}: it prints, but with fewer lines and less strength.`, fixable: false, values }
+          : { id: 'thickness', label: 'Wall thickness', status: 'pass', detail: `No significant area thinner than ${minWall} mm found${thinnest}.`, fixable: false, values });
     }
 
     let suggestedDown: Vec3 | null = null;
     try {
       const o = suggestOrientation(wasm, welded);
       if (!o.better) {
-        items.push({ id: 'orientation', label: 'Print orientation', status: 'pass', detail: `Current orientation is good (${Math.round(o.currentArea)} mm² of overhang).`, fixable: false });
+        items.push({ id: 'orientation', label: 'Print orientation', status: 'pass', detail: `Current orientation is good (${Math.round(o.currentArea)} mm² of overhang).`, fixable: false, values: { overhangNow: o.currentArea, contactNow: o.currentContact } });
       } else {
         suggestedDown = o.down;
         const parts: string[] = [];
         if (o.area < o.currentArea - 1) parts.push(`cut overhangs from ${Math.round(o.currentArea)} to ${Math.round(o.area)} mm² (fewer supports)`);
         if (o.contact > o.currentContact + 1) parts.push(`rest it on ${Math.round(o.contact)} mm² instead of ${Math.round(o.currentContact)} mm² (sticks and stands better)`);
-        items.push({ id: 'orientation', label: 'Print orientation', status: 'warn', detail: `Turning it would ${parts.join(' and ')}.`, fixable: false });
+        items.push({
+          id: 'orientation', label: 'Print orientation', status: 'warn', detail: `Turning it would ${parts.join(' and ')}.`, fixable: false,
+          values: { overhang: o.area, overhangNow: o.currentArea, contact: o.contact, contactNow: o.currentContact },
+        });
       }
     } catch {
       // Not critical.
@@ -243,22 +267,27 @@ export function checkMesh(wasm: ManifoldToplevel, item: PlacedMesh, minWall: num
 }
 
 /**
- * The mesh as a solid, or null if it isn't a valid closed one facing outward.
- * Manifold accepts inside-out pieces (negative volume), so those are checked here.
+ * The mesh as a solid, or null when Manifold will not load it. `outward` says
+ * whether every surface faces the way its place calls for (see nestShells):
+ * Manifold accepts inside-out parts (negative volume), so that is checked here.
+ * The caller deletes the solid.
  */
-function tryManifold(wasm: ManifoldToplevel, mesh: MeshData): Manifold | null {
+function loadSolid(wasm: ManifoldToplevel, mesh: MeshData): { solid: Manifold; outward: boolean } | null {
   let solid: Manifold;
   try {
     solid = meshDataToManifold(wasm, mesh);
   } catch {
     return null;
   }
-  // Each piece with its hollows: a hollow on its own is inside out, but a shelled object is fine.
-  const parts = solidPieces(solid);
-  const outward = parts.every((p) => p.volume() > 0);
-  for (const p of parts) p.delete();
-  if (outward) return solid;
-  solid.delete();
+  return { solid, outward: !hasInsideOutShell(manifoldToMeshData(solid)) };
+}
+
+/** The mesh as a solid, or null if it isn't a valid closed one facing outward. */
+function tryManifold(wasm: ManifoldToplevel, mesh: MeshData): Manifold | null {
+  const loaded = loadSolid(wasm, mesh);
+  if (!loaded) return null;
+  if (loaded.outward) return loaded.solid;
+  loaded.solid.delete();
   return null;
 }
 
@@ -269,15 +298,23 @@ function tryManifold(wasm: ManifoldToplevel, mesh: MeshData): Manifold | null {
  * closed. When it still isn't a closed solid, the message says what is left.
  */
 export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: MeshData; actions: string[] } {
+  const problem = meshProblem(mesh);
+  if (problem) throw new Error(problem);
   const actions: string[] = [];
-  let solid = tryManifold(wasm, mesh);
+  const loaded = loadSolid(wasm, mesh);
+  let solid: Manifold | null = null;
+  if (loaded?.outward) solid = loaded.solid;
+  else loaded?.solid.delete();
+  // True when the solid is built from a rebuilt (welded) mesh, so the input itself is not the result.
+  const rebuilt = !solid;
   if (!solid) {
     const before = analyze(mesh);
     const welded = gentleWeld(mesh);
     let m = welded.mesh;
+    if (m.positions.length < mesh.positions.length) actions.push('Joined corners that had come apart');
     const dropped = before.triangles - welded.report.triangles;
     if (dropped > 0) actions.push(`Removed ${dropped} broken or duplicate triangle${dropped > 1 ? 's' : ''}`);
-    if (welded.report.flippedEdges > 0 || welded.report.signedVolume < 0) {
+    if (welded.report.flippedEdges > 0 || welded.report.signedVolume < 0 || hasInsideOutShell(m)) {
       m = orient(m);
       actions.push('Turned faces to point outward');
     }
@@ -288,6 +325,7 @@ export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: Mesh
     }
     solid = tryManifold(wasm, m);
     if (!solid) throw new Error(repairFailure(analyze(m), actions));
+    if (actions.length === 0) actions.push('Joined corners that had come apart');
   }
   // Union of the separate pieces removes faces where pieces overlap.
   const parts = solidPieces(solid);
@@ -301,7 +339,7 @@ export function repairMesh(wasm: ManifoldToplevel, mesh: MeshData): { mesh: Mesh
   for (const p of parts) p.delete();
   try {
     // Nothing to do: hand back the very same surface, not a rebuilt copy.
-    if (actions.length === 0) return { mesh, actions: ['Nothing needed repairing'] };
+    if (!rebuilt && actions.length === 0) return { mesh, actions: ['Nothing needed repairing'] };
     return { mesh: manifoldToMeshData(solid), actions };
   } finally {
     solid.delete();

@@ -89,8 +89,7 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
   el.querySelector('[data-action="random-colors"]')!.addEventListener('click', () => {
     if (doc.objects.length === 0) return;
     const picked = distinctColors(doc.objects.length);
-    doc.checkpoint();
-    doc.objects.forEach((o, i) => doc.setColor([o], picked[i]));
+    doc.transact(() => doc.objects.forEach((o, i) => doc.setColor([o], picked[i])));
   });
 
   /** Swap the name for a text field; Enter or leaving the field saves, Esc cancels. */
@@ -109,8 +108,7 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
       renaming = undefined;
       const name = input.value.trim();
       if (save && name && name !== obj.name) {
-        doc.checkpoint();
-        doc.rename(obj, name);
+        doc.transact(() => doc.rename(obj, name));
       } else {
         render();
       }
@@ -194,7 +192,7 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
         };
         const eye = obj.hidden
           ? rowButton('eye-off', 'Show', `Show ${obj.name} in the view again.`, () => actions.toggleHidden(obj))
-          : rowButton('eye', 'Hide', `Hide ${obj.name} from the view. It stays in the drawing and is still exported.`, () => actions.toggleHidden(obj));
+          : rowButton('eye', 'Hide', `Hide ${obj.name} from the view. It stays in the drawing; Export leaves hidden objects out unless you tick the box there.`, () => actions.toggleHidden(obj));
         eye.classList.add('visibility');
         li.append(
           rowButton('copy-plus', 'Duplicate', `Make a copy of ${obj.name}.`, () => actions.duplicate(obj)),

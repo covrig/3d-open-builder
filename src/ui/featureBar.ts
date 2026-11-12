@@ -4,7 +4,9 @@ import { buildGeometry, type SceneDocument, type SceneObject } from '../scene/do
 import type { Gizmo } from '../scene/gizmo';
 import type { Viewport } from '../scene/viewport';
 import { MM_PER_UNIT, settings, settingsEvents } from '../settings';
+import { friendlyError } from '../app/messages';
 import { hideHint, showHint } from './hint';
+import { parseNumber } from './numberInputs';
 import { beginTool, endTool } from './toolLock';
 import { touchFriendly } from './touchSelect';
 
@@ -18,6 +20,8 @@ export interface Field {
   min?: number;
   max?: number;
   step?: number;
+  /** For type 'text': the most characters the field takes */
+  maxLength?: number;
   unit?: string;
   options?: [string, string][];
   tip?: string;
@@ -42,18 +46,14 @@ function niceStep(rough: number): number {
 /** The step for the input's arrows, in the shown unit. */
 const shownStep = (f: Field): number | undefined =>
   f.step === undefined ? undefined : mmPerShown(f) === 1 ? f.step : niceStep(f.step / mmPerShown(f));
-/** Put a number field's attributes (min, max, step) in the shown unit. */
+/**
+ * Put a number field's arrow-key step in the shown unit. (The limits are held
+ * when the value is read, so the field has no min or max of its own.)
+ */
 function applyLimits(f: Field, input: HTMLInputElement): void {
-  const k = mmPerShown(f);
-  const set = (name: string, v: number | undefined) => {
-    if (v === undefined) input.removeAttribute(name);
-    else input.setAttribute(name, String(k === 1 ? v : Math.round((v / k) * 1e6) / 1e6));
-  };
-  set('min', f.min);
-  set('max', f.max);
   const st = shownStep(f);
-  if (st === undefined) input.removeAttribute('step');
-  else input.setAttribute('step', String(st));
+  if (st === undefined) input.removeAttribute('data-step');
+  else input.setAttribute('data-step', String(st));
 }
 
 export interface FeatureSpec<R> {
@@ -70,7 +70,7 @@ export interface FeatureSpec<R> {
   /** On open, focus the first number or text field and select its contents, so a value can be typed straight away. */
   focusFirst?: boolean;
   /** Compute the result for the current values (usually in the worker). Return null for "nothing yet". */
-  compute(values: Values): Promise<R | null>;
+  compute(values: Values, signal: AbortSignal): Promise<R | null>;
   /** Objects to show as the preview. */
   show(result: R): THREE.Object3D[];
   apply(result: R, values: Values): void;
@@ -103,6 +103,8 @@ export class FeatureBar {
   private timer: number | undefined;
   /** A compute for the latest values is running */
   private computing = false;
+  /** Aborted when a newer compute starts or the bar closes, so the worker can drop the old job */
+  private abort: AbortController | null = null;
   /** Enter was pressed while the preview was still being worked out: apply once it is ready */
   private applyAfter = false;
   private readonly el: HTMLElement;
@@ -178,7 +180,7 @@ export class FeatureBar {
     this.refresh(0);
     if (spec.focusFirst && !matchMedia('(pointer: coarse)').matches) {
       // (not on touch screens: the keyboard would cover the view)
-      const first = this.el.querySelector<HTMLInputElement>('input[type="number"], input[type="text"]');
+      const first = this.el.querySelector<HTMLInputElement>('input[data-number], input[type="text"]');
       first?.focus();
       first?.select();
     }
@@ -216,14 +218,20 @@ export class FeatureBar {
       input = s;
     } else {
       const i = document.createElement('input');
-      i.type = f.type;
-      if (f.type === 'checkbox') i.checked = Boolean(f.value);
-      else i.value = f.type === 'number' ? shown(f, Number(f.value)) : String(f.value);
-      if (f.type === 'number') applyLimits(f, i);
-      else {
-        if (f.min !== undefined) i.min = String(f.min);
-        if (f.max !== undefined) i.max = String(f.max);
-        if (f.step !== undefined) i.step = String(f.step);
+      if (f.type === 'number') {
+        // A text field that takes a decimal comma too (see numberInputs.ts).
+        i.type = 'text';
+        i.inputMode = 'decimal';
+        i.setAttribute('data-number', '');
+        i.value = shown(f, Number(f.value));
+        applyLimits(f, i);
+      } else {
+        i.type = f.type;
+        if (f.type === 'checkbox') i.checked = Boolean(f.value);
+        else {
+          i.value = String(f.value);
+          if (f.type === 'text' && f.maxLength !== undefined) i.maxLength = f.maxLength;
+        }
       }
       input = i;
     }
@@ -250,7 +258,7 @@ export class FeatureBar {
     if (f.type !== 'number') return input.value;
     // An empty or non-numeric entry keeps the previous value; others are held to the field's limits.
     const text = input.value.trim();
-    const typed = text === '' ? NaN : Number(text) * mmPerShown(f);
+    const typed = parseNumber(text) * mmPerShown(f);
     const previous = this.values[f.key];
     let v = Number.isFinite(typed) ? typed : typeof previous === 'number' ? previous : Number(f.value);
     if (f.min !== undefined) v = Math.max(f.min, v);
@@ -295,7 +303,7 @@ export class FeatureBar {
       else if (f?.type === 'number') {
         // Also while the field is focused (e.g. Pick point), but only when it shows something else.
         const text = shown(f, Number(value));
-        if (!(Number(input.value) === Number(text) && input.value.trim() !== '')) input.value = text;
+        if (parseNumber(input.value) !== Number(text)) input.value = text;
       } else if (input.value !== String(value)) {
         input.value = String(value);
         input.dispatchEvent(new Event('sync')); // a touch dropdown shows the new value
@@ -353,22 +361,26 @@ export class FeatureBar {
     const spec = this.spec;
     if (!spec) return;
     const seq = ++this.sequence;
+    this.abort?.abort();
+    const controller = new AbortController();
+    this.abort = controller;
     this.computing = true;
     this.computedValues = JSON.stringify(this.values);
     // "Working…" shows in its own box under the bar (main.ts), so this row never jumps.
     this.info.textContent = '';
     try {
-      const result = await spec.compute({ ...this.values });
+      const result = await spec.compute({ ...this.values }, controller.signal);
       if (seq !== this.sequence || spec !== this.spec) return;
       this.result = result;
       this.clearPreview();
       if (result !== null) this.group.add(...spec.show(result));
       this.info.textContent = '';
     } catch (err) {
-      if (seq !== this.sequence) return;
+      // A run that was replaced or closed (its job was cancelled) is never an error to show.
+      if (seq !== this.sequence || controller.signal.aborted) return;
       this.result = null;
       this.clearPreview();
-      this.info.textContent = err instanceof Error ? err.message : String(err);
+      this.info.textContent = friendlyError(err);
     }
     this.computing = false;
     this.viewport.invalidate();
@@ -409,6 +421,8 @@ export class FeatureBar {
     this.computing = false;
     this.applyAfter = false;
     this.sequence++;
+    this.abort?.abort();
+    this.abort = null;
     this.computedValues = '';
     this.spec = null;
     this.result = null;

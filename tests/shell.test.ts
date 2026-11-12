@@ -64,13 +64,15 @@ describe('shell: do the walls fit?', () => {
     expect(() => shell(wasm, { mesh: bolt.mesh, matrix: IDENTITY }, 1)).toThrow(/triangles/);
   }, 60_000);
 
-  it('refuses an M10 nut with 2 mm walls quickly, instead of hollowing for seconds', () => {
+  // 2.5 mm, not 2: with the finer thread (36 steps per pitch) the hex corners of an M10 nut just have
+  // room for a 2 mm hollow (the 2.5 mm check refuses at every quality).
+  it('refuses an M10 nut with 2.5 mm walls quickly, instead of hollowing for seconds', () => {
     const nut = meshDataToManifold(wasm, makeThreaded(wasm, { kind: 'nut', size: 'M10', length: 0, clearance: 0.2 }).mesh);
     const t0 = performance.now();
-    expect(wallsFit(nut, 2)).toBe(false);
+    expect(wallsFit(nut, 2.5)).toBe(false);
     // Seconds, not the ~20 s that hollowing it took (generous for slow CI machines).
     expect(performance.now() - t0).toBeLessThan(15_000);
-    expect(() => shell(wasm, { mesh: makeThreaded(wasm, { kind: 'nut', size: 'M10', length: 0, clearance: 0.2 }).mesh, matrix: IDENTITY }, 2))
+    expect(() => shell(wasm, { mesh: makeThreaded(wasm, { kind: 'nut', size: 'M10', length: 0, clearance: 0.2 }).mesh, matrix: IDENTITY }, 2.5))
       .toThrow(/walls don't fit/);
   }, 60_000);
 });

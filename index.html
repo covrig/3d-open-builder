@@ -21,10 +21,12 @@
         <div id="file-menu" class="menu" role="menu" hidden>
           <button data-action="new" role="menuitem"><i data-lucide="file-plus"></i>New drawing</button>
           <button data-action="save" role="menuitem"><i data-lucide="save"></i>Save <small>in this browser now (it also saves on its own)</small></button>
+          <button data-action="save-project" role="menuitem"><i data-lucide="save"></i>Save project to file <small>everything, to open again later</small></button>
+          <button data-action="open-project" role="menuitem"><i data-lucide="folder-open"></i>Open project <small>.3dob</small></button>
           <button data-action="open" role="menuitem"><i data-lucide="folder-open"></i>Import 3D object <small>3MF, STL, OBJ</small></button>
           <button data-action="reference" role="menuitem"><i data-lucide="image"></i>Reference picture <small>a drawing or photo to build on</small></button>
           <hr />
-          <button data-action="export-3mf" role="menuitem"><i data-lucide="download"></i>Export 3MF <small>all objects and colours</small></button>
+          <button data-action="export-3mf" role="menuitem"><i data-lucide="download"></i>Export 3MF <small>objects and colours</small></button>
           <button data-action="export-stl" role="menuitem"><i data-lucide="download"></i>Export STL <small>one mesh, no colours</small></button>
           <hr />
           <button data-action="settings" role="menuitem"><i data-lucide="settings"></i>Settings</button>
@@ -181,7 +183,7 @@
             <dt>Ctrl+click</dt><dd>Add to selection</dd>
           </dl>
         </div>
-        <div id="drop-hint" hidden>Drop a 3MF, STL or OBJ file to open it</div>
+        <div id="drop-hint" hidden>Drop a 3MF, STL, OBJ or project (.3dob) file to open it</div>
 
         <div id="split-bar" class="floating-bar top-bar" hidden>
           <span class="bar-title">Split</span>
@@ -192,13 +194,13 @@
           </div>
           <label class="bar-field" data-tip-title="Position" data-tip="Where the plane cuts. You can also drag the arrow on the plane.">
             <input type="range" id="split-range" />
-            <input type="number" id="split-value" step="any" />
+            <input type="text" inputmode="decimal" data-number id="split-value" />
             <span class="unit">mm</span>
           </label>
           <label class="bar-field" data-tip-title="Tilt" data-tip="Turn the plane around its two in-plane directions, in degrees.">
             <span class="muted">Tilt</span>
-            <input type="number" id="split-tilt-a" step="1" value="0" />
-            <input type="number" id="split-tilt-b" step="1" value="0" />
+            <input type="text" inputmode="decimal" data-number data-step="1" id="split-tilt-a" value="0" />
+            <input type="text" inputmode="decimal" data-number data-step="1" id="split-tilt-b" value="0" />
             <span class="unit">°</span>
           </label>
           <div class="segmented" role="radiogroup" aria-label="Keep">
@@ -219,7 +221,7 @@
           </label>
           <label class="bar-field" data-tip-title="Angle" data-tip="Surfaces tilting down more than this from vertical are marked. 45° suits most printers.">
             <span class="muted">Steeper than</span>
-            <input type="number" id="overhang-angle" min="10" max="80" step="5" />
+            <input type="text" inputmode="decimal" data-number id="overhang-angle" data-step="5" />
             <span class="unit">° from vertical</span>
           </label>
           <div class="bar-actions">
@@ -236,7 +238,7 @@
           </div>
           <label class="bar-field" data-tip-title="Position" data-tip="Where the view is cut. The objects are not changed.">
             <input type="range" id="section-range" />
-            <input type="number" id="section-value" step="any" />
+            <input type="text" inputmode="decimal" data-number id="section-value" />
             <span class="unit">mm</span>
           </label>
           <button data-section="flip" data-tip-title="Flip" data-tip="Show the other side of the cut."><i data-lucide="arrow-up-down"></i></button>
@@ -260,9 +262,9 @@
           <button data-mode="translate" data-tip-title="Move" data-tip="Drag one of the arrows to move the object along that direction."><i data-lucide="move"></i></button>
           <button data-mode="rotate" data-tip-title="Rotate" data-tip="Drag an arrow on one of the rings to turn the object around its centre."><i data-lucide="rotate-cw"></i></button>
           <button data-mode="scale" data-tip-title="Size" data-tip="Drag an arrow to stretch in one direction, or a corner dot to resize evenly."><i data-lucide="scan"></i></button>
-          <label class="field x" data-tip-title="X" data-tip="Left–right."><span class="field-label">X</span><input type="number" step="any" /></label>
-          <label class="field y" data-tip-title="Y" data-tip="Front–back."><span class="field-label">Y</span><input type="number" step="any" /></label>
-          <label class="field z" data-tip-title="Z" data-tip="Up–down."><span class="field-label">Z</span><input type="number" step="any" /></label>
+          <label class="field x" data-tip-title="X" data-tip="Left–right."><span class="field-label">X</span><input type="text" inputmode="decimal" data-number /></label>
+          <label class="field y" data-tip-title="Y" data-tip="Front–back."><span class="field-label">Y</span><input type="text" inputmode="decimal" data-number /></label>
+          <label class="field z" data-tip-title="Z" data-tip="Up–down."><span class="field-label">Z</span><input type="text" inputmode="decimal" data-number /></label>
           <button data-action="unit" class="unit-button" data-tip-title="Units" data-tip="Click to switch units: mm, cm, in.">mm</button>
           <button data-action="lock" class="active" data-tip-title="Keep proportions" data-tip="When locked, dragging an arrow or typing one size resizes all three sides by the same factor. Click to unlock."><i data-lucide="lock"></i></button>
           <button data-action="reset-rotation" data-tip-title="Reset rotation" data-tip="Turn the object back to line up with the plate."><i data-lucide="axis-3d"></i></button>
@@ -322,9 +324,9 @@
             <span class="muted">Opacity</span><input type="range" id="ref-opacity" min="0.05" max="1" step="0.05" />
           </label>
           <div class="ref-fields">
-            <label data-tip-title="X" data-tip="Left–right position of the picture centre (mm)."><span class="muted">X</span><input type="number" id="ref-x" step="1" /></label>
-            <label data-tip-title="Y" data-tip="Front–back position of the picture centre (mm)."><span class="muted">Y</span><input type="number" id="ref-y" step="1" /></label>
-            <label data-tip-title="Turn" data-tip="Rotation of the picture (degrees)."><span class="muted">°</span><input type="number" id="ref-angle" step="5" /></label>
+            <label data-tip-title="X" data-tip="Left–right position of the picture centre (mm)."><span class="muted">X</span><input type="text" inputmode="decimal" data-number id="ref-x" data-step="1" /></label>
+            <label data-tip-title="Y" data-tip="Front–back position of the picture centre (mm)."><span class="muted">Y</span><input type="text" inputmode="decimal" data-number id="ref-y" data-step="1" /></label>
+            <label data-tip-title="Turn" data-tip="Rotation of the picture (degrees)."><span class="muted">°</span><input type="text" inputmode="decimal" data-number id="ref-angle" data-step="5" /></label>
           </div>
           <div class="button-grid cols-3">
             <button data-action="ref-calibrate" data-tip-title="Calibrate" data-tip="Click two points with a known distance to set the real size.">Calibrate</button>
@@ -474,9 +476,11 @@
           <span class="export-field"><input type="text" id="export-name" spellcheck="false" autocomplete="off" /><span id="export-ext" class="muted"></span></span>
         </label>
         <p id="export-note" class="muted"></p>
+        <label id="export-hidden-row" hidden><input type="checkbox" id="export-hidden" /> Include hidden objects</label>
+        <p id="export-summary" class="muted"></p>
         <footer>
           <button type="submit" value="cancel" class="cancel">Cancel</button>
-          <button type="submit" value="export" class="primary">Export</button>
+          <button type="submit" value="export" id="export-go" class="primary">Export</button>
         </footer>
       </form>
     </dialog>
@@ -521,7 +525,7 @@
         <header class="check-head"><h2>Check and Repair</h2><span id="check-scope" class="muted"></span></header>
         <div class="check-controls">
           <label class="inline-field" data-tip-title="Minimum wall" data-tip="Parts of the surface thinner than this are reported; under half of it they may not print at all. Use about twice your nozzle width (0.8 mm for a 0.4 mm nozzle).">
-            Minimum wall <input type="number" id="check-min-wall" min="0.1" step="0.1" /> mm
+            Minimum wall <input type="text" inputmode="decimal" data-number data-step="0.1" id="check-min-wall" /> mm
           </label>
           <button type="button" data-action="check-again"><i data-lucide="refresh-cw"></i>Check again</button>
         </div>
@@ -562,7 +566,8 @@
       </form>
     </dialog>
 
-    <input type="file" id="file-input" accept=".3mf,.stl,.obj" multiple hidden />
+    <input type="file" id="file-input" accept=".3mf,.stl,.obj,.3dob" multiple hidden />
+    <input type="file" id="project-input" accept=".3dob" hidden />
     <input type="file" id="reference-input" accept="image/*" hidden />
     <script type="module" src="/src/main.ts"></script>
   </body>

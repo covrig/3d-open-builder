@@ -145,11 +145,11 @@ export class CombineTool {
             changed();
           } },
       ],
-      compute: async () => {
+      compute: async (_v, signal) => {
         if (targets.length === 0 || tools.length === 0) return null;
         return runOp('combine', {
           op, targets: targets.map((o) => this.doc.placed(o)), tools: tools.map((o) => this.doc.placed(o)),
-        });
+        }, { signal });
       },
       show: (pieces) => pieces.flatMap((p) => p ?? []).map((p) => previewMesh(p.mesh, p.center)),
       apply: (pieces) => this.finish(op, targets, tools, pieces),
@@ -203,7 +203,15 @@ export class CombineTool {
     if (pieces.every((p) => p !== null && p.length === 0)) {
       return this.toast(op === 'subtract' ? 'Nothing would be left: the cutters cover the whole object' : 'Nothing is left: the objects do not overlap');
     }
-    this.doc.checkpoint();
+    const { emptied, split } = this.doc.transact(() => this.replaceTargets(targets, tools, pieces));
+    const notes: string[] = [];
+    if (split) notes.push(`${split} more separate piece${split > 1 ? 's' : ''} became ${split > 1 ? 'their own objects' : 'its own object'}`);
+    if (emptied.length) notes.push(`${emptied.map((o) => o.name).join(', ')}: nothing was left, so ${emptied.length > 1 ? 'they were' : 'it was'} removed`);
+    if (notes.length) this.toast(notes.join('. '));
+  }
+
+  /** The changes of finish, as one step: returns the emptied targets and how many extra pieces became objects. */
+  private replaceTargets(targets: SceneObject[], tools: SceneObject[], pieces: (Piece[] | null)[]): { emptied: SceneObject[]; split: number } {
     const kept: SceneObject[] = [];
     const emptied: SceneObject[] = [];
     let split = 0;
@@ -212,12 +220,9 @@ export class CombineTool {
       if (result === null) return; // not touched: stays exactly as it was
       const [first, ...rest] = result;
       if (!first) return emptied.push(t);
-      this.doc.setData(t, first.mesh);
+      this.doc.replaceWithPiece(t, first);
       // A new shape gets a new name: half a sphere shouldn't stay called "Cube 1".
       t.name = this.doc.uniqueName('Object');
-      t.mesh.position.set(...first.center);
-      t.mesh.quaternion.identity();
-      t.mesh.scale.set(1, 1, 1);
       kept.push(t);
       for (const p of rest) {
         const extra = this.doc.add('Object', p.mesh, t.color);
@@ -229,8 +234,6 @@ export class CombineTool {
     this.doc.remove([...tools, ...emptied]);
     this.doc.setSelection(kept);
     this.doc.emit('transform');
-    const notes: string[] = [];
-    if (split) notes.push(`${split} more separate piece${split > 1 ? 's' : ''} became ${split > 1 ? 'their own objects' : 'its own object'}`);
-    if (emptied.length) notes.push(`${emptied.map((o) => o.name).join(', ')}: nothing was left, so ${emptied.length > 1 ? 'they were' : 'it was'} removed`);
-    if (notes.length) this.toast(notes.join('. '));
-  }}
+    return { emptied, split };
+  }
+}

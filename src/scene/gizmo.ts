@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { settings } from '../settings';
 import type { SceneDocument } from './document';
+import { isAxisAligned, stretchMatrix, stretchWorld } from './resize';
 import type { Viewport } from './viewport';
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
@@ -51,6 +52,11 @@ function doubleArrow(length: number): string {
 /** Two small triangles pointing along +x (Size handles). */
 const DOUBLE_TRIANGLE = 'M0,-6 L9,0 L0,6 Z M8,-6 L17,0 L8,6 Z';
 
+/** World boxes of the objects a drag meets: everything except the dragged meshes and hidden objects. */
+export function otherBoxes(doc: SceneDocument, dragged: THREE.Object3D[]): THREE.Box3[] {
+  return doc.objects.filter((o) => !o.hidden && !dragged.includes(o.mesh)).map((o) => doc.worldBox([o]));
+}
+
 type HandleKind = 'move' | 'rotate' | 'scale' | 'corner';
 
 interface Handle {
@@ -85,6 +91,12 @@ interface DragState {
   positions: THREE.Vector3[];
   quaternions: THREE.Quaternion[];
   scales: THREE.Vector3[];
+  /** Start matrices, for the see-through preview of turned objects while they are stretched */
+  matrices: THREE.Matrix4[];
+  /** Per target: shown by a matrix (turned object, per-axis stretch) instead of by position and scale */
+  previewed: boolean[];
+  /** The latest per-axis stretch (world factors about a world point), applied for good on release */
+  stretch?: { f: [number, number, number]; anchor: [number, number, number] };
   box: THREE.Box3;
   center: THREE.Vector3;
   screenCenter: THREE.Vector2;
@@ -413,10 +425,12 @@ export class Gizmo {
       positions: targets.map((o) => o.position.clone()),
       quaternions: targets.map((o) => o.quaternion.clone()),
       scales: targets.map((o) => o.scale.clone()),
+      matrices: targets.map((o) => new THREE.Matrix4().compose(o.position, o.quaternion, o.scale)),
+      previewed: targets.map(() => false),
       box,
       center,
       screenCenter,
-      others: this.doc.objects.filter((o) => !targets.includes(o.mesh)).map((o) => this.doc.worldBox([o])),
+      others: otherBoxes(this.doc, targets),
       u: handle.u.clone(),
       pxPerMm: handle.pxPerMm,
       checkpointed: false,
@@ -425,17 +439,57 @@ export class Gizmo {
     el.setPointerCapture(e.pointerId);
     this.svg.classList.add('dragging');
     const move = (ev: PointerEvent) => this.onDrag(this.local(ev));
-    const up = () => {
+    const end = (cancelled: boolean) => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
-      el.removeEventListener('pointercancel', up);
+      el.removeEventListener('pointercancel', cancel);
       this.svg.classList.remove('dragging');
+      const d = this.drag;
       this.drag = undefined;
+      if (d) this.finishStretch(d, cancelled);
       this.changed();
     };
+    const up = () => end(false);
+    const cancel = () => end(true);
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
-    el.addEventListener('pointercancel', up);
+    el.addEventListener('pointercancel', cancel);
+  }
+
+  /**
+   * End of a per-axis stretch. Turned objects were only shown stretched (by a
+   * matrix); on release they get their mesh changed once. When the drag is
+   * cancelled, everything goes back to how it started.
+   */
+  private finishStretch(d: DragState, cancelled: boolean): void {
+    if (!d.stretch) return;
+    d.targets.forEach((mesh, i) => {
+      if (d.previewed[i]) mesh.matrixAutoUpdate = true;
+      if (cancelled) {
+        mesh.position.copy(d.positions[i]);
+        mesh.quaternion.copy(d.quaternions[i]);
+        mesh.scale.copy(d.scales[i]);
+        mesh.updateMatrix();
+        mesh.matrixWorldNeedsUpdate = true;
+        return;
+      }
+      const obj = this.doc.byMesh(mesh);
+      if (!d.previewed[i] || !obj) return;
+      const r = stretchWorld(
+        {
+          data: obj.data,
+          position: d.positions[i].toArray() as [number, number, number],
+          quaternion: d.quaternions[i].toArray() as [number, number, number, number],
+          scale: d.scales[i].toArray() as [number, number, number],
+        },
+        d.stretch!.f,
+        d.stretch!.anchor,
+      );
+      if (r.data !== obj.data) this.doc.setData(obj, r.data);
+      mesh.position.set(...r.position);
+      mesh.quaternion.set(...r.quaternion);
+      mesh.scale.set(...r.scale);
+    });
   }
 
   private onDrag(p: THREE.Vector2): void {
@@ -563,11 +617,25 @@ export class Gizmo {
       });
       return;
     }
+    const factors: [number, number, number] = [1, 1, 1];
+    factors[a] = f;
+    const point: [number, number, number] = [0, 0, 0];
+    point[a] = anchor;
+    d.stretch = { f: factors, anchor: point };
     d.targets.forEach((o, i) => {
+      if (!isAxisAligned(d.quaternions[i])) {
+        // Turned: its own axes do not line up with the world axis, so the
+        // stretch is shown with a matrix and made real when the mouse is released.
+        d.previewed[i] = true;
+        o.matrixAutoUpdate = false;
+        o.matrix.copy(stretchMatrix(factors, point)).multiply(d.matrices[i]);
+        o.matrixWorldNeedsUpdate = true;
+        return;
+      }
       const pos = d.positions[i].clone();
       pos.setComponent(a, anchor + (pos.getComponent(a) - anchor) * f);
       o.position.copy(pos);
-      // Stretch the object's own axis that lines up best with the world axis.
+      // Lined up with the axes: stretch the object's own axis that runs along the world axis.
       const rot = new THREE.Matrix4().makeRotationFromQuaternion(d.quaternions[i]).elements;
       const k = [0, 1, 2].reduce((best, c) => (Math.abs(rot[c * 4 + a]) > Math.abs(rot[best * 4 + a]) ? c : best), 0);
       o.scale.copy(d.scales[i]).setComponent(k, d.scales[i].getComponent(k) * f);

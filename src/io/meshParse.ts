@@ -51,7 +51,8 @@ function colorOf(material: THREE.Material | THREE.Material[]): string | undefine
   return color ? `#${color.getHexString()}` : undefined;
 }
 
-export function partsFromGroup(root: THREE.Object3D, fallbackName: string): ImportedPart[] {
+/** Colours are only read from 3MF; the OBJ reader gives every part its default white. */
+export function partsFromGroup(root: THREE.Object3D, fallbackName: string, readColors = true): ImportedPart[] {
   root.updateMatrixWorld(true);
   const parts: ImportedPart[] = [];
   root.traverse((node) => {
@@ -60,14 +61,30 @@ export function partsFromGroup(root: THREE.Object3D, fallbackName: string): Impo
     parts.push({
       name: mesh.name || node.parent?.name || fallbackName,
       data: geometryToMeshData(mesh.geometry, mesh.matrixWorld),
-      color: colorOf(mesh.material),
+      color: readColors ? colorOf(mesh.material) : undefined,
     });
   });
   return parts;
 }
 
+/**
+ * Drop parts with no triangles; refuse a file with no usable geometry or with
+ * NaN / infinite coordinates (those would break every later step).
+ */
+export function checkParts(parts: ImportedPart[]): ImportedPart[] {
+  const usable = parts.filter((p) => p.data.indices.length > 0);
+  if (usable.length === 0) throw new Error('This file has no usable geometry.');
+  for (const p of usable) {
+    const pos = p.data.positions;
+    for (let i = 0; i < pos.length; i++) {
+      if (!Number.isFinite(pos[i])) throw new Error('This file contains invalid numbers (NaN or infinity) and cannot be opened.');
+    }
+  }
+  return usable;
+}
+
 /** An STL or OBJ file's parts (STL: the file's bytes; OBJ: its text). */
 export function parseMeshFile(a: { format: 'stl'; buffer: ArrayBuffer; name: string } | { format: 'obj'; text: string; name: string }): ImportedPart[] {
-  if (a.format === 'stl') return [{ name: a.name, data: geometryToMeshData(new STLLoader().parse(a.buffer), new THREE.Matrix4()) }];
-  return partsFromGroup(new OBJLoader().parse(a.text), a.name);
+  if (a.format === 'stl') return checkParts([{ name: a.name, data: geometryToMeshData(new STLLoader().parse(a.buffer), new THREE.Matrix4()) }]);
+  return checkParts(partsFromGroup(new OBJLoader().parse(a.text), a.name, false));
 }

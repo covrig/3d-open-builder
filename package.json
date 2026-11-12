@@ -5,6 +5,9 @@
   "description": "Free, open-source 3D model builder for 3D printing that runs in the browser.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

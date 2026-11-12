@@ -9,7 +9,7 @@ export function setupLookSettings(): void {
   const form = document.querySelector<HTMLFormElement>('#settings-dialog form')!;
   const input = (name: string) => form.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
 
-  // Single-key shortcuts (off by default). Hints in tooltips, menus and the shortcuts panel follow.
+  // Single-key shortcuts (on by default). Hints in tooltips, menus and the shortcuts panel follow.
   const shortcuts = input('shortcuts');
   const applyShortcuts = () => document.body.classList.toggle('shortcuts-on', settings.shortcuts);
   shortcuts.checked = settings.shortcuts;

@@ -178,8 +178,7 @@ export class MeasureTool {
     this.pending = [];
     this.candidate = null;
     if (this.doc.measurements.length === 0) return this.viewport.invalidate();
-    this.doc.checkpoint();
-    this.doc.setMeasurements([]);
+    this.doc.transact(() => this.doc.setMeasurements([]));
   }
 
   /** Where a pointer at these coordinates aims: a finger aims above itself, a mouse where it is. */
@@ -217,8 +216,9 @@ export class MeasureTool {
       if (this.kind === 'circle' && !circleThrough(w[0], w[1], w[2])) {
         this.toast('Those three points are in a line; pick points around the circle');
       } else {
-        this.doc.checkpoint();
-        this.doc.setMeasurements([...this.doc.measurements, { kind: this.kind, points: this.pending }]);
+        const kind = this.kind;
+        const points = this.pending;
+        this.doc.transact(() => this.doc.setMeasurements([...this.doc.measurements, { kind, points }]));
       }
       this.pending = [];
     }

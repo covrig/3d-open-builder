@@ -30,7 +30,7 @@ export const ISO_THREADS = {
   '1/4-20': { d: IN / 4, P: IN / 20, af: (7 / 16) * IN, k: (5 / 32) * IN, m: (7 / 32) * IN },
   '5/16-18': { d: (5 / 16) * IN, P: IN / 18, af: IN / 2, k: (13 / 64) * IN, m: (17 / 64) * IN },
   '3/8-16': { d: (3 / 8) * IN, P: IN / 16, af: (9 / 16) * IN, k: (15 / 64) * IN, m: (21 / 64) * IN },
-  '1/2-13': { d: IN / 2, P: IN / 13, af: (3 / 4) * IN, k: (11 / 32) * IN, m: (7 / 16) * IN },
+  '1/2-13': { d: IN / 2, P: IN / 13, af: (3 / 4) * IN, k: (5 / 16) * IN, m: (7 / 16) * IN },
 } as const;
 
 /** How a size is shown in menus and object names. */
@@ -42,8 +42,13 @@ export function threadLabel(size: ThreadSize): string {
 export type ThreadSize = keyof typeof ISO_THREADS;
 export type ThreadKind = 'bolt' | 'nut' | 'rod' | 'tap';
 
-const SEGMENTS = 72; // points around one turn of the cross-section
-const SLICES_PER_PITCH = 16;
+/**
+ * How finely a thread is drawn. The number is both the outline points per turn
+ * and the twist steps per pitch; keeping the two equal means every twist step
+ * turns the outline by exactly one point, so the surface follows the helix.
+ */
+export type ThreadQuality = 'draft' | 'normal' | 'fine';
+export const THREAD_STEPS: Record<ThreadQuality, number> = { draft: 24, normal: 36, fine: 48 };
 
 /**
  * Radius of the ISO basic thread profile at axial position s (0..P):
@@ -66,16 +71,16 @@ function profileRadius(s: number, P: number, major: number): number {
  * that outline with 360° of twist per pitch gives an exact helical thread.
  * `grow` enlarges the profile (clearance for nuts and tapped holes).
  */
-function threadSolid(wasm: ManifoldToplevel, d: number, P: number, length: number, grow: number): Manifold {
+function threadSolid(wasm: ManifoldToplevel, d: number, P: number, length: number, grow: number, steps: number): Manifold {
   const major = d / 2 + grow;
   const outline: [number, number][] = [];
-  for (let i = 0; i < SEGMENTS; i++) {
-    const phi = (i / SEGMENTS) * Math.PI * 2;
+  for (let i = 0; i < steps; i++) {
+    const phi = (i / steps) * Math.PI * 2;
     const r = profileRadius((phi / (Math.PI * 2)) * P, P, major);
     outline.push([r * Math.cos(phi), r * Math.sin(phi)]);
   }
   const turns = length / P;
-  return wasm.Manifold.extrude(outline, length, Math.ceil(turns * SLICES_PER_PITCH), 360 * turns);
+  return wasm.Manifold.extrude(outline, length, Math.ceil(turns * steps), 360 * turns);
 }
 
 /** Regular hexagon prism with the given across-flats width, z = 0 to height. */
@@ -143,32 +148,33 @@ export function threadStandIn(wasm: ManifoldToplevel, info: ThreadInfo): Manifol
  */
 export function makeThreaded(
   wasm: ManifoldToplevel,
-  o: { kind: ThreadKind; size: ThreadSize; length: number; clearance: number },
+  o: { kind: ThreadKind; size: ThreadSize; length: number; clearance: number; quality?: ThreadQuality },
 ): Piece {
   const t = ISO_THREADS[o.size];
+  const steps = THREAD_STEPS[o.quality ?? 'normal'];
   const owned: Manifold[] = [];
   const keep = <M extends Manifold>(m: M) => (owned.push(m), m);
   try {
     let shape: Manifold;
     switch (o.kind) {
       case 'rod':
-        shape = keep(threadSolid(wasm, t.d, t.P, o.length, 0));
+        shape = keep(threadSolid(wasm, t.d, t.P, o.length, 0, steps));
         break;
       case 'bolt': {
         // Hex head at the bottom, thread standing on it (slightly sunk in so they fuse).
         const head = keep(hexPrism(wasm, t.af, t.k));
-        const thread = keep(keep(threadSolid(wasm, t.d, t.P, o.length + 0.1, 0)).translate([0, 0, t.k - 0.1]));
+        const thread = keep(keep(threadSolid(wasm, t.d, t.P, o.length + 0.1, 0, steps)).translate([0, 0, t.k - 0.1]));
         shape = keep(head.add(thread));
         break;
       }
       case 'nut': {
         const body = keep(hexPrism(wasm, t.af, t.m));
-        const tap = keep(keep(threadSolid(wasm, t.d, t.P, t.m + 2, o.clearance)).translate([0, 0, -1]));
+        const tap = keep(keep(threadSolid(wasm, t.d, t.P, t.m + 2, o.clearance, steps)).translate([0, 0, -1]));
         shape = keep(body.subtract(tap));
         break;
       }
       case 'tap':
-        shape = keep(threadSolid(wasm, t.d, t.P, o.length, o.clearance));
+        shape = keep(threadSolid(wasm, t.d, t.P, o.length, o.clearance, steps));
         break;
     }
     const status = shape.status();

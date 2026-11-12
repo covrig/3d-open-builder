@@ -27,6 +27,19 @@ export function loadFont(name: FontName): Promise<Font> {
 
 const CURVE_STEPS = 8;
 
+/** Index of a glyph in the font; 0 is the font's "missing letter" box. (Not in the typings.) */
+const glyphIndex = (g: object): number => (g as { index: number }).index;
+
+/** The characters (each once, spaces left out) that the font has no letter for. */
+export function missingCharacters(font: Font, text: string): string[] {
+  const out = new Set<string>();
+  for (const char of text) {
+    if (/\s/.test(char)) continue;
+    if (glyphIndex(font.charToGlyph(char)) === 0) out.add(char);
+  }
+  return [...out];
+}
+
 /**
  * Outlines of `text` as polygons in millimetres, `size` mm tall (capital
  * letter height), centred on the origin, Y up. Curves are flattened into
@@ -44,6 +57,8 @@ export function textOutlines(font: Font, text: string, size: number): [number, n
   let previous: ReturnType<Font['charToGlyph']> | undefined;
   for (const char of text) {
     const glyph = font.charToGlyph(char);
+    // The font's "missing letter" box (glyph 0) is left out, and so is its space.
+    if (glyphIndex(glyph) === 0) continue;
     if (previous) penX += font.getKerningValue(previous, glyph) * scale;
     commands.push(...glyph.getPath(penX, 0, fontSize).commands);
     penX += (glyph.advanceWidth ?? 0) * scale;

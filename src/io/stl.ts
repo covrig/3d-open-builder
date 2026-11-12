@@ -1,4 +1,5 @@
 import { bakeMesh, type PlacedMesh } from '../geometry/meshData';
+import { triangleNormal } from '../geometry/triangles';
 
 /**
  * Binary STL: 80-byte header, uint32 triangle count, then 50 bytes per
@@ -16,15 +17,13 @@ export function exportStl(items: PlacedMesh[]): ArrayBuffer {
   view.setUint32(80, triCount, true);
 
   let offset = 84;
+  const n = [0, 0, 0];
   for (const { positions: p, indices } of baked) {
     for (let t = 0; t < indices.length; t += 3) {
       const a = indices[t] * 3, b = indices[t + 1] * 3, c = indices[t + 2] * 3;
-      const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-      const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const len = Math.hypot(nx, ny, nz) || 1;
-      nx /= len; ny /= len; nz /= len;
-      for (const v of [nx, ny, nz]) { view.setFloat32(offset, v, true); offset += 4; }
+      triangleNormal(p, a, b, c, n);
+      const len = Math.hypot(n[0], n[1], n[2]) || 1;
+      for (const v of [n[0] / len, n[1] / len, n[2] / len]) { view.setFloat32(offset, v, true); offset += 4; }
       for (const i of [a, b, c]) {
         view.setFloat32(offset, p[i], true);
         view.setFloat32(offset + 4, p[i + 1], true);

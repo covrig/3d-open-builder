@@ -222,11 +222,11 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
 #transform-bar .unit-button { color: var(--muted); text-decoration: underline; min-width: 52px; justify-content: center; }
 
 #split-bar { top: 12px; align-items: center; gap: 6px 8px; padding: 6px 10px; flex-wrap: wrap; }
-#split-bar input[type='number'] { text-align: center; }
+#split-bar input[data-number] { text-align: center; }
 #split-bar .bar-title { font-weight: 600; }
 #split-bar > button { border: 1px solid var(--border); padding: 6px 10px; }
 #split-bar input[type='range'] { width: 160px; accent-color: var(--accent); }
-#split-bar input[type='number'] {
+#split-bar input[data-number] {
   width: 70px;
   background: var(--bg);
   color: var(--text);
@@ -665,12 +665,13 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 #feature-bar .bar-title { font-weight: 600; }
 #feature-bar .feature-fields { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: center; }
 #feature-bar .bar-field { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-#feature-bar input[type='number'], #feature-bar input[type='text'], #feature-bar select {
+#feature-bar input[data-number], #feature-bar input[type='text'], #feature-bar select {
   width: 56px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px;
   padding: 3px 4px; font: inherit; text-align: center; text-align-last: center;
 }
 #feature-bar select { width: auto; max-width: 150px; }
 #feature-bar input[type='text'] { width: 120px; }
+#feature-bar input[data-number] { width: 56px; } /* number fields are text fields too */
 /* A field that matters most (the text to emboss) gets its own line, with Apply and Cancel beside it. */
 #feature-bar .feature-main { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: center; }
 #feature-bar .bar-field.prominent input {
@@ -985,7 +986,7 @@ svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
   background: var(--bg); border: 1px solid var(--border-strong); border-radius: 6px; padding: 7px 9px;
 }
 .export-field input:focus { outline: none; border-color: var(--accent); }
-#export-note { margin: 0; }
+#export-note, #export-summary { margin: 0; }
 /* --- Toolbar dropdowns: the arrow sits beside the icon (outside the button's
    width), so every button is as wide as its label, menus or not. --- */
 .toolbar button .icon-row { position: relative; display: inline-flex; }
@@ -1041,7 +1042,7 @@ svg.gizmo .corner-touch { r: 16px; }
 #section-bar .bar-title, #overhang-bar .bar-title { font-weight: 600; }
 #section-bar .bar-field, #overhang-bar .bar-field { display: flex; align-items: center; gap: 6px; }
 #section-bar input[type='range'] { width: 160px; accent-color: var(--accent); }
-#section-bar input[type='number'] {
+#section-bar input[data-number] {
   width: 70px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px; font: inherit; text-align: center;
 }
 #section-bar .unit, #overhang-bar .unit { color: var(--muted); }
@@ -1065,7 +1066,7 @@ body.tool-locked.view-tool-only #measure-panel button { opacity: 1; cursor: poin
 body.tool-locked .toolbar button.tool-current {
   opacity: 1; background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent);
 }
-#overhang-bar input[type='number'] {
+#overhang-bar input[data-number] {
   width: 60px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px; font: inherit; text-align: center;
 }
 #overhang-bar input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }

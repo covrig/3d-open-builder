@@ -1,3 +1,4 @@
+import { isFatalEngineError } from './engineError';
 import { loadManifold } from './loadManifold';
 import { MeshStore, Missing } from './meshTransfer';
 import { ops, type OpName } from './ops';
@@ -38,6 +39,10 @@ scope.onmessage = async (e) => {
     scope.postMessage({ id, result }, [...buffers(result, store.buffers())]);
   } catch (err) {
     if (err instanceof Missing) scope.postMessage({ id, missing: true });
-    else scope.postMessage({ id, error: err instanceof Error ? err.message : String(err) });
+    else {
+      // A broken engine (e.g. out of memory) can't be used again: tell the page to replace this worker.
+      const error = err instanceof Error ? err.message : String(err);
+      scope.postMessage(isFatalEngineError(err) ? { id, error, fatal: true } : { id, error });
+    }
   }
 };

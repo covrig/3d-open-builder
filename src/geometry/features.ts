@@ -5,6 +5,7 @@ import { manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh 
 import { recenter } from './meshOps';
 import { solidPieces } from './pieces';
 import { threadStandIn, type ThreadInfo } from './threads';
+import { triangleNormal } from './triangles';
 
 const add = (a: V3, b: V3, s = 1): V3 => [a[0] + b[0] * s, a[1] + b[1] * s, a[2] + b[2] * s];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -52,6 +53,102 @@ function withCleanup<T>(build: (keep: <M extends Manifold>(m: M) => M) => T): T 
   }
 }
 
+/** How far along each face a chamfer or fillet of this size reaches from the edge. */
+const legOf = (kind: 'chamfer' | 'fillet', size: number, angle: number) =>
+  kind === 'chamfer' ? size : size / Math.tan(angle / 2);
+
+/** Two directions for counting how often a ray crosses the surface (neither lies along a model axis). */
+const RAY_A: V3 = [0.2673, 0.5345, 0.8018];
+const RAY_B: V3 = [-0.6362, 0.2712, -0.7239];
+
+/**
+ * Is the point inside the solid? Counts the surface crossings on a ray out of
+ * the solid's bounding box: odd means inside. Two rays must agree; if they do
+ * not (one ran along an edge), a tiny cube at the point decides.
+ */
+function pointInside(wasm: ManifoldToplevel, solid: Manifold, p: V3, reach: number): boolean {
+  const crossings = (d: V3) => solid.rayCast(p, [p[0] + d[0] * reach, p[1] + d[1] * reach, p[2] + d[2] * reach]).length;
+  const a = crossings(RAY_A) % 2 === 1;
+  const b = crossings(RAY_B) % 2 === 1;
+  if (a === b) return a;
+  const cube = wasm.Manifold.cube([2e-4, 2e-4, 2e-4], true).translate(p);
+  const hit = solid.intersect(cube);
+  const inside = hit.volume() > 0;
+  cube.delete();
+  hit.delete();
+  return inside;
+}
+
+const TOO_LARGE = 'This size is too large for the faces next to the picked edge. Use a smaller one.';
+
+/**
+ * Refuse sizes the geometry cannot take, before anything is cut. Each picked
+ * edge's two faces must still be there at the tool's reach (checked at the
+ * middle and a quarter in from both ends: a face that narrows to an acute
+ * corner may be shorter than the reach right at the end), and the tools of two edges must not cut into
+ * the same material (opposite edges of a face whose legs add up to more than
+ * the face is wide). Legs that exactly meet are fine.
+ */
+function checkSizes(
+  wasm: ManifoldToplevel,
+  keep: <M extends Manifold>(m: M) => M,
+  solid: Manifold,
+  segments: EdgeSegment[],
+  frames: ReturnType<typeof edgeFrame>[],
+  legs: (number | null)[],
+  key: (p: V3) => string,
+): void {
+  const box = solid.boundingBox();
+  const reach = 2 * Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]) + 1;
+  const inside = (p: V3) => pointInside(wasm, solid, p, reach);
+  const near = 1e-3;
+  segments.forEach((s, i) => {
+    const leg = legs[i];
+    if (leg === null) return;
+    const f = frames[i];
+    for (const at of [0.5, 0.25, 0.75]) {
+      const p = add(s.a, f.u, f.length * at);
+      for (const [t, n] of [[f.t1, s.n1], [f.t2, s.n2]] as [V3, V3][]) {
+        const along = add(p, t, leg * 0.999);
+        const ok = s.convex
+          ? inside(add(along, n, -near))
+          : !inside(add(along, n, near)) && inside(add(along, n, -near));
+        if (!ok) throw new Error(TOO_LARGE);
+      }
+    }
+  });
+  // The plain tools (no offsets), compared two at a time when their boxes overlap.
+  const plain = segments.map((s, i) => {
+    const leg = legs[i];
+    if (leg === null) return null;
+    const f = frames[i];
+    const pts: Vec3[] = [s.a, add(s.a, f.t1, leg), add(s.a, f.t2, leg), s.b, add(s.b, f.t1, leg), add(s.b, f.t2, leg)];
+    const lo = [0, 1, 2].map((k) => Math.min(...pts.map((q) => q[k])));
+    const hi = [0, 1, 2].map((k) => Math.max(...pts.map((q) => q[k])));
+    return { pts, lo, hi, hull: null as Manifold | null, volume: 0 };
+  });
+  const hullOf = (t: NonNullable<(typeof plain)[number]>) => {
+    if (!t.hull) {
+      t.hull = keep(wasm.Manifold.hull(t.pts));
+      t.volume = t.hull.volume();
+    }
+    return t.hull;
+  };
+  for (let i = 0; i < segments.length; i++) {
+    const ti = plain[i];
+    if (!ti) continue;
+    for (let j = i + 1; j < segments.length; j++) {
+      const tj = plain[j];
+      if (!tj) continue;
+      const ends = [key(segments[i].a), key(segments[i].b)];
+      if (ends.includes(key(segments[j].a)) || ends.includes(key(segments[j].b))) continue;
+      if ([0, 1, 2].some((k) => ti.lo[k] >= tj.hi[k] - 1e-9 || tj.lo[k] >= ti.hi[k] - 1e-9)) continue;
+      const both = keep(hullOf(ti).intersect(hullOf(tj)));
+      if (both.volume() > 1e-6 * Math.min(ti.volume, tj.volume)) throw new Error(TOO_LARGE);
+    }
+  }
+}
+
 /**
  * Chamfer or fillet along edges (world space). For each edge a tool shape is
  * built in the corner between its two faces: a triangular prism (chamfer) or
@@ -88,11 +185,14 @@ export function edgeTreatment(
 
   return withCleanup((keep) => {
     const solid = keep(meshDataToManifold(wasm, item.mesh, item.matrix));
+    checkSizes(wasm, keep, solid, segments, frames, frames.map((f) => (f.angle < 0.35 || f.angle > Math.PI - 0.05 ? null : legOf(kind, size, f.angle))), key);
     const remove: Manifold[] = [];
     const fill: Manifold[] = [];
     /** Each segment's tool corners (null where the fold is too sharp for a tool) */
     const prisms: (Vec3[] | null)[] = segments.map(() => null);
     const segmentTools: (Manifold | null)[] = segments.map(() => null);
+    /** How far each segment's tool runs past its end points (a, b) */
+    const reachPast: { a: number; b: number }[] = segments.map(() => ({ a: 0, b: 0 }));
     /** Fillet edges handled as part of a chain */
     const inChain = new Set<number>();
     segments.forEach((s, i) => {
@@ -100,7 +200,7 @@ export function edgeTreatment(
       // Very sharp folds would need enormously long tools (the source of spikes); skip them.
       if (f.angle < 0.35 || f.angle > Math.PI - 0.05) return;
       // Distance from the edge along each face where the chamfer/fillet ends.
-      const leg = kind === 'chamfer' ? size : size / Math.tan(f.angle / 2);
+      const leg = legOf(kind, size, f.angle);
       // On curves, overlap the neighbouring piece slightly so no slivers remain;
       // at corners and ends stop exactly at the end point.
       const overlap = Math.min(f.length * 0.08, size * 0.5) + 1e-3;
@@ -137,6 +237,7 @@ export function edgeTreatment(
       const pts: Vec3[] = [ridge(a), onFace1(a), onFace2(a), ridge(b), onFace1(b), onFace2(b)];
       let tool = keep(Manifold.hull(pts));
       prisms[i] = pts;
+      reachPast[i] = { a: extA, b: extB };
       if (kind === 'fillet') {
         const bisector = norm(add(f.t1, f.t2));
         const centre = add(a, bisector, size / Math.sin(f.angle / 2));
@@ -164,6 +265,18 @@ export function edgeTreatment(
       const u = frames[k].u;
       return key(segments[k].a) === key(p) ? u : [-u[0], -u[1], -u[2]];
     };
+    /**
+     * The three corners of segment k's tool where it meets the joint at `p`:
+     * its end cross-section brought back to p, then pushed a little into its
+     * own segment so the joint overlaps the tool. (The hull of whole tools
+     * would span two segments and cut inside the chamfer line on a curve.)
+     */
+    const jointEnd = (k: number, p: V3, other: number): Vec3[] => {
+      const atA = key(segments[k].a) === key(p);
+      const d = into(k, p);
+      const push = (atA ? reachPast[k].a : reachPast[k].b) + Math.min(frames[k].length, frames[other].length) * 0.05;
+      return (atA ? prisms[k]!.slice(0, 3) : prisms[k]!.slice(3, 6)).map((q) => add(q, d, push) as Vec3);
+    };
     for (const [pk, list] of at) {
       if (list.length !== 2) continue;
       const [i, j] = list;
@@ -171,7 +284,7 @@ export function edgeTreatment(
       const shared = key(segments[i].a) === pk ? segments[i].a : segments[i].b;
       if (!continues(i, shared)) continue;
       parent[find(i)] = find(j);
-      const hull = keep(Manifold.hull([...prisms[i]!, ...prisms[j]!]));
+      const hull = keep(Manifold.hull([...jointEnd(i, shared, j), ...jointEnd(j, shared, i)]));
       jointTools.set(i, [...(jointTools.get(i) ?? []), hull]);
       if (kind === 'fillet') {
         const ai = axisPoint(i, shared), aj = axisPoint(j, shared);
@@ -392,6 +505,52 @@ function faceTooComplex(item: PlacedMesh, frame: Mat4, polygons: [number, number
 }
 
 /**
+ * The separate parts of `under` (the letters' material, all surfaces), cut down
+ * to those on the clicked face. Each part's extent along the face normal is
+ * measured from the clicked point (z = 0 in the face frame). The part nearest
+ * z = 0 starts a cluster; parts whose extent lies within one `depth` of the
+ * cluster join it, until none does. Letters that step up or down along a
+ * curved face chain together; a second surface further away does not join.
+ */
+function lettersOnClickedFace(
+  keep: <M extends Manifold>(m: M) => M,
+  under: Manifold,
+  frame: Mat4,
+  depth: number,
+): Manifold[] {
+  const parts = under.decompose().map(keep);
+  const spans = parts.map((part) => {
+    const g = part.getMesh();
+    const stride = g.numProp;
+    let lo = Infinity, hi = -Infinity;
+    for (let v = 0; v < g.vertProperties.length; v += stride) {
+      const z = (g.vertProperties[v] - frame[12]) * frame[8]
+        + (g.vertProperties[v + 1] - frame[13]) * frame[9]
+        + (g.vertProperties[v + 2] - frame[14]) * frame[10];
+      lo = Math.min(lo, z);
+      hi = Math.max(hi, z);
+    }
+    return { lo, hi };
+  }).map((s, i) => ({ ...s, i })).filter((s) => s.lo <= s.hi);
+  if (spans.length === 0) return [];
+  const gap = (s: { lo: number; hi: number }) => (s.lo > 0 ? s.lo : s.hi < 0 ? -s.hi : 0);
+  const first = spans.reduce((best, s) => (gap(s) < gap(best) ? s : best));
+  const used = new Set([first.i]);
+  let lo = first.lo, hi = first.hi;
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const s of spans) {
+      if (used.has(s.i) || s.lo > hi + depth + 1e-6 || s.hi < lo - depth - 1e-6) continue;
+      used.add(s.i);
+      lo = Math.min(lo, s.lo);
+      hi = Math.max(hi, s.hi);
+      grew = true;
+    }
+  }
+  return parts.filter((_, i) => used.has(i));
+}
+
+/**
  * Raised (emboss) or recessed (deboss) text on a face. `polygons` are the
  * glyph outlines in the face plane (mm, centred on the clicked point);
  * `frame` places that plane: its Z axis is the face normal.
@@ -419,25 +578,30 @@ export function textOnFace(
       // the surface and the surface pushed out (emboss) or in (deboss) by the
       // depth. Over the text's width a curved surface drops away by at most
       // that width, so columns reaching that far each way always meet it.
-      const xs = o.polygons.flat();
-      const reach = Math.hypot(
-        Math.max(...xs.map((p) => Math.abs(p[0]))),
-        Math.max(...xs.map((p) => Math.abs(p[1]))),
-      ) + o.depth + 1;
+      // (A loop, not Math.max(...points): long texts have too many points to spread.)
+      let reachX = 0, reachY = 0;
+      for (const poly of o.polygons) for (const p of poly) {
+        reachX = Math.max(reachX, Math.abs(p[0]));
+        reachY = Math.max(reachY, Math.abs(p[1]));
+      }
+      const reach = Math.hypot(reachX, reachY) + o.depth + 1;
       const columns = keep(keep(keep(Manifold.extrude(section, 2 * reach)).translate([0, 0, -reach])).transform(o.frame));
       const n: Vec3 = [o.frame[8], o.frame[9], o.frame[10]];
       const shift = (d: number) => keep(solid.translate([n[0] * d, n[1] * d, n[2] * d]));
+      const emboss = o.mode === 'emboss';
+      // What the letters are made of, under all of the columns: material within
+      // `depth` outside the surface (emboss), or within it (deboss).
+      const under = emboss
+        ? keep(keep(columns.intersect(shift(o.depth))).subtract(solid))
+        : keep(solid.intersect(keep(columns.subtract(shift(-o.depth)))));
+      // Other surfaces under the columns (a floor inside a hollow, a lower
+      // plate) get a copy too: keep only the letters on the clicked surface.
+      const kept = lettersOnClickedFace(keep, under, o.frame, o.depth);
+      if (kept.length === 0) throw new Error('The text does not reach this face. Click the face again.');
       // The letters' own solid (world space) is returned too, so the tool can
       // draw it in a strong colour while the text is being placed.
-      const lettersOf = (m: Manifold) => manifoldToMeshData(m);
-      if (o.mode === 'emboss') {
-        // Material within `depth` outside the surface, under the letters.
-        const letters = keep(columns.intersect(shift(o.depth)));
-        return { ...toPiece(keep(solid.add(letters))), letters: lettersOf(letters) };
-      }
-      // Remove the material within `depth` inside the surface, under the letters.
-      const cut = keep(columns.subtract(shift(-o.depth)));
-      return { ...toPiece(keep(solid.subtract(cut))), letters: lettersOf(keep(solid.intersect(cut))) };
+      const letters = keep(Manifold.compose(kept));
+      return { ...toPiece(keep(emboss ? solid.add(letters) : solid.subtract(letters))), letters: manifoldToMeshData(letters) };
     } finally {
       section.delete();
     }
@@ -466,6 +630,7 @@ export function wallsFit(m: Manifold, t: number): boolean {
   const size = [0, 1, 2].map((k) => box.max[k] - box.min[k]);
   if (Math.min(...size) <= 2 * t) return false;
   const reach = Math.hypot(...size) + 1;
+  const n = [0, 0, 0];
   const g = m.getMesh();
   const p = g.vertProperties, idx = g.triVerts, np = g.numProp;
   const triCount = idx.length / 3;
@@ -488,12 +653,10 @@ export function wallsFit(m: Manifold, t: number): boolean {
     const step = Math.max(1, Math.floor(triCount / samples));
     for (let i = 0; i < triCount; i += step) {
       const [a, b, c] = [idx[i * 3] * np, idx[i * 3 + 1] * np, idx[i * 3 + 2] * np];
-      const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-      const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const len = Math.hypot(nx, ny, nz);
+      triangleNormal(p, a, b, c, n);
+      const len = Math.hypot(n[0], n[1], n[2]);
       if (len === 0) continue;
-      nx /= len; ny /= len; nz /= len;
+      const nx = n[0] / len, ny = n[1] / len, nz = n[2] / len;
       const cx = (p[a] + p[b] + p[c]) / 3, cy = (p[a + 1] + p[b + 1] + p[c + 1]) / 3, cz = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
       const start: Vec3 = [cx - nx * 1e-3, cy - ny * 1e-3, cz - nz * 1e-3];
       const chord = firstHit(start, [cx - nx * reach, cy - ny * reach, cz - nz * reach], 1e-3);
@@ -513,9 +676,40 @@ export function wallsFit(m: Manifold, t: number): boolean {
  */
 export const SHELL_MAX_TRIANGLES = 20_000;
 
+/** Segments of the ball that shrinks the object for Shell */
+const BALL_SEGMENTS = 16;
+let ballInnerRadius: number | null = null;
+
+/**
+ * How far the flat sides of a unit ball with BALL_SEGMENTS segments are from its
+ * centre: the smallest distance from the centre to the plane of any triangle.
+ * The ball is a polyhedron with its corners on the sphere, so between corners
+ * it is smaller than a true sphere by up to this much.
+ */
+function ballInner(wasm: ManifoldToplevel): number {
+  if (ballInnerRadius === null) {
+    const ball = wasm.Manifold.sphere(1, BALL_SEGMENTS);
+    const g = ball.getMesh();
+    const p = g.vertProperties, stride = g.numProp, idx = g.triVerts;
+    let least = Infinity;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * stride, b = idx[t + 1] * stride, c = idx[t + 2] * stride;
+      const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+      const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const len = Math.hypot(nx, ny, nz);
+      if (len < 1e-12) continue;
+      least = Math.min(least, Math.abs(p[a] * nx + p[a + 1] * ny + p[a + 2] * nz) / len);
+    }
+    ball.delete();
+    ballInnerRadius = least;
+  }
+  return ballInnerRadius;
+}
+
 /**
  * Hollow the object, keeping walls `thickness` thick. The inside surface is
- * the object shrunk by a sphere of that radius (an exact inward offset).
+ * the object shrunk by a ball that holds a sphere of that radius.
  * For a bolt, nut or rod (`thread` given), the inside comes from a plain
  * stand-in without the thread (see threadStandIn): just as safe for the wall
  * thickness, and far quicker. The outside keeps every detail either way.
@@ -534,8 +728,10 @@ export function shell(wasm: ManifoldToplevel, item: PlacedMesh, thickness: numbe
     if (!wallsFit(inside, thickness)) {
       throw new Error(`The walls don't fit: no part of this object is thicker than ${fmtMm(2 * thickness)} (two walls of ${fmtMm(thickness)}), so nothing would be hollowed. Use thinner walls.`);
     }
-    // A modest sphere keeps this fast; corners inside come out slightly faceted.
-    const ball = keep(Manifold.sphere(thickness, 16));
+    // A modest ball keeps this fast; corners inside come out slightly faceted. It is
+    // scaled up until its flat sides are `thickness` from its centre, so it holds a
+    // true sphere of that radius: no wall comes out thinner than asked (some a little thicker).
+    const ball = keep(Manifold.sphere(thickness / ballInner(wasm), BALL_SEGMENTS));
     const inner = keep(inside.minkowskiDifference(ball));
     if (inner.isEmpty()) throw new Error('The walls are thicker than the object; use a smaller thickness');
     return toPiece(keep(solid.subtract(inner)));

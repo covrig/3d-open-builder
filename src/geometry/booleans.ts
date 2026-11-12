@@ -17,6 +17,20 @@ export type BooleanResult =
       volume: number;
     };
 
+/** Mean thickness (mm) below which a leftover is dust: a cut that should leave nothing but is a hair off leaves such films. */
+const DUST_THICKNESS = 1e-3;
+
+/**
+ * True when the solid is nothing but dust: no positive volume, or a mean
+ * thickness (2 * volume / surface area) under a micrometre. A real small object
+ * is far above that: a cube of 0.01 mm has a mean thickness of 0.0033 mm.
+ */
+function isDust(m: Manifold): boolean {
+  const volume = m.volume();
+  if (!(volume > 0)) return true;
+  return (2 * volume) / m.surfaceArea() < DUST_THICKNESS;
+}
+
 /**
  * Combine meshes in world space. For 'difference', the first item is kept and
  * all following items are cut away from it.
@@ -46,7 +60,7 @@ export function booleanOp(
     }
     const status = result.status();
     if (status !== 'NoError') throw new Error(`Operation failed (${status})`);
-    if (result.isEmpty()) return { empty: true };
+    if (result.isEmpty() || isDust(result)) return { empty: true };
 
     const { min, max } = result.boundingBox();
     const center: [number, number, number] = [
@@ -72,7 +86,8 @@ export type RoleOp = 'subtract' | 'intersect';
  * keeps only the part of every target inside the tools. For each target, the
  * separate pieces that are left (a cut can split an object in two), largest
  * first; none where nothing is left; null where a subtract's tools don't go
- * into it at all (it stays exactly as it is).
+ * into it at all, or only by a film of dust (it stays exactly as it is). Dust
+ * left by a cut that is a hair off is dropped, not made into objects.
  */
 export function combineWithTools(
   wasm: ManifoldToplevel,
@@ -87,14 +102,17 @@ export function combineWithTools(
     const cutter = keep(wasm.Manifold.union(tools.map((t) => keep(meshDataToManifold(wasm, t.mesh, t.matrix)))));
     return targets.map((t) => {
       const solid = keep(meshDataToManifold(wasm, t.mesh, t.matrix));
-      if (op === 'subtract' && keep(solid.intersect(cutter)).isEmpty()) return null;
+      if (op === 'subtract') {
+        const removed = keep(solid.intersect(cutter));
+        if (removed.isEmpty() || isDust(removed)) return null;
+      }
       const result = keep(op === 'subtract' ? solid.subtract(cutter) : solid.intersect(cutter));
       const status = result.status();
       if (status !== 'NoError') throw new Error(`Operation failed (${status})`);
       // Separate pieces become separate objects; a hollow stays inside its piece.
       const parts = solidPieces(result);
-      owned.push(...parts);
-      return parts.map(toPiece).filter((p): p is Piece => p !== null);
+      for (const part of parts) owned.push(part);
+      return parts.filter((part) => !isDust(part)).map(toPiece).filter((p): p is Piece => p !== null);
     });
   } finally {
     for (const m of owned) m.delete();

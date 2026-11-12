@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { bakeMesh, type MeshData } from '../geometry/meshData';
 import { lineMirrorNormal, mirrorMesh, recenter, reflectMesh, reflectPoint, type Vec3 } from '../geometry/meshOps';
-import type { SceneDocument, SceneObject } from '../scene/document';
+import type { ObjectState, SceneDocument, SceneObject } from '../scene/document';
 import { units } from './arrange';
 import { FeatureBar, previewMesh } from './featureBar';
 import { showHint } from './hint';
@@ -9,6 +9,25 @@ import { mirrorPlaneAt } from './mirrorDistance';
 import { SnapPicker } from './snapPicker';
 
 const AXIS_NAMES = ['X', 'Y', 'Z'] as const;
+
+/**
+ * The states of the mirrored copies made by "Keep the original". Their mesh is
+ * baked, so a copy is no longer a plain thread: it keeps no thread info
+ * (Shell would otherwise cut through it from a stand-in that is not mirrored).
+ */
+export function mirroredCopyStates(
+  doc: Pick<SceneDocument, 'capture'>,
+  flipped: { obj: SceneObject; mesh: MeshData; position: THREE.Vector3 }[],
+): ObjectState[] {
+  return flipped.map((f) => ({
+    ...doc.capture(f.obj),
+    data: f.mesh,
+    thread: undefined,
+    position: f.position.toArray() as [number, number, number],
+    quaternion: [0, 0, 0, 1] as [number, number, number, number],
+    scale: [1, 1, 1] as [number, number, number],
+  }));
+}
 
 /**
  * Mirror and Rotate 90° (Edit group of the toolbar). Both open the parameter
@@ -195,26 +214,15 @@ export class TurnTools {
       apply: (r) => {
         if (!r.ready) return this.toast('Mirror: pick the points first');
         if (!r.flipped.every((f) => doc.objects.includes(f.obj))) return;
-        doc.checkpoint();
-        if (r.keep) {
-          // Mirrored copies; copies of a group form a group of their own.
-          const states = r.flipped.map((f) => ({
-            ...doc.capture(f.obj),
-            data: f.mesh,
-            position: f.position.toArray() as [number, number, number],
-            quaternion: [0, 0, 0, 1] as [number, number, number, number],
-            scale: [1, 1, 1] as [number, number, number],
-          }));
-          doc.setSelection(doc.addCopies(states));
-          return;
-        }
-        for (const f of r.flipped) {
-          doc.setData(f.obj, f.mesh);
-          f.obj.mesh.position.copy(f.position);
-          f.obj.mesh.quaternion.identity();
-          f.obj.mesh.scale.set(1, 1, 1);
-        }
-        doc.emit('transform');
+        doc.transact(() => {
+          if (r.keep) {
+            // Mirrored copies; copies of a group form a group of their own.
+            doc.setSelection(doc.addCopies(mirroredCopyStates(doc, r.flipped)));
+            return;
+          }
+          for (const f of r.flipped) doc.replaceWithPiece(f.obj, { mesh: f.mesh, center: f.position.toArray() });
+          doc.emit('transform');
+        });
       },
       onClose: () => {
         picker.stop();
@@ -319,12 +327,13 @@ export class TurnTools {
       }),
       apply: (placed) => {
         if (turns.length === 0 || !objs.every((o) => doc.objects.includes(o))) return;
-        doc.checkpoint();
-        objs.forEach((o, i) => {
-          o.mesh.position.copy(placed[i].position);
-          o.mesh.quaternion.copy(placed[i].quaternion);
+        doc.transact(() => {
+          objs.forEach((o, i) => {
+            o.mesh.position.copy(placed[i].position);
+            o.mesh.quaternion.copy(placed[i].quaternion);
+          });
+          doc.emit('transform');
         });
-        doc.emit('transform');
       },
       onClose: () => ghost.dispose(),
     });

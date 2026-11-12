@@ -12,6 +12,7 @@ export const LOCKED = [
   '.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"])',
   '#file-menu [data-action="new"]',
   '#file-menu [data-action="open"]',
+  '#file-menu [data-action="open-project"]',
   '#file-menu [data-action="reference"]',
   '#sidebar [data-panel="arrange"] button',
   '#sidebar [data-panel="objects"] button',

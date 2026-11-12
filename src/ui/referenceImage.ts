@@ -4,6 +4,7 @@ import type { SceneDocument } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
 import type { FeatureBar } from './featureBar';
 import { viewClicks } from './interaction';
+import { parseNumber } from './numberInputs';
 
 const GRID = 24; // subdivisions; fine enough that the perspective warp looks straight
 const START_WIDTH = 200; // mm, initial picture width
@@ -114,8 +115,7 @@ export class ReferenceImage {
     const s = START_WIDTH / img.width;
     // Centred on the origin, picture "up" pointing along +Y (v runs down the picture).
     const h: H = [s, 0, (-img.width / 2) * s, 0, -s, (img.height / 2) * s, 0, 0, 1];
-    this.doc.checkpoint();
-    this.set({ dataUrl, width: img.width, height: img.height, h, opacity: 0.6 });
+    this.doc.transact(() => this.set({ dataUrl, width: img.width, height: img.height, h, opacity: 0.6 }));
     this.toast('Picture added. Use Calibrate to set its real size.');
   }
 
@@ -133,19 +133,22 @@ export class ReferenceImage {
    * usually taken on the picture, go with it.
    */
   private remove(): void {
-    this.doc.checkpoint();
-    this.set(null);
-    const onObjects = this.doc.measurements.filter((m) => m.points.every((p) => p.objectId !== undefined));
-    if (onObjects.length !== this.doc.measurements.length) this.doc.setMeasurements(onObjects);
+    this.doc.transact(() => {
+      this.set(null);
+      const onObjects = this.doc.measurements.filter((m) => m.points.every((p) => p.objectId !== undefined));
+      if (onObjects.length !== this.doc.measurements.length) this.doc.setMeasurements(onObjects);
+    });
   }
 
   /** Change the mapping (undoable). */
   private setMapping(h: H): void {
     if (!this.data) return;
-    this.doc.checkpoint();
-    this.data = { ...this.data, h };
-    this.rebuild();
-    this.changed();
+    const data = this.data;
+    this.doc.transact(() => {
+      this.data = { ...data, h };
+      this.rebuild();
+      this.changed();
+    });
   }
 
   private set(data: ReferenceData | null): void {
@@ -240,8 +243,13 @@ export class ReferenceImage {
     const d = this.data;
     if (!d) return;
     const [cx, cy] = this.centre();
-    const dx = Number(this.fields.x.value) - cx, dy = Number(this.fields.y.value) - cy;
-    const turn = THREE.MathUtils.degToRad(Number(this.fields.angle.value) - this.angle());
+    // An empty or non-numeric field keeps the picture where it is on that axis.
+    const typed = (input: HTMLInputElement, now: number) => {
+      const v = parseNumber(input.value);
+      return Number.isFinite(v) ? v : now;
+    };
+    const dx = typed(this.fields.x, cx) - cx, dy = typed(this.fields.y, cy) - cy;
+    const turn = THREE.MathUtils.degToRad(typed(this.fields.angle, this.angle()) - this.angle());
     this.setMapping(multiplyH(similarityH(1, turn, cx, cy, dx, dy), d.h));
   }
 

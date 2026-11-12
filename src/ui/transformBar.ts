@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { Gizmo, GizmoMode } from '../scene/gizmo';
 import type { SceneDocument, SceneObject } from '../scene/document';
 import { fromUnit, settings, settingsEvents, toUnit, UNITS, updateSettings, updateUi } from '../settings';
+import { stretchWorld } from '../scene/resize';
 import { setIcon } from './icons';
+import { parseNumber } from './numberInputs';
 
 const AXES = ['x', 'y', 'z'] as const;
 
@@ -52,7 +54,7 @@ export class TransformBar {
       this.modeButtons[m].addEventListener('click', () => this.setMode(m));
     }
     this.inputs.forEach((input, i) => {
-      input.addEventListener('change', () => this.applyInput(i, Number(input.value)));
+      input.addEventListener('change', () => this.applyInput(i, parseNumber(input.value)));
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') input.blur();
       });
@@ -74,9 +76,10 @@ export class TransformBar {
     this.resetButton.addEventListener('click', () => {
       const objs = this.doc.selection;
       if (objs.length === 0) return;
-      this.doc.checkpoint();
-      for (const o of objs) o.mesh.rotation.set(0, 0, 0);
-      this.doc.emit('transform');
+      this.doc.transact(() => {
+        for (const o of objs) o.mesh.rotation.set(0, 0, 0);
+        this.doc.emit('transform');
+      });
     });
 
     doc.addEventListener('selection', () => this.refresh());
@@ -103,18 +106,17 @@ export class TransformBar {
     return this.doc.selection;
   }
 
-  /** Size along an object's own axes (one object) or of the selection's box (several), in mm. */
+  /**
+   * Size of the selection's box along the world axes, in mm: the same X, Y and
+   * Z as the rulers, the Details panel and the Size handles, also for a turned
+   * object (a typed size stretches along these axes, see scaleBy).
+   */
   private size(): THREE.Vector3 {
-    const objs = this.targets;
-    if (objs.length === 1) {
-      const m = objs[0].mesh;
-      const s = m.geometry.boundingBox!.getSize(new THREE.Vector3());
-      return s.set(s.x * Math.abs(m.scale.x), s.y * Math.abs(m.scale.y), s.z * Math.abs(m.scale.z));
-    }
-    return this.doc.worldBox(objs).getSize(new THREE.Vector3());
+    return this.doc.worldBox(this.targets).getSize(new THREE.Vector3());
   }
 
-  private refresh(): void {
+  /** Show the current values; `force` also rewrites the field being edited (an entry that was refused). */
+  private refresh(force = false): void {
     const objs = this.targets;
     const rotateMany = this.mode === 'rotate' && objs.length > 1;
     this.el.classList.toggle('disabled', objs.length === 0);
@@ -140,48 +142,57 @@ export class TransformBar {
       }
     }
     this.inputs.forEach((input, i) => {
-      if (document.activeElement !== input) input.value = fmt(values[i]);
+      if (force || document.activeElement !== input) input.value = fmt(values[i]);
     });
   }
 
   private applyInput(axisIndex: number, value: number): void {
     const objs = this.targets;
-    if (objs.length === 0 || !Number.isFinite(value)) return this.refresh();
+    if (objs.length === 0 || !Number.isFinite(value)) return this.refresh(true);
     const axis = AXES[axisIndex];
-    if (this.mode === 'scale' && value <= 0) return this.refresh();
-    this.doc.checkpoint();
-    switch (this.mode) {
-      case 'translate': {
-        const current = objs.length === 1
-          ? objs[0].mesh.position[axis]
-          : this.doc.worldBox(objs).getCenter(new THREE.Vector3())[axis];
-        const delta = fromUnit(value) - current;
-        for (const o of objs) o.mesh.position[axis] += delta;
-        break;
+    if (this.mode === 'scale' && value <= 0) return this.refresh(true);
+    this.doc.transact(() => {
+      switch (this.mode) {
+        case 'translate': {
+          const current = objs.length === 1
+            ? objs[0].mesh.position[axis]
+            : this.doc.worldBox(objs).getCenter(new THREE.Vector3())[axis];
+          const delta = fromUnit(value) - current;
+          for (const o of objs) o.mesh.position[axis] += delta;
+          break;
+        }
+        case 'rotate':
+          objs[0].mesh.rotation[axis] = THREE.MathUtils.degToRad(value);
+          break;
+        case 'scale': {
+          const factor = fromUnit(value) / this.size()[axis];
+          this.scaleBy(objs, this.keepProportions ? new THREE.Vector3().setScalar(factor) : new THREE.Vector3(1, 1, 1).setComponent(axisIndex, factor));
+          break;
+        }
       }
-      case 'rotate':
-        objs[0].mesh.rotation[axis] = THREE.MathUtils.degToRad(value);
-        break;
-      case 'scale': {
-        const factor = fromUnit(value) / this.size()[axis];
-        this.scaleBy(objs, this.keepProportions ? new THREE.Vector3().setScalar(factor) : new THREE.Vector3(1, 1, 1).setComponent(axisIndex, factor));
-        break;
-      }
-    }
-    this.doc.emit('transform');
+      this.doc.emit('transform');
+    });
   }
 
-  /** Scale objects by per-axis factors around the selection's centre (bottom stays put). */
+  /**
+   * Stretch objects by per-axis factors along the world axes. The bottom of the
+   * selection stays where it is and the middle of its footprint stays put.
+   * A turned object gets its mesh changed (see stretchWorld).
+   */
   private scaleBy(objs: SceneObject[], f: THREE.Vector3): void {
-    if (objs.length === 1) {
-      objs[0].mesh.scale.multiply(f);
-      return;
-    }
     const box = this.doc.worldBox(objs);
-    const anchor = box.getCenter(new THREE.Vector3()).setZ(box.min.z);
+    const anchor: [number, number, number] = [(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.min.z];
     for (const o of objs) {
-      o.mesh.position.sub(anchor).multiply(f).add(anchor);
-      o.mesh.scale.multiply(f);
+      const m = o.mesh;
+      const r = stretchWorld(
+        { data: o.data, position: m.position.toArray(), quaternion: m.quaternion.toArray() as [number, number, number, number], scale: m.scale.toArray() },
+        [f.x, f.y, f.z],
+        anchor,
+      );
+      if (r.data !== o.data) this.doc.setData(o, r.data);
+      m.position.set(...r.position);
+      m.quaternion.set(...r.quaternion);
+      m.scale.set(...r.scale);
     }
   }
 }

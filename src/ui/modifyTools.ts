@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
 import type { EdgeSegment, EdgeSet, V3 } from '../geometry/edges';
 import { centredRowMoves } from '../geometry/features';
+import { friendlyError } from '../app/messages';
 import { CANCELLED, runOp } from '../geometry/workerClient';
 import type { ObjectState, SceneDocument, SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
@@ -62,7 +63,7 @@ export class ModifyTools {
     try {
       set = await runOp('findEdges', { item: this.doc.placed(obj) });
     } catch (e) {
-      if (e instanceof Error && e.message !== CANCELLED) this.toast(e.message);
+      if (e instanceof Error && e.message !== CANCELLED) this.toast(friendlyError(e));
       return undefined;
     }
     const sel = this.doc.selection;
@@ -73,12 +74,10 @@ export class ModifyTools {
   /** Replace an object's geometry with a computed piece (undoable). */
   private replace(obj: SceneObject, piece: Piece): void {
     if (!this.doc.objects.includes(obj)) return;
-    this.doc.checkpoint();
-    this.doc.setData(obj, piece.mesh);
-    obj.mesh.position.set(...piece.center);
-    obj.mesh.quaternion.identity();
-    obj.mesh.scale.set(1, 1, 1);
-    this.doc.emit('transform');
+    this.doc.transact(() => {
+      this.doc.replaceWithPiece(obj, piece);
+      this.doc.emit('transform');
+    });
   }
 
   private pieceSpec(obj: SceneObject) {
@@ -109,10 +108,10 @@ export class ModifyTools {
       ],
       ...this.pieceSpec(obj),
 
-      compute: async (v) => {
+      compute: async (v, signal) => {
         const segments = this.edges.segments;
         if (segments.length === 0) return null;
-        return runOp('edgeTreatment', { item: this.doc.placed(obj), segments, kind, size: Number(v.size) });
+        return runOp('edgeTreatment', { item: this.doc.placed(obj), segments, kind, size: Number(v.size) }, { signal });
       },
       onClose: () => this.edges.stop(),
     });
@@ -138,7 +137,7 @@ export class ModifyTools {
         { key: 'position', label: 'Position', type: 'number', value: 50, min: 0, max: 100, step: 5, unit: '%', tip: 'Where along the corner the brace sits (0 = one end, 100 = the other).' },
       ],
       ...this.pieceSpec(obj),
-      compute: async (v) => {
+      compute: async (v, signal) => {
         const edge = this.edges.segments.find(inside);
         if (!edge) return null;
         // Position runs along the whole picked corner, not one segment.
@@ -150,7 +149,7 @@ export class ModifyTools {
         return runOp('gusset', {
           item: this.doc.placed(obj), edge: seg,
           leg1: Number(v.leg1), leg2: Number(v.leg2), thickness: Number(v.thickness), position: Math.min(1, within),
-        });
+        }, { signal });
       },
       onClose: () => this.edges.stop(),
     });
@@ -169,7 +168,7 @@ export class ModifyTools {
         { key: 'thickness', label: 'Wall', type: 'number', value: 2, min: 0.2, step: 0.2, unit: 'mm', tip: 'Thickness of the walls that remain.' },
       ],
       ...this.pieceSpec(obj),
-      compute: (v) => runOp('shell', { item: this.doc.placed(obj), thickness: Number(v.thickness), thread: obj.thread }),
+      compute: (v, signal) => runOp('shell', { item: this.doc.placed(obj), thickness: Number(v.thickness), thread: obj.thread }, { signal }),
     });
   }
 
@@ -286,15 +285,18 @@ export class ModifyTools {
       },
       apply: ({ moved, copies }, v) => {
         if (!objs.every((o) => this.doc.objects.includes(o))) return;
-        this.doc.checkpoint();
-        // Centred on a point: the original moves to the first place of the row.
-        if (moved) {
-          objs.forEach((o, i) => o.mesh.position.fromArray(moved[i].position));
-          this.doc.emit('transform');
-        }
-        const added = copies.flatMap((states) => this.doc.addCopies(states));
-        const all = [...objs, ...added];
-        if (!v.merge) return this.doc.setSelection(all);
+        const all = this.doc.transact(() => {
+          // Centred on a point: the original moves to the first place of the row.
+          if (moved) {
+            objs.forEach((o, i) => o.mesh.position.fromArray(moved[i].position));
+            this.doc.emit('transform');
+          }
+          const added = copies.flatMap((states) => this.doc.addCopies(states));
+          const everything = [...objs, ...added];
+          if (!v.merge) this.doc.setSelection(everything);
+          return everything;
+        });
+        if (!v.merge) return;
         void this.heavy(all, () => runOp('union', { items: all.map((o) => this.doc.placed(o)) }), (r) => {
           if (r.empty) return;
           const color = objs[0].color;
