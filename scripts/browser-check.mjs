@@ -51,6 +51,11 @@ const ONLY_BROWSERS = process.env.BROWSERS ? process.env.BROWSERS.split(',') : n
 function launch(b, extra = {}) {
   // Software WebGL so the 3D view renders without a GPU in headless mode.
   const chromeArgs = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+  // The checks are written for a mouse. A machine with no pointing device at all (the CI
+  // runner) reports "no hover, no fine pointer", and the page then shows its touch layout.
+  // Tell the browser it has a mouse: hover type 2 = can hover, pointer type 4 = fine.
+  const pointer = { none: [1, 1], coarse: [1, 2] }[process.env.CHECK_POINTER] ?? [2, 4];
+  chromeArgs.push(`--blink-settings=primaryHoverType=${pointer[0]},availableHoverTypes=${pointer[0]},primaryPointerType=${pointer[1]},availablePointerTypes=${pointer[1]}`);
   // The CI container has no sandbox for the browser.
   if (process.platform === 'linux') chromeArgs.push('--no-sandbox');
   return puppeteer.launch({
@@ -147,6 +152,12 @@ async function runChecks(b) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.setViewport({ width: 1400, height: 900 });
+  // CHECK_CPU_SLOWDOWN=6 makes Chrome or Edge that many times slower, to find checks that
+  // only pass on a fast machine (the CI runner is slow).
+  if (process.env.CHECK_CPU_SLOWDOWN && b.browser === 'chrome') {
+    const cdp = await page.createCDPSession();
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CHECK_CPU_SLOWDOWN) });
+  }
 
   await check('Loads without errors', async () => {
     await page.goto(URL, { waitUntil: 'load' });
@@ -576,21 +587,28 @@ async function runChecks(b) {
     const id = await page.evaluate(() => window.app.doc.objects[0].id);
     await select([id]);
     await page.click('[data-mode="rotate"]');
+    // The handles are placed when the view is next drawn: wait for that (a slow machine needs longer).
+    await page.waitForFunction(() => /rotate\(/.test(document.querySelector('svg.gizmo .handle')?.getAttribute('transform') ?? ''), { timeout: 10000 });
     await sleep(200);
+    // Where the first ring's arrow is and which way it points on screen: the drag goes along it,
+    // so it turns the object from any viewing angle and window size.
     const h = await page.$eval('svg.gizmo .handle', (e) => {
       const r = e.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      const deg = Number(/rotate\(([-0-9.]+)\)/.exec(e.getAttribute('transform'))[1]);
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2, dx: Math.cos((deg * Math.PI) / 180), dy: Math.sin((deg * Math.PI) / 180), deg };
     });
     const q0 = await page.evaluate(() => window.app.doc.objects[0].mesh.quaternion.toArray());
     await page.mouse.move(h.x, h.y);
     await page.mouse.down();
     const t0 = Date.now();
-    for (let i = 1; i <= 20; i++) await page.mouse.move(h.x + i * 6, h.y + i * 4);
+    for (let i = 1; i <= 20; i++) await page.mouse.move(h.x + h.dx * i * 7, h.y + h.dy * i * 7);
     const ms = (Date.now() - t0) / 20;
     await page.mouse.up();
     const q1 = await page.evaluate(() => window.app.doc.objects[0].mesh.quaternion.toArray());
     await page.click('[data-mode="translate"]');
-    if (q0.every((v, i) => Math.abs(v - q1[i]) < 1e-6)) throw new Error('object did not turn');
+    if (q0.every((v, i) => Math.abs(v - q1[i]) < 1e-6)) {
+      throw new Error(`object did not turn (arrow at ${h.x.toFixed(0)}, ${h.y.toFixed(0)}, pointing ${h.deg}°)`);
+    }
     // The same drag with the Move arrow, for comparison (includes drawing the view).
     await sleep(200);
     const m = await page.$eval('svg.gizmo .handle', (e) => {
@@ -1418,7 +1436,9 @@ async function runChecks(b) {
       for (const c of controls) {
         await page.mouse.move(0, 0);
         await page.hover(c);
-        await sleep(300);
+        // The tooltip comes after a short delay (longer on a slow machine).
+        for (let i = 0; i < 30 && !(await visible(page, '#tooltip')); i++) await sleep(100);
+        await sleep(100);
         const r = await page.evaluate(() => {
           const tip = document.querySelector('#tooltip');
           if (tip.hidden) return 'no tooltip';
@@ -1463,14 +1483,24 @@ async function runChecks(b) {
   });
   await check('Portrait layout keeps sidebar beside the view', async () => {
     await page.setViewport({ width: 820, height: 1180 });
-    await sleep(1000); // the side panel slides into its drawer place
-    const r = await page.evaluate(() => {
+    const measure = () => page.evaluate(() => {
       const v = document.querySelector('#viewport').getBoundingClientRect();
       const s = document.querySelector('#sidebar').getBoundingClientRect();
       const t = document.querySelector('.toolbar').getBoundingClientRect();
-      return { vRight: v.right, vTop: v.top, sLeft: s.left, sTop: s.top, tBottom: t.bottom, scroll: document.documentElement.scrollWidth > innerWidth };
+      return {
+        vRight: v.right, vTop: v.top, sLeft: s.left, sTop: s.top, tBottom: t.bottom,
+        scroll: document.documentElement.scrollWidth > innerWidth, classes: document.body.className, width: innerWidth,
+      };
     });
-    if (r.sLeft < r.vRight - 1) throw new Error('sidebar moved under the view');
+    // The side panel slides into its drawer place: wait until it has arrived (a slow machine needs longer).
+    let r = await measure();
+    for (let i = 0; i < 50 && r.sLeft < r.vRight - 1; i++) {
+      await sleep(200);
+      r = await measure();
+    }
+    if (r.sLeft < r.vRight - 1) {
+      throw new Error(`sidebar moved under the view (panel left ${r.sLeft.toFixed(0)}, view right ${r.vRight.toFixed(0)}, window ${r.width}, body "${r.classes}")`);
+    }
     if (r.tBottom > r.vTop + 1) throw new Error('toolbar is not above the view');
     if (r.scroll) throw new Error('page scrolls sideways');
     await page.screenshot({ path: `${SHOTS}/${b.name}-portrait.png` });
