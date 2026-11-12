@@ -75,7 +75,7 @@ describe('shell walls are never thinner than asked', () => {
     const { thinnest } = hollow(createPrimitive(wasm, 'sphere', { diameter: 40 }), IDENTITY, 2);
     expect(thinnest).toBeGreaterThanOrEqual(2 * 0.995);
     expect(thinnest).toBeLessThan(2 * 1.1);
-  });
+  }, 120_000); // heavy: hollowing a sphere took 10 s on the CI machine
 
   it('axis-aligned cube: walls at least 2 mm, cavity within 2 % of the exact 36 mm cube', () => {
     // The ball is made bigger than the sphere it must hold, so the 6 flat walls come out a

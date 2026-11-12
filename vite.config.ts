@@ -20,5 +20,8 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    // The CI machine is several times slower than a desktop: geometry tests that take
+    // 2 s here have taken over 10 s there, past Vitest's 5 s default.
+    testTimeout: 30_000,
   },
 });

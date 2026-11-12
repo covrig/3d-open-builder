@@ -42,5 +42,5 @@ describe('long text', () => {
       error = e;
     }
     expect(error instanceof RangeError).toBe(false);
-  }, 60_000);
+  }, 300_000); // heavy: took 59 s on the CI machine (20 s on a desktop)
 });
