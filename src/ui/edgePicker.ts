@@ -7,6 +7,8 @@ import type { Viewport } from '../scene/viewport';
 import { viewClicks } from './interaction';
 
 const PICK_PX = 10;
+/** Only this many of the nearest candidates get the (costly) hidden-behind-a-surface test. */
+const OCCLUSION_TESTS = 6;
 const IDLE = 0x8a9bb0;
 const UNAVAILABLE = 0x4a5563;
 /** Picked edges: blue, which stands out on the orange preview of the result. */
@@ -124,22 +126,34 @@ export class EdgePicker {
     if (!this.set) return -1;
     const r = this.viewport.element.getBoundingClientRect();
     const p = new THREE.Vector2(e.clientX - r.left, e.clientY - r.top);
-    let best = -1;
-    let bestD = PICK_PX;
+    const found: { d: number; chain: number; at: THREE.Vector3 }[] = [];
     const a3 = new THREE.Vector3(), b3 = new THREE.Vector3();
     this.set.segments.forEach((s, i) => {
       if (!this.filter(s)) return;
-      const a = this.viewport.project(a3.set(...s.a));
-      const b = this.viewport.project(b3.set(...s.b));
+      a3.set(...s.a);
+      b3.set(...s.b);
+      const a = this.viewport.project(a3);
+      const b = this.viewport.project(b3);
       const ab = b.clone().sub(a);
       const t = THREE.MathUtils.clamp(p.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(), 1e-9), 0, 1);
       const d = a.clone().addScaledVector(ab, t).distanceTo(p);
-      if (d < bestD) {
-        bestD = d;
-        best = this.chainOf[i];
-      }
+      // The 3D point is only worked out for candidates in range.
+      if (d < PICK_PX) found.push({ d, chain: this.chainOf[i], at: a3.clone().lerp(b3, t) });
     });
-    return best;
+    found.sort((x, y) => x.d - y.d);
+    // The edges are drawn through the object, but one seen through it must not be picked.
+    for (const f of found.slice(0, OCCLUSION_TESTS)) if (this.visible(f.at)) return f.chain;
+    return -1;
+  }
+
+  /** Is this point seen from the camera, with no surface in front of it? */
+  private visible(point: THREE.Vector3): boolean {
+    const origin = this.viewport.camera.position;
+    const dist = origin.distanceTo(point);
+    const ray = new THREE.Raycaster(origin, point.clone().sub(origin).normalize());
+    const hit = this.viewport.hitsOn(ray, true)[0];
+    // An edge lies on the surface itself, so a hit at its own depth doesn't hide it.
+    return !hit || hit.distance >= dist - Math.max(0.05, dist * 0.002);
   }
 
   /** Put these chains' segments into a fat line (hidden when there are none). */

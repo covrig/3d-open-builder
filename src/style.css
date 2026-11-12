@@ -111,7 +111,8 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
   min-width: 0;
   overflow: hidden;
 }
-#viewport canvas { display: block; }
+/* The browser must not scroll or zoom the page under a finger on the view (the controls set it too; this holds before they connect). */
+#viewport canvas { display: block; touch-action: none; }
 #viewport.picking canvas { cursor: crosshair; }
 
 #loading {
@@ -573,6 +574,24 @@ svg.measure circle.hover { fill: none; stroke: var(--text); stroke-width: 1.5; o
 .m-label .m-main { font-size: 12px; font-weight: 400; }
 .m-label .m-sub { font-size: 12px; color: #b4bfcc; padding: 0 4px 3px; white-space: pre; }
 #viewport.measuring canvas { cursor: crosshair; }
+/* Touch: zoomed copy of the view above the aiming finger (drawn by the measure tool). */
+.measure-loupe {
+  position: absolute;
+  width: 104px;
+  height: 104px;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+  background: var(--bg);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+.measure-loupe[hidden] { display: none; }
+.measure-loupe canvas { display: block; width: 100%; height: 100%; }
+/* Over a snapped point the marker drawn by the tool is the cursor. */
+#viewport.measuring.snapped:not(.orbiting):not(.panning):not(.zooming-in):not(.zooming-out) canvas { cursor: none; }
 /* With Edges on, edge lines use the text colour; measurements switch to a warm colour. */
 body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d; opacity: 1; }
 :root[data-theme='light'] body.edges-on svg.measure line,
@@ -813,6 +832,10 @@ dialog footer { gap: 8px; }
 }
 @media (pointer: coarse) {
   .mouse-only { display: none !important; }
+  /* No keyboard on touch screens: no shortcut panel or key hints. */
+  #shortcuts-panel, kbd.key-hint, .single-key { display: none !important; }
+  /* Only the Show/Hide panel icons are orange (not its button). */
+  #view-corner .panel-open svg, #view-corner .panel-close svg { color: #f08c00; }
 }
 
 /* Phones: Menu, Add object, Undo, Redo, Copy, Cut and Paste always share the
@@ -857,6 +880,29 @@ dialog footer { gap: 8px; }
   z-index: 1;
 }
 #brand-overlay svg { width: 22px; height: 22px; color: var(--accent); }
+
+/* Where the mouse points: X, Y, Z in the page unit, bottom left. Mouse only (see .mouse-only). */
+#cursor-xyz {
+  position: absolute;
+  left: 12px;
+  bottom: 16px;
+  z-index: 1;
+  font: 12px/1.35 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
+}
+#cursor-xyz .x::before, #cursor-xyz .y::before, #cursor-xyz .z::before { font-weight: 700; margin-right: 0.6ch; }
+#cursor-xyz .x::before { content: 'X'; color: var(--x); }
+#cursor-xyz .y::before { content: 'Y'; color: var(--y); }
+#cursor-xyz .z::before { content: 'Z'; color: var(--z); }
+/* The shortcuts panel moves up out of the readout's way; the transform bar needs the room on narrow views. */
+#shortcuts-panel { bottom: 76px; } /* leaves the corner to the readout */
+@media (max-width: 800px) {
+  #cursor-xyz { display: none !important; }
+}
 
 /* Messages, hints and the tool bars at the top: centred, text centred. */
 #messages { max-width: none; }
@@ -999,6 +1045,29 @@ svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
 body:not(.shortcuts-on) .key-hint, body:not(.shortcuts-on) .single-key { display: none; }
 body.shortcuts-on .shortcuts-off { display: none; }
 #shortcuts-panel .shortcuts-off { margin: 0 0 6px; max-width: 220px; }
+
+/* Accent colour presets (teal = the defaults at the top). Light values keep white text on button.primary readable. */
+:root[data-accent='blue'] { --accent: #5b9dff; --accent-soft: rgba(91, 157, 255, 0.18); }
+:root[data-accent='purple'] { --accent: #a78bfa; --accent-soft: rgba(167, 139, 250, 0.18); }
+:root[data-accent='pink'] { --accent: #f472b6; --accent-soft: rgba(244, 114, 182, 0.18); }
+:root[data-accent='orange'] { --accent: #f59e42; --accent-soft: rgba(245, 158, 66, 0.18); }
+:root[data-theme='light'][data-accent='blue'] { --accent: #1d5fd1; --accent-soft: rgba(29, 95, 209, 0.12); }
+:root[data-theme='light'][data-accent='purple'] { --accent: #7c3aed; --accent-soft: rgba(124, 58, 237, 0.12); }
+:root[data-theme='light'][data-accent='pink'] { --accent: #c2255c; --accent-soft: rgba(194, 37, 92, 0.12); }
+:root[data-theme='light'][data-accent='orange'] { --accent: #b35900; --accent-soft: rgba(179, 89, 0, 0.12); }
+.accent-swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+.accent-swatch { position: relative; display: inline-block; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
+.accent-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.accent-swatch:has(input:checked) { outline: 2px solid var(--text); outline-offset: 2px; }
+.accent-swatch:has(input:focus-visible) { outline: 2px dashed var(--text); outline-offset: 2px; }
+.accent-swatch[data-accent='teal'] { background: #2fb3a1; }
+.accent-swatch[data-accent='blue'] { background: #5b9dff; }
+.accent-swatch[data-accent='purple'] { background: #a78bfa; }
+.accent-swatch[data-accent='pink'] { background: #f472b6; }
+.accent-swatch[data-accent='orange'] { background: #f59e42; }
+/* Custom: shows the picked colour; the colour input lies over the radio, invisible, so a click opens the picker. */
+.accent-swatch[data-accent='custom'] { background: var(--swatch, #2fb3a1); border-radius: 6px; } /* square: sets it apart from the presets */
+.accent-swatch input[type='color'] { padding: 0; border: 0; }
 
 /* Settings: slider rows. */
 /* The name, the slider and its value on one line; they share the room, and wrap only on very narrow screens. */

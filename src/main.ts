@@ -37,6 +37,7 @@ import { MeasureTool } from './ui/measureTool';
 import { CheckTools } from './ui/checkTools';
 import { FeatureBar } from './ui/featureBar';
 import { viewClicks } from './ui/interaction';
+import { setupCursorReadout } from './ui/cursorReadout';
 import { ModifyTools } from './ui/modifyTools';
 import { PartsTools } from './ui/partsTools';
 import { TurnTools } from './ui/turnTools';
@@ -278,7 +279,7 @@ on('[data-action="split"]', () => {
 
 // Extrude down: a level plane, and below it the shape at the plane down to the plate.
 new ExtrudeTool(viewport, doc, featureBar, toast);
-// Mirror and Rotate 90° open the parameter bar: see TurnTools.
+// Mirror and Rotate open the parameter bar: see TurnTools.
 
 // --- Working… and Cancel -------------------------------------------------------
 
@@ -488,7 +489,11 @@ let down: { x: number; y: number } | undefined;
 canvas.addEventListener('pointerdown', (e) => {
   down = { x: e.clientX, y: e.clientY };
 });
+const cursorReadout = setupCursorReadout(viewport);
+canvas.addEventListener('pointerleave', () => cursorReadout.hide());
 canvas.addEventListener('pointermove', (e) => {
+  // Before the tools' early return, so the readout works inside them too.
+  if (e.pointerType !== 'touch') cursorReadout.update(e.clientX, e.clientY);
   if (viewClicks.onMove) return viewClicks.onMove(e);
   measure.move(e.clientX, e.clientY);
 });

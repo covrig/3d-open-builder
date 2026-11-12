@@ -5,12 +5,19 @@ export type Unit = 'mm' | 'cm' | 'in';
 export type ImportUnit = Unit;
 export const IMPORT_UNITS: Record<ImportUnit, number> = { mm: 1, cm: 10, in: 25.4 };
 export type ThemeChoice = 'system' | 'light' | 'dark';
+/** Accent colour presets (teal is the stylesheet's own look); colours live in style.css */
+export const ACCENTS = ['teal', 'blue', 'purple', 'pink', 'orange', 'custom'] as const;
+export type AccentId = (typeof ACCENTS)[number];
 
 export interface UiState {
   view: { xray: boolean; wireframe: boolean; edges: boolean; grid: boolean; shadows: boolean; rulers: boolean };
   measure: { snap: boolean; dotted: boolean; deltas: boolean };
   keepProportions: boolean;
   shortcuts: boolean;
+  /** Accent colour preset id */
+  accent: AccentId;
+  /** The colour picked for the Custom accent (#rrggbb) */
+  accentCustom: string;
   /** Copy, Cut and Paste left out of the toolbar (mouse and keyboard screens only) */
   hideClipboard: boolean;
   /** Thinnest wall (mm) the print check accepts */
@@ -76,6 +83,8 @@ const DEFAULTS: Settings = {
     measure: { snap: true, dotted: true, deltas: false },
     keepProportions: true,
     shortcuts: true,
+    accent: 'teal',
+    accentCustom: '#2fb3a1',
     hideClipboard: false,
     minWall: 0.8,
     panelOrder: PANELS.map(([id]) => id),
@@ -121,7 +130,9 @@ function load(): Settings {
   s.ui.panelOrder = [...new Set([...saved, ...known])];
   s.ui.hiddenPanels = Array.isArray(s.ui.hiddenPanels) ? s.ui.hiddenPanels.filter((id) => known.includes(id)) : [];
   if (typeof s.ui.importUnit !== 'string' || !Object.hasOwn(IMPORT_UNITS, s.ui.importUnit)) s.ui.importUnit = 'mm';
-  const clamp01 = (v: unknown, fallback: number) => (typeof v === 'number' && v >= 0 && v <= 1 ? v : fallback);
+  if (!(ACCENTS as readonly string[]).includes(s.ui.accent)) s.ui.accent = 'teal';
+  if (typeof s.ui.accentCustom !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(s.ui.accentCustom)) s.ui.accentCustom = DEFAULTS.ui.accentCustom;
+  const clamp01 =(v: unknown, fallback: number) => (typeof v === 'number' && v >= 0 && v <= 1 ? v : fallback);
   const inRange = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : fallback);
   s.ui.plateOpacity = clamp01(s.ui.plateOpacity, DEFAULTS.ui.plateOpacity);
   s.ui.minWall = inRange(s.ui.minWall, 0.1, 10, DEFAULTS.ui.minWall);
@@ -170,10 +181,53 @@ export function updateUi(change: (ui: UiState) => void): void {
 export const toUnit = (mm: number) => mm / MM_PER_UNIT[settings.unit];
 export const fromUnit = (v: number) => v * MM_PER_UNIT[settings.unit];
 
-const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+const systemDark =window.matchMedia('(prefers-color-scheme: dark)');
 
 export function isDarkTheme(): boolean {
   return settings.theme === 'dark' || (settings.theme === 'system' && systemDark.matches);
+}
+
+/** WCAG relative luminance of #rrggbb. */
+function luminance(rgb: number[]): number {
+  const [r, g, b] = rgb.map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+const contrast = (a: number[], b: number[]) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+/** Mix toward black (t < 0) or white (t > 0): keeps the hue, changes only the lightness. */
+const shade = (rgb: number[], t: number) => rgb.map((v) => Math.round(t < 0 ? v * (1 + t) : v + (255 - v) * t));
+
+/**
+ * Put the accent on the page: a preset is a data-accent attribute (teal = none,
+ * the stylesheet default); Custom sets the variables inline. The picked colour is
+ * adjusted for the theme, or white text on primary buttons (light) or the dark
+ * panels (dark) would be hard to read; the swatch keeps the colour as picked.
+ */
+export function applyAccent(): void {
+  const root = document.documentElement;
+  if (settings.ui.accent === 'teal') delete root.dataset.accent;
+  else root.dataset.accent = settings.ui.accent;
+  if (settings.ui.accent !== 'custom') {
+    root.style.removeProperty('--accent');
+    root.style.removeProperty('--accent-soft');
+    return;
+  }
+  const hex = settings.ui.accentCustom;
+  let rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const dark = isDarkTheme();
+  // Light: darken until white text reaches 4.5:1. Dark: lighten until 3:1 against the #151b23 background.
+  for (let i = 0; i < 40; i++) {
+    const ok = dark ? contrast(rgb, [0x15, 0x1b, 0x23]) >= 3 : contrast(rgb, [255, 255, 255]) >= 4.5;
+    if (ok) break;
+    rgb = shade(rgb, dark ? 0.05 : -0.05);
+  }
+  root.style.setProperty('--accent', `rgb(${rgb.join(', ')})`);
+  root.style.setProperty('--accent-soft', `rgba(${rgb.join(', ')}, ${dark ? 0.16 : 0.12})`);
 }
 
 /** Apply the theme to the page and call back whenever it changes. */
@@ -181,9 +235,11 @@ export function watchTheme(onChange: (dark: boolean) => void): void {
   const apply = () => {
     const dark = isDarkTheme();
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    applyAccent(); // the Custom accent is adjusted per theme
     onChange(dark);
   };
   systemDark.addEventListener('change', apply);
   settingsEvents.addEventListener('change', apply);
   apply();
 }
+applyAccent(); // at load, before the first paint (needs systemDark, so it sits down here)

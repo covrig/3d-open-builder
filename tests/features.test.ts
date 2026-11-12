@@ -190,7 +190,7 @@ describe('chamfer and fillet at an inside corner of a rim', () => {
     return v > 0.02 ** 3 * 0.99;
   };
 
-  it('chamfers the rim ending at the reflex corner without cutting into the top face', () => {
+  it('chamfers the rim ending at the reflex corner with a clean mitre and without cutting into the top face', () => {
     const mesh = notched();
     const { rimX, rimY } = rims(mesh);
     expect(rimX.length).toBeGreaterThan(0);
@@ -200,9 +200,10 @@ describe('chamfer and fillet at an inside corner of a rim', () => {
     expect(before - volume(one.mesh)).toBeCloseTo(2 * 2 / 2 * 23, 0);
     const both = edgeTreatment(wasm, { mesh, matrix: IDENTITY }, [...rimX, ...rimY], 'chamfer', 2);
     const removed = before - volume(both.mesh);
-    expect(removed).toBeLessThanOrEqual(72 + 0.5);
-    expect(removed).toBeGreaterThan(72 - 0.5);
-    // The top face past the corner (x < 7, y > 3) is untouched.
+    // Two strips of 2 x 2 x 23 / 2 each plus the mitre wedge where they meet (8/3).
+    expect(removed).toBeLessThanOrEqual(72 + 8 / 3 + 0.5);
+    expect(removed).toBeGreaterThan(72 + 8 / 3 - 0.5);
+    // The top face past the corner (x < 7, y > 3) is untouched except for the mitre square beside the corner.
     const world = (m: MeshData, c: [number, number, number]) => {
       const pm = { positions: m.positions.slice(), indices: m.indices };
       for (let i = 0; i < pm.positions.length; i += 3) for (let k = 0; k < 3; k++) pm.positions[i + k] += c[k];
@@ -211,7 +212,8 @@ describe('chamfer and fillet at an inside corner of a rim', () => {
     const res = world(both.mesh, both.center);
     expect(contains(res, [5, 5, 39.9])).toBe(true);
     expect(contains(res, [-10, 10, 39.9])).toBe(true);
-    expect(contains(res, [6.5, 3.5, 39.9])).toBe(true);
+    // On the mitre line itself the chamfer reaches down: no notch is left standing.
+    expect(contains(res, [6.5, 3.5, 39.9])).toBe(false);
   });
 
   it('rounds both rims into a valid solid without overcutting', () => {

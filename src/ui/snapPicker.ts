@@ -130,6 +130,8 @@ export class SnapPicker {
   section: { active: boolean; plane: THREE.Plane; cutOf(obj: SceneObject): SectionCut | null } | null = null;
   /** Lines where overlapping objects cross (world space), also snap targets. */
   overlaps: { readonly features: { segs: Float32Array; corners: Float32Array; mids: Float32Array } | null } | null = null;
+  /** How close (px) to a corner, edge or face centre a pick snaps; a finger is less exact than a mouse, so callers can raise it. */
+  snapPx = SNAP_PX;
   /** Whether snapping is on at all */
   snapOn: () => boolean = () => true;
   /** Existing measuring points that can be snapped to */
@@ -353,7 +355,7 @@ export class SnapPicker {
     // the points of the triangles: on a sphere or a cylinder's rim those are
     // only where the smooth surface was divided up.)
     let best: THREE.Vector3 | null = null;
-    let bestPx = SNAP_PX;
+    let bestPx = this.snapPx;
     /**
      * The one corner (or middle) within snapping distance of the cursor. Where
      * several crowd together, as along a thread whose crests zigzag across the
@@ -370,7 +372,7 @@ export class SnapPicker {
           if (v.distanceTo(localHit) > near || !shown(toWorld(v))) continue;
           const screen = this.viewport.project(toWorld(v));
           const px = screen.distanceTo(cursor);
-          if (px >= SNAP_PX) continue;
+          if (px >= this.snapPx) continue;
           // The same point listed twice (an own corner the cut passes through) counts once.
           if (found.some((f) => f.screen.distanceTo(screen) < 2)) continue;
           found.push({ at: v.clone(), px, screen });
@@ -383,7 +385,7 @@ export class SnapPicker {
 
     // An existing measurement point (placed or being placed) close to the cursor and near the surface under it.
     let known: MeasurePoint | null = null;
-    let knownPx = SNAP_PX;
+    let knownPx = this.snapPx;
     const extra = (this.opts?.extraPoints?.() ?? []).map((v): MeasurePoint => ({ local: v.clone() }));
     for (const q of [...this.known(), ...extra]) {
       const w = this.world(q);
@@ -403,7 +405,7 @@ export class SnapPicker {
       const centre = faceCentre(mesh.geometry, obj.data, hit.faceIndex);
       if (centre && shown(toWorld(centre))) {
         const px = screenDist(centre);
-        if (px < SNAP_PX) return snapped(centre.clone(), 'face', px);
+        if (px < this.snapPx) return snapped(centre.clone(), 'face', px);
       }
     }
 

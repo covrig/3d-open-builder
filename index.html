@@ -23,6 +23,7 @@
           <button data-action="save" role="menuitem"><i data-lucide="save"></i>Save <small>in this browser now (it also saves on its own)</small></button>
           <button data-action="save-project" role="menuitem"><i data-lucide="save"></i>Save project to file <small>everything, to open again later</small></button>
           <button data-action="open-project" role="menuitem"><i data-lucide="folder-open"></i>Open project <small>.3dob</small></button>
+          <hr />
           <button data-action="open" role="menuitem"><i data-lucide="folder-open"></i>Import 3D object <small>3MF, STL, OBJ</small></button>
           <button data-action="reference" role="menuitem"><i data-lucide="image"></i>Reference picture <small>a drawing or photo to build on</small></button>
           <hr />
@@ -30,7 +31,7 @@
           <button data-action="export-stl" role="menuitem"><i data-lucide="download"></i>Export STL <small>one mesh, no colours</small></button>
           <hr />
           <button data-action="settings" role="menuitem"><i data-lucide="settings"></i>Settings</button>
-          <button data-action="shortcuts" role="menuitem"><i data-lucide="keyboard"></i>Keyboard shortcuts <small>show on the view</small></button>
+          <button data-action="shortcuts" role="menuitem" class="mouse-only"><i data-lucide="keyboard"></i>Keyboard shortcuts <small>show on the view</small></button>
           <hr />
           <button data-action="privacy" role="menuitem"><i data-lucide="shield"></i>Privacy</button>
           <button data-action="about" role="menuitem"><i data-lucide="info"></i>About and libraries</button>
@@ -44,11 +45,11 @@
           <button data-insert="cube" role="menuitem"><i data-lucide="box"></i>Cube<kbd class="key-hint">1</kbd></button>
           <button data-insert="cylinder" role="menuitem"><i data-lucide="cylinder"></i>Cylinder<kbd class="key-hint">2</kbd></button>
           <button data-insert="sphere" role="menuitem"><i data-lucide="circle"></i>Sphere<kbd class="key-hint">3</kbd></button>
+          <button data-insert="tube" role="menuitem"><i data-lucide="circle-dot"></i>Tube</button>
           <button data-insert="cone" role="menuitem"><i data-lucide="cone"></i>Cone</button>
           <button data-insert="pyramid" role="menuitem"><i data-lucide="pyramid"></i>Pyramid</button>
           <button data-insert="wedge" role="menuitem"><i data-lucide="triangle-right"></i>Wedge</button>
           <button data-insert="dome" role="menuitem"><i data-lucide="dome"></i>Dome</button>
-          <button data-insert="tube" role="menuitem"><i data-lucide="circle-dot"></i>Tube</button>
           <button data-insert="torus" role="menuitem"><i data-lucide="torus"></i>Torus</button>
           <button data-insert="hexagon" role="menuitem"><i data-lucide="hexagon"></i>Hexagon</button>
           <button data-insert="tetrahedron" role="menuitem"><i data-lucide="triangle"></i>Tetrahedron</button>
@@ -87,23 +88,23 @@
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
         <button data-action="mirror" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z. Pick the axis, check the orange preview, then Apply."><i data-lucide="flip-vertical-2"></i><span>Mirror</span></button>
         <!-- The More menu's tools, shown here instead when the toolbar has room (toolbarFit.ts). -->
-        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply."><i data-lucide="triangle-right"></i><span>Bevel</span></button>
-        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply."><i data-lucide="squircle"></i><span>Round</span></button>
-        <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle"></i><span>Brace</span></button>
+        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply."><i data-lucide="bevel"></i><span>Bevel</span></button>
+        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply."><i data-lucide="square-round-corner"></i><span>Round</span></button>
         <button data-modify="shell" class="more-out" data-tip-title="Shell" data-tip="Hollow the object out, leaving walls as thick as you choose."><i data-lucide="box"></i><span>Shell</span></button>
-        <button data-action="rotate90" class="more-out" data-tip-title="Rotate 90°" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like, check the orange preview, then Apply."><i data-lucide="rotate-cw"></i><span>Rotate 90°</span></button>
+        <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle-left"></i><span>Brace</span></button>
+        <button data-action="rotate90" class="more-out" data-tip-title="Rotate" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like, check the orange preview, then Apply."><i data-lucide="rotate-cw"></i><span>Rotate</span></button>
         <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cut the view open across X, Y or Z to see inside. Only the view changes; measuring works on the cut."><i data-lucide="scan-line"></i><span>Section</span></button>
-        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, brace, shell, rotate 90°, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
           <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
           <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
-          <button data-modify="chamfer" role="menuitem"><i data-lucide="triangle-right"></i>Bevel<kbd class="key-hint">B</kbd></button>
-          <button data-modify="fillet" role="menuitem"><i data-lucide="squircle"></i>Round<kbd class="key-hint">O</kbd></button>
-          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle"></i>Brace</button>
+          <button data-modify="chamfer" role="menuitem"><i data-lucide="bevel"></i>Bevel<kbd class="key-hint">B</kbd></button>
+          <button data-modify="fillet" role="menuitem"><i data-lucide="square-round-corner"></i>Round<kbd class="key-hint">O</kbd></button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
-          <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate 90°</button>
+          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle-left"></i>Brace</button>
+          <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate</button>
           <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Section</button>
         </div>
       </div>
@@ -156,6 +157,7 @@
           <div id="busy" role="status" hidden><span>Working…</span><button type="button" data-action="cancel-op" class="cancel" data-tip-title="Cancel" data-tip="Stop this calculation. Nothing in the drawing changes.">Cancel</button></div>
           <div id="toast" role="status" hidden></div>
         </div>
+        <div id="cursor-xyz" class="mouse-only" hidden aria-hidden="true"><div class="x"></div><div class="y"></div><div class="z"></div></div>
         <div id="shortcuts-panel" hidden>
           <header><strong>Keyboard shortcuts</strong><button data-action="shortcuts" aria-label="Hide keyboard shortcuts" data-tip-title="Hide" data-tip="Hide this panel. Show it again from the Menu.">×</button></header>
           <p class="shortcuts-off muted">Single-key shortcuts (D, M, F…) are off. Turn on “Enable shortcuts” in Settings.</p>
@@ -402,6 +404,17 @@
           <label><input type="radio" name="theme" value="system" /> Same as my system</label>
           <label><input type="radio" name="theme" value="light" /> Light</label>
           <label><input type="radio" name="theme" value="dark" /> Dark</label>
+        </fieldset>
+        <fieldset class="accent-picker">
+          <legend>Accent colour</legend>
+          <div class="accent-swatches">
+            <label class="accent-swatch" data-accent="teal" title="Teal"><input type="radio" name="accent" value="teal" aria-label="Teal" /></label>
+            <label class="accent-swatch" data-accent="blue" title="Blue"><input type="radio" name="accent" value="blue" aria-label="Blue" /></label>
+            <label class="accent-swatch" data-accent="purple" title="Purple"><input type="radio" name="accent" value="purple" aria-label="Purple" /></label>
+            <label class="accent-swatch" data-accent="pink" title="Pink"><input type="radio" name="accent" value="pink" aria-label="Pink" /></label>
+            <label class="accent-swatch" data-accent="orange" title="Orange"><input type="radio" name="accent" value="orange" aria-label="Orange" /></label>
+            <label class="accent-swatch" data-accent="custom" title="Custom colour"><input type="radio" name="accent" value="custom" aria-label="Custom" /><input type="color" name="accentCustom" value="#2fb3a1" aria-label="Custom accent colour" /></label>
+          </div>
         </fieldset>
         <fieldset>
           <legend>Placing objects</legend>

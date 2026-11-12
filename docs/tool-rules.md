@@ -89,7 +89,7 @@ Selecting a part of a group selects the whole group.
 | Bevel, round, brace, shell, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
 | Best print orientation | No | Same: the orientation is worked out for one object |
 
-## Rotate 90°
+## Rotate
 
 One tool, in the toolbar when there is room and in the More menu otherwise.
 It opens a bar with the buttons X, Y and Z: each click adds a quarter turn

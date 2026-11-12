@@ -76,9 +76,9 @@ export function makeLabel(text: string, color: string, height: number, options: 
 export const labelWidth = (label: THREE.Object3D): number => label.userData.labelWidth as number;
 
 /** Height of the numbers along the plate's axis lines (the rulers use the same), in the home view. */
-export const GRID_NUMBER_HEIGHT = 3.5;
+export const GRID_NUMBER_HEIGHT = 4.5;
 /** Height of the "0" at the origin, in the home view. */
-export const ORIGIN_HEIGHT = 5;
+export const ORIGIN_HEIGHT = 6;
 
 /** About the Home view's distance from what it looks at (mm), so labels there keep their designed size. */
 const HOME_DISTANCE = 470;

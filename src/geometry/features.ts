@@ -1,6 +1,6 @@
 import type { Manifold, ManifoldToplevel, Mat4, Vec3 } from 'manifold-3d';
 import type { Piece } from './cut';
-import { edgeFrame, type EdgeSegment, type V3 } from './edges';
+import { edgeFrame, findEdges, type EdgeSegment, type V3 } from './edges';
 import { manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
 import { recenter } from './meshOps';
 import { solidPieces } from './pieces';
@@ -149,12 +149,23 @@ function checkSizes(
   }
 }
 
+/** Rounded point key: the same point from two edges (or two meshes) gives the same text. */
+const key = (p: V3) => p.map((v) => Math.round(v * 1e4)).join(',');
+
 /**
  * Chamfer or fillet along edges (world space). For each edge a tool shape is
  * built in the corner between its two faces: a triangular prism (chamfer) or
  * that prism minus a cylinder tangent to both faces (fillet). Tools on
  * outside edges are cut away; tools in inside corners are added, which fills
  * the corner. Curved edges are handled piece by piece.
+ *
+ * Where a picked outside edge ends at a picked inside edge (the rim of a
+ * pocket and the corner running down from it), the two cannot be cut
+ * independently: filling the inside corner changes the outline the rim
+ * continues along (a chamfer fill turns the rim through a diagonal, a fillet
+ * fill through an arc). So the inside edges are done first, then the outside
+ * edges are looked up again on the filled solid (see carryOver) and cut with
+ * the new edges joining them, so the rim runs round the corner in one piece.
  */
 export function edgeTreatment(
   wasm: ManifoldToplevel,
@@ -165,9 +176,83 @@ export function edgeTreatment(
 ): Piece {
   if (segments.length === 0) throw new Error('Pick at least one edge');
   if (!(size > 0)) throw new Error('The size must be more than 0');
+  return withCleanup((keep) => {
+    const solid = keep(meshDataToManifold(wasm, item.mesh, item.matrix));
+    const frames = segments.map(edgeFrame);
+    checkSizes(wasm, keep, solid, segments, frames, frames.map((f) => (f.angle < 0.35 || f.angle > Math.PI - 0.05 ? null : legOf(kind, size, f.angle))), key);
+    const inside = segments.filter((s) => !s.convex);
+    const outside = segments.filter((s) => s.convex);
+    const ends = (s: EdgeSegment) => [key(s.a), key(s.b)];
+    const meet = outside.some((o) => inside.some((i) => ends(o).some((k) => ends(i).includes(k))));
+    let result: Manifold;
+    if (!meet) {
+      result = treat(wasm, keep, solid, segments, kind, size);
+    } else {
+      const filled = treat(wasm, keep, solid, inside, kind, size);
+      const next = carryOver(solid, filled, outside);
+      result = next.length ? treat(wasm, keep, filled, next, kind, size) : filled;
+    }
+    return toPiece(dropSlivers(wasm, keep, result, solid));
+  });
+}
+
+/**
+ * The picked outside edges as they stand on `filled` (the solid after the
+ * inside corners were filled). An edge may be shorter now (the fill ate its
+ * end), so every sharp outside edge of `filled` lying on a picked one with the
+ * same two faces counts. The fill also made new edges where it meets the face
+ * the rim runs along: those that continue a matched edge from a point that was
+ * not a corner of the original solid (the diagonal of a chamfer fill, the
+ * facets of a round) join the picked edges, so the rim carries on round it.
+ */
+function carryOver(
+  original: Manifold,
+  filled: Manifold,
+  picked: EdgeSegment[],
+): EdgeSegment[] {
+  const sharp = findEdges(manifoldToMeshData(filled)).segments.filter((e) => e.convex);
+  const before = manifoldToMeshData(original);
+  const old = new Set<string>();
+  for (let i = 0; i < before.positions.length; i += 3) old.add(key([before.positions[i], before.positions[i + 1], before.positions[i + 2]]));
+  const known = findEdges(before).segments;
+  const facing = (a: V3, b: V3) => dot3(a, b) > 0.999;
+  const sameFaces = (x: EdgeSegment, y: EdgeSegment) =>
+    (facing(x.n1, y.n1) && facing(x.n2, y.n2)) || (facing(x.n1, y.n2) && facing(x.n2, y.n1));
+  const frameOf = new Map<EdgeSegment, ReturnType<typeof edgeFrame>>();
+  const onLine = (p: EdgeSegment, q: V3) => {
+    let f = frameOf.get(p);
+    if (!f) frameOf.set(p, (f = edgeFrame(p)));
+    const d: V3 = [q[0] - p.a[0], q[1] - p.a[1], q[2] - p.a[2]];
+    const along = dot3(d, f.u);
+    const off = Math.hypot(d[0] - f.u[0] * along, d[1] - f.u[1] * along, d[2] - f.u[2] * along);
+    return off < 1e-3 && along > -1e-3 && along < f.length + 1e-3;
+  };
+  const taken = new Set<EdgeSegment>(sharp.filter((e) => picked.some((p) => sameFaces(p, e) && onLine(p, e.a) && onLine(p, e.b))));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const e of sharp) {
+      // An edge the solid already had (the rest of a rim) is only picked if the user picked it.
+      if (taken.has(e) || known.some((p) => sameFaces(p, e) && onLine(p, e.a) && onLine(p, e.b))) continue;
+      const joins = [...taken].some((m) =>
+        [e.a, e.b].some((p) => !old.has(key(p)) && (key(p) === key(m.a) || key(p) === key(m.b))) &&
+        [e.n1, e.n2].some((n) => [m.n1, m.n2].some((o) => facing(n, o))));
+      if (joins) { taken.add(e); grew = true; }
+    }
+  }
+  return [...taken];
+}
+
+/** The cutting and filling for the given edges, on an already built solid. */
+function treat(
+  wasm: ManifoldToplevel,
+  keep: <M extends Manifold>(m: M) => M,
+  solid: Manifold,
+  segments: EdgeSegment[],
+  kind: 'chamfer' | 'fillet',
+  size: number,
+): Manifold {
   const { Manifold } = wasm;
   // Which picked segments meet at each point (to tell curve joints from corners).
-  const key = (p: V3) => p.map((v) => Math.round(v * 1e4)).join(',');
   const at = new Map<string, number[]>();
   segments.forEach((s, i) => {
     for (const p of [s.a, s.b]) {
@@ -180,168 +265,203 @@ export function edgeTreatment(
   /** True if the edge carries on smoothly at p (a curve), not ending or turning a corner. */
   const continues = (i: number, p: V3) => {
     const others = (at.get(key(p)) ?? []).filter((j) => j !== i);
-    return others.length === 1 && Math.abs(dot3(frames[i].u, frames[others[0]].u)) > Math.cos(Math.PI / 4);
+    return others.length === 1 && Math.abs(dot3(frames[i].u, frames[others[0]].u)) > Math.cos(CURVE_TURN);
   };
 
-  return withCleanup((keep) => {
-    const solid = keep(meshDataToManifold(wasm, item.mesh, item.matrix));
-    checkSizes(wasm, keep, solid, segments, frames, frames.map((f) => (f.angle < 0.35 || f.angle > Math.PI - 0.05 ? null : legOf(kind, size, f.angle))), key);
-    const remove: Manifold[] = [];
-    const fill: Manifold[] = [];
-    /** Each segment's tool corners (null where the fold is too sharp for a tool) */
-    const prisms: (Vec3[] | null)[] = segments.map(() => null);
-    const segmentTools: (Manifold | null)[] = segments.map(() => null);
-    /** How far each segment's tool runs past its end points (a, b) */
-    const reachPast: { a: number; b: number }[] = segments.map(() => ({ a: 0, b: 0 }));
-    /** Fillet edges handled as part of a chain */
-    const inChain = new Set<number>();
-    segments.forEach((s, i) => {
-      const f = frames[i];
-      // Very sharp folds would need enormously long tools (the source of spikes); skip them.
-      if (f.angle < 0.35 || f.angle > Math.PI - 0.05) return;
-      // Distance from the edge along each face where the chamfer/fillet ends.
-      const leg = legOf(kind, size, f.angle);
-      // On curves, overlap the neighbouring piece slightly so no slivers remain;
-      // at corners and ends stop exactly at the end point.
-      const overlap = Math.min(f.length * 0.08, size * 0.5) + 1e-3;
-      // At a corner, an outside edge's tool runs on past the end: whatever it
-      // reaches there lies beyond this edge's chamfer within the two faces, so
-      // the cut ends on the neighbouring face itself (exact at any corner angle;
-      // ending square to the edge only fits where that face is at 90°).
-      const corner = leg * 3 + size;
-      // But at an inside (reflex) corner of the solid, just past the end lies more
-      // material (the face carries on there): the tool must stop square, or it
-      // would cut a groove into that face.
-      const bisector0 = norm(add(f.t1, f.t2));
-      const probe = Math.min(leg, 0.05);
-      const solidPast = (p: V3, out: V3) => {
-        const at = add(add(p, out, probe), bisector0, probe);
-        const cube = keep(keep(Manifold.cube([probe / 2, probe / 2, probe / 2], true)).translate(at));
-        const hit = keep(solid.intersect(cube));
-        return hit.volume() > 0;
-      };
-      const extend = (p: V3, out: V3) => (continues(i, p) ? overlap : solidPast(p, out) ? 0 : corner);
-      const extA = !s.convex ? 0 : extend(s.a, [-f.u[0], -f.u[1], -f.u[2]]);
-      const extB = !s.convex ? 0 : extend(s.b, f.u);
-      const a = add(s.a, f.u, -extA), b = add(s.b, f.u, extB);
-      // The tool's sides would lie exactly in the two faces and its ridge on the
-      // edge; such touching surfaces can leave paper-thin plates standing. Push
-      // the sides a hair out of the solid (into it, for a filled inside corner):
-      // the ridge moves off the edge, and the two far corners slide along the
-      // chamfer line past the faces, so the chamfer surface itself stays exact.
-      const m = (s.convex ? 1 : -1) * EPS_OFFSET;
-      const ridge = (p: V3) => add(p, add(s.n1, s.n2), m);
-      const across = norm([f.t1[0] - f.t2[0], f.t1[1] - f.t2[1], f.t1[2] - f.t2[2]]);
-      const onFace1 = (p: V3) => add(add(p, f.t1, leg), across, EPS_OFFSET * 4);
-      const onFace2 = (p: V3) => add(add(p, f.t2, leg), across, -EPS_OFFSET * 4);
-      const pts: Vec3[] = [ridge(a), onFace1(a), onFace2(a), ridge(b), onFace1(b), onFace2(b)];
-      let tool = keep(Manifold.hull(pts));
-      prisms[i] = pts;
-      reachPast[i] = { a: extA, b: extB };
-      if (kind === 'fillet') {
-        const bisector = norm(add(f.t1, f.t2));
-        const centre = add(a, bisector, size / Math.sin(f.angle / 2));
-        const cylinder = keep(keep(Manifold.cylinder(f.length + extA + extB, size, size, 48)).transform(frameMatrix(f.u, centre)));
-        tool = keep(tool.subtract(cylinder));
-      }
-      segmentTools[i] = tool;
-    });
-    // Joints along a curve (a cylinder rim is many short straight pieces):
-    // neighbouring tools meet at an angle and leave a thin wedge between them,
-    // which would stay standing as a fin. Each joint gets the hull of the two
-    // tools. A fillet then needs the rounding put back along the whole curve:
-    // its edges are grouped into chains, and each chain's tools (with their
-    // joints) lose what the rolling ball sweeps along it in one operation.
-    const parent = segments.map((_, i) => i);
-    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-    const jointTools = new Map<number, Manifold[]>();
-    /** Mitre discs of the rolling ball's path at each joint, by point key */
-    const nodes = new Map<string, { centre: V3; normal: V3 }>();
-    const axisPoint = (k: number, p: V3): V3 => {
-      const f = frames[k];
-      return add(p, norm(add(f.t1, f.t2)), size / Math.sin(f.angle / 2));
+  const remove: Manifold[] = [];
+  const fill: Manifold[] = [];
+  /** Each segment's tool corners (null where the fold is too sharp for a tool) */
+  const prisms: (Vec3[] | null)[] = segments.map(() => null);
+  const segmentTools: (Manifold | null)[] = segments.map(() => null);
+  /** How far each segment's tool runs past its end points (a, b) */
+  const reachPast: { a: number; b: number }[] = segments.map(() => ({ a: 0, b: 0 }));
+  /** Fillet edges handled as part of a chain */
+  const inChain = new Set<number>();
+  const probeCubes = (i: number) => Math.min(legOf(kind, size, frames[i].angle), 0.05);
+  /** Is there solid just past end p of segment i, in the corner between its faces? */
+  const solidPast = (i: number, p: V3, out: V3) => {
+    const f = frames[i];
+    const probe = probeCubes(i);
+    const at = add(add(p, out, probe), norm(add(f.t1, f.t2)), probe);
+    const cube = keep(keep(Manifold.cube([probe / 2, probe / 2, probe / 2], true)).translate(at));
+    return keep(solid.intersect(cube)).volume() > 0;
+  };
+  const usable = (i: number) => frames[i].angle >= 0.35 && frames[i].angle <= Math.PI - 0.05;
+  /** The picked edges that are not part of a curve (no end carries on smoothly) */
+  const lone = (i: number) => usable(i) && !continues(i, segments[i].a) && !continues(i, segments[i].b);
+  /**
+   * The mitre plane at end p of segment i, when exactly one other picked edge
+   * j ends there at an inside corner on a face they share. Both sides must
+   * see solid past the end, so each makes the same decision.
+   */
+  const mitres = new Map<string, { normal: V3; offset: number }>();
+  const mitreAt = (i: number, p: V3, out: V3) => {
+    const k = `${i}@${key(p)}`;
+    if (mitres.has(k)) return true;
+    const list = at.get(key(p)) ?? [];
+    if (list.length !== 2) return false;
+    const j = list.find((x) => x !== i)!;
+    const si = segments[i], sj = segments[j];
+    if (j === i || !si.convex || !sj.convex || !lone(i) || !lone(j)) return false;
+    const shares = [si.n1, si.n2].some((a) => [sj.n1, sj.n2].some((b) => dot3(a, b) > 0.999));
+    if (!shares) return false;
+    const dj = key(sj.a) === key(p) ? frames[j].u : ([-frames[j].u[0], -frames[j].u[1], -frames[j].u[2]] as V3);
+    if (!solidPast(j, p, [-dj[0], -dj[1], -dj[2]])) return false;
+    const di = [-out[0], -out[1], -out[2]] as V3; // from the shared point along edge i
+    const n = norm([di[0] - dj[0], di[1] - dj[1], di[2] - dj[2]]);
+    if (Math.hypot(di[0] - dj[0], di[1] - dj[1], di[2] - dj[2]) < 0.2) return false; // near parallel
+    mitres.set(k, { normal: n, offset: dot3(n, p) });
+    return true;
+  };
+  segments.forEach((s, i) => {
+    const f = frames[i];
+    // Very sharp folds would need enormously long tools (the source of spikes); skip them.
+    if (f.angle < 0.35 || f.angle > Math.PI - 0.05) return;
+    // Distance from the edge along each face where the chamfer/fillet ends.
+    const leg = legOf(kind, size, f.angle);
+    // On curves, overlap the neighbouring piece slightly so no slivers remain;
+    // at corners and ends stop exactly at the end point.
+    const overlap = Math.min(f.length * 0.08, size * 0.5) + 1e-3;
+    // At a corner, an outside edge's tool runs on past the end: whatever it
+    // reaches there lies beyond this edge's chamfer within the two faces, so
+    // the cut ends on the neighbouring face itself (exact at any corner angle;
+    // ending square to the edge only fits where that face is at 90°).
+    const corner = leg * 3 + size;
+    // But at an inside (reflex) corner of the solid, just past the end lies more
+    // material (the face carries on there): the tool must stop square, or it
+    // would cut a groove into that face. Where exactly one other picked edge
+    // turns that corner on the same face, both tools instead run past the
+    // corner and are cut off along the mitre plane, so the two chamfers (or
+    // rounds) meet in a clean line.
+    const extend = (p: V3, out: V3) => {
+      if (continues(i, p)) return overlap;
+      if (!solidPast(i, p, out)) return corner;
+      return mitreAt(i, p, out) ? corner : 0;
     };
-    const into = (k: number, p: V3): V3 => {
-      const u = frames[k].u;
-      return key(segments[k].a) === key(p) ? u : [-u[0], -u[1], -u[2]];
-    };
-    /**
-     * The three corners of segment k's tool where it meets the joint at `p`:
-     * its end cross-section brought back to p, then pushed a little into its
-     * own segment so the joint overlaps the tool. (The hull of whole tools
-     * would span two segments and cut inside the chamfer line on a curve.)
-     */
-    const jointEnd = (k: number, p: V3, other: number): Vec3[] => {
-      const atA = key(segments[k].a) === key(p);
-      const d = into(k, p);
-      const push = (atA ? reachPast[k].a : reachPast[k].b) + Math.min(frames[k].length, frames[other].length) * 0.05;
-      return (atA ? prisms[k]!.slice(0, 3) : prisms[k]!.slice(3, 6)).map((q) => add(q, d, push) as Vec3);
-    };
-    for (const [pk, list] of at) {
-      if (list.length !== 2) continue;
-      const [i, j] = list;
-      if (!prisms[i] || !prisms[j] || segments[i].convex !== segments[j].convex) continue;
-      const shared = key(segments[i].a) === pk ? segments[i].a : segments[i].b;
-      if (!continues(i, shared)) continue;
-      parent[find(i)] = find(j);
-      const hull = keep(Manifold.hull([...jointEnd(i, shared, j), ...jointEnd(j, shared, i)]));
-      jointTools.set(i, [...(jointTools.get(i) ?? []), hull]);
-      if (kind === 'fillet') {
-        const ai = axisPoint(i, shared), aj = axisPoint(j, shared);
-        const di = into(i, shared), dj = into(j, shared);
-        nodes.set(pk, {
-          centre: [(ai[0] + aj[0]) / 2, (ai[1] + aj[1]) / 2, (ai[2] + aj[2]) / 2],
-          normal: norm([dj[0] - di[0], dj[1] - di[1], dj[2] - di[2]]),
-        });
-      }
-    }
-    const groups = new Map<number, number[]>();
-    segments.forEach((_, i) => {
-      if (!prisms[i]) return;
-      const g = find(i);
-      groups.set(g, [...(groups.get(g) ?? []), i]);
-    });
-    for (const members of groups.values()) {
-      const joints = members.flatMap((i) => jointTools.get(i) ?? []);
-      if (joints.length === 0) continue; // a lone edge: its own tool is enough
-      const side = segments[members[0]].convex ? remove : fill;
-      if (kind === 'chamfer') {
-        side.push(...joints);
-        continue;
-      }
-      // The chain's fillet: corner region minus the ball's sweep, mitred at the joints.
-      const disc = (centre: V3, normal: V3) =>
-        keep(keep(Manifold.cylinder(1e-3, size, size, 48)).transform(frameMatrix(normal, centre)));
-      const corner = keep(Manifold.union([...members.map((i) => keep(Manifold.hull(prisms[i]!))), ...joints]));
-      const pieces = members.map((i) => {
-        const s = segments[i];
-        const end = (p: V3, sign: number) => {
-          const node = nodes.get(key(p));
-          if (node) return disc(node.centre, node.normal);
-          // A chain end: the ball stops square with the edge.
-          return disc(add(axisPoint(i, p), frames[i].u, sign * 1e-3), frames[i].u);
-        };
-        return keep(Manifold.hull([end(s.a, -1), end(s.b, 1)]));
-      });
-      side.push(keep(corner.subtract(keep(Manifold.union(pieces)))));
-      for (const i of members) inChain.add(i);
-    }
-    segmentTools.forEach((tool, i) => {
-      if (tool && !inChain.has(i)) (segments[i].convex ? remove : fill).push(tool);
-    });
-    // Fillet corners where three picked edges meet: round them with a sphere.
+    const extA = !s.convex ? 0 : extend(s.a, [-f.u[0], -f.u[1], -f.u[2]]);
+    const extB = !s.convex ? 0 : extend(s.b, f.u);
+    const a = add(s.a, f.u, -extA), b = add(s.b, f.u, extB);
+    // The tool's sides would lie exactly in the two faces and its ridge on the
+    // edge; such touching surfaces can leave paper-thin plates standing. Push
+    // the sides a hair out of the solid (into it, for a filled inside corner):
+    // the ridge moves off the edge, and the two far corners slide along the
+    // chamfer line past the faces, so the chamfer surface itself stays exact.
+    const m = (s.convex ? 1 : -1) * EPS_OFFSET;
+    const ridge = (p: V3) => add(p, add(s.n1, s.n2), m);
+    const across = norm([f.t1[0] - f.t2[0], f.t1[1] - f.t2[1], f.t1[2] - f.t2[2]]);
+    const onFace1 = (p: V3) => add(add(p, f.t1, leg), across, EPS_OFFSET * 4);
+    const onFace2 = (p: V3) => add(add(p, f.t2, leg), across, -EPS_OFFSET * 4);
+    const pts: Vec3[] = [ridge(a), onFace1(a), onFace2(a), ridge(b), onFace1(b), onFace2(b)];
+    let tool = keep(Manifold.hull(pts));
+    prisms[i] = pts;
+    reachPast[i] = { a: extA, b: extB };
     if (kind === 'fillet') {
-      for (const [, list] of at) {
-        if (list.length !== 3) continue;
-        const corner = cornerTool(wasm, keep, segments, list, size);
-        if (corner) (segments[list[0]].convex ? remove : fill).push(corner);
-      }
+      const bisector = norm(add(f.t1, f.t2));
+      const centre = add(a, bisector, size / Math.sin(f.angle / 2));
+      const cylinder = keep(keep(Manifold.cylinder(f.length + extA + extB, size, size, 48)).transform(frameMatrix(f.u, centre)));
+      tool = keep(tool.subtract(cylinder));
     }
-    let result = solid;
-    if (remove.length) result = keep(result.subtract(keep(Manifold.union(remove))));
-    if (fill.length) result = keep(result.add(keep(Manifold.union(fill))));
-    return toPiece(dropSlivers(wasm, keep, result, solid));
+    for (const p of [s.a, s.b]) {
+      const m = mitres.get(`${i}@${key(p)}`);
+      if (m) tool = keep(tool.trimByPlane(m.normal, m.offset));
+    }
+    segmentTools[i] = tool;
   });
+  // Joints along a curve (a cylinder rim is many short straight pieces):
+  // neighbouring tools meet at an angle and leave a thin wedge between them,
+  // which would stay standing as a fin. Each joint gets the hull of the two
+  // tools. A fillet then needs the rounding put back along the whole curve:
+  // its edges are grouped into chains, and each chain's tools (with their
+  // joints) lose what the rolling ball sweeps along it in one operation.
+  const parent = segments.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const jointTools = new Map<number, Manifold[]>();
+  /** Mitre discs of the rolling ball's path at each joint, by point key */
+  const nodes = new Map<string, { centre: V3; normal: V3 }>();
+  const axisPoint = (k: number, p: V3): V3 => {
+    const f = frames[k];
+    return add(p, norm(add(f.t1, f.t2)), size / Math.sin(f.angle / 2));
+  };
+  const into = (k: number, p: V3): V3 => {
+    const u = frames[k].u;
+    return key(segments[k].a) === key(p) ? u : [-u[0], -u[1], -u[2]];
+  };
+  /**
+   * The three corners of segment k's tool where it meets the joint at `p`:
+   * its end cross-section brought back to p, then pushed a little into its
+   * own segment so the joint overlaps the tool. (The hull of whole tools
+   * would span two segments and cut inside the chamfer line on a curve.)
+   */
+  const jointEnd = (k: number, p: V3, other: number): Vec3[] => {
+    const atA = key(segments[k].a) === key(p);
+    const d = into(k, p);
+    const push = (atA ? reachPast[k].a : reachPast[k].b) + Math.min(frames[k].length, frames[other].length) * 0.05;
+    return (atA ? prisms[k]!.slice(0, 3) : prisms[k]!.slice(3, 6)).map((q) => add(q, d, push) as Vec3);
+  };
+  for (const [pk, list] of at) {
+    if (list.length !== 2) continue;
+    const [i, j] = list;
+    if (!prisms[i] || !prisms[j] || segments[i].convex !== segments[j].convex) continue;
+    const shared = key(segments[i].a) === pk ? segments[i].a : segments[i].b;
+    if (!continues(i, shared)) continue;
+    parent[find(i)] = find(j);
+    const hull = keep(Manifold.hull([...jointEnd(i, shared, j), ...jointEnd(j, shared, i)]));
+    jointTools.set(i, [...(jointTools.get(i) ?? []), hull]);
+    if (kind === 'fillet') {
+      const ai = axisPoint(i, shared), aj = axisPoint(j, shared);
+      const di = into(i, shared), dj = into(j, shared);
+      nodes.set(pk, {
+        centre: [(ai[0] + aj[0]) / 2, (ai[1] + aj[1]) / 2, (ai[2] + aj[2]) / 2],
+        normal: norm([dj[0] - di[0], dj[1] - di[1], dj[2] - di[2]]),
+      });
+    }
+  }
+  const groups = new Map<number, number[]>();
+  segments.forEach((_, i) => {
+    if (!prisms[i]) return;
+    const g = find(i);
+    groups.set(g, [...(groups.get(g) ?? []), i]);
+  });
+  for (const members of groups.values()) {
+    const joints = members.flatMap((i) => jointTools.get(i) ?? []);
+    if (joints.length === 0) continue; // a lone edge: its own tool is enough
+    const side = segments[members[0]].convex ? remove : fill;
+    if (kind === 'chamfer') {
+      side.push(...joints);
+      continue;
+    }
+    // The chain's fillet: corner region minus the ball's sweep, mitred at the joints.
+    const disc = (centre: V3, normal: V3) =>
+      keep(keep(Manifold.cylinder(1e-3, size, size, 48)).transform(frameMatrix(normal, centre)));
+    const corner = keep(Manifold.union([...members.map((i) => keep(Manifold.hull(prisms[i]!))), ...joints]));
+    const pieces = members.map((i) => {
+      const s = segments[i];
+      const end = (p: V3, sign: number) => {
+        const node = nodes.get(key(p));
+        if (node) return disc(node.centre, node.normal);
+        // A chain end: the ball stops square with the edge.
+        return disc(add(axisPoint(i, p), frames[i].u, sign * 1e-3), frames[i].u);
+      };
+      return keep(Manifold.hull([end(s.a, -1), end(s.b, 1)]));
+    });
+    side.push(keep(corner.subtract(keep(Manifold.union(pieces)))));
+    for (const i of members) inChain.add(i);
+  }
+  segmentTools.forEach((tool, i) => {
+    if (tool && !inChain.has(i)) (segments[i].convex ? remove : fill).push(tool);
+  });
+  // Fillet corners where three picked edges meet: round them with a sphere.
+  if (kind === 'fillet') {
+    for (const [, list] of at) {
+      if (list.length !== 3) continue;
+      const corner = cornerTool(wasm, keep, segments, list, size);
+      if (corner) (segments[list[0]].convex ? remove : fill).push(corner);
+    }
+  }
+  let result = solid;
+  if (remove.length) result = keep(result.subtract(keep(Manifold.union(remove))));
+  if (fill.length) result = keep(result.add(keep(Manifold.union(fill))));
+  return result;
 }
 
 /**
@@ -365,6 +485,13 @@ function dropSlivers(
   const kept = sized.filter((p, i) => i < before || p.v > total * 0.01).map((p) => p.m);
   return keep(wasm.Manifold.compose(kept));
 }
+
+/**
+ * Edges of a faceted curve turn by less than this at each joint. Turns of 40
+ * degrees and more are corners: a corner of 45 degrees (the diagonal a
+ * chamfered inside corner leaves in a rim) must not be decided by rounding.
+ */
+const CURVE_TURN = (40 * Math.PI) / 180;
 
 /** How far (mm) edge tools reach past the faces they cut along */
 const EPS_OFFSET = 0.002;

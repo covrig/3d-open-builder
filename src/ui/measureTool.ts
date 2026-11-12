@@ -4,7 +4,7 @@ import type { Viewport } from '../scene/viewport';
 import { settings, toUnit, updateUi } from '../settings';
 import { hideHint, showHint } from './hint';
 import { beginTool, endTool } from './toolLock';
-import { hoverMarker, SnapPicker, type Picked, type SnapKind } from './snapPicker';
+import { hoverMarker, SNAP_PX, SnapPicker, type Picked, type SnapKind } from './snapPicker';
 
 const POINTS_NEEDED: Record<MeasureKind, number> = { distance: 2, angle: 3, circle: 3 };
 const HINTS: Record<MeasureKind, string> = {
@@ -14,8 +14,17 @@ const HINTS: Record<MeasureKind, string> = {
 };
 /** Colours of the 1st, 2nd and 3rd point. */
 const POINT_COLORS = ['#4cb8ff', '#7ed321', '#c77dff'];
-/** Touch: the point being aimed at sits this far above the finger, so the finger doesn't hide it. */
-const TOUCH_OFFSET_PX = 70;
+/**
+ * Touch: the point being aimed at is the one under the finger, and a loupe
+ * (a zoomed copy of the view around the finger) floats above it so the finger
+ * doesn't hide what it aims at.
+ */
+const LOUPE_PX = 104;
+const LOUPE_ZOOM = 2.5;
+/** Distance from the finger to the loupe's centre (px) */
+const LOUPE_GAP = 88;
+/** A finger is less exact than a mouse: snaps reach this much further (factor on the mouse's radius). */
+const TOUCH_SNAP_FACTOR = 1.5;
 /** Gap kept between two labels (px). */
 const LABEL_GAP = 3;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -73,6 +82,16 @@ export class MeasureTool {
   private touchPointer = false;
   /** Touch: the aimed point waiting for the tick (the finger has lifted) */
   private candidate: Picked | null = null;
+  /** The loupe shown above a finger that is aiming, and the canvas inside it that gets the zoomed copy of the view */
+  private readonly loupe: HTMLElement;
+  private readonly loupeCanvas: HTMLCanvasElement;
+  /** Where the aiming finger is (client coordinates), null when no finger is down */
+  private finger: { x: number; y: number } | null = null;
+  /** Fingers now on the view; with two or more it is a camera gesture, not aiming */
+  private readonly fingers = new Set<number>();
+  private gesture = false;
+  /** The orbit controls' touch settings, put back when measuring stops */
+  private savedTouches: { ONE?: THREE.TOUCH | null; TWO?: THREE.TOUCH | null } | null = null;
 
   constructor(
     private readonly viewport: Viewport,
@@ -101,18 +120,37 @@ export class MeasureTool {
       this.candidate = null;
       this.viewport.invalidate();
     });
-    viewport.element.append(this.svg, this.labels, this.chip);
+    this.loupe = document.createElement('div');
+    this.loupe.className = 'measure-loupe';
+    this.loupe.hidden = true;
+    this.loupeCanvas = document.createElement('canvas');
+    this.loupe.append(this.loupeCanvas);
+    viewport.element.append(this.svg, this.labels, this.chip, this.loupe);
     viewport.onFrame(() => this.draw());
 
     // Which kind of pointer is over the view (main.ts passes plain coordinates), so a
     // finger can aim above itself. These run before main.ts's own handlers.
     const canvas = viewport.renderer.domElement;
-    const track = (e: PointerEvent) => (this.touchPointer = e.pointerType === 'touch');
+    const track = (e: PointerEvent) => {
+      this.touchPointer = e.pointerType === 'touch';
+      if (this.touchPointer) this.finger = { x: e.clientX, y: e.clientY };
+    };
     canvas.addEventListener(
       'pointerdown',
       (e) => {
         track(e);
-        if (this.touchPointer) this.move(e.clientX, e.clientY);
+        if (!this.touchPointer || !this.kind) return;
+        this.fingers.add(e.pointerId);
+        if (this.fingers.size > 1) {
+          // A second finger: pinch or two-finger pan of the camera, nothing is aimed.
+          this.gesture = true;
+          this.hover = null;
+          this.hoverSnap = null;
+          this.finger = null;
+          this.viewport.invalidate();
+          return;
+        }
+        this.move(e.clientX, e.clientY);
       },
       { passive: true },
     );
@@ -122,9 +160,18 @@ export class MeasureTool {
         type,
         (e) => {
           if (e.pointerType !== 'touch') return;
-          // The finger is up: the aimed point is shown as a candidate (see click) instead.
+          // The finger is up: the point under it becomes the candidate (the chip asks to
+          // place it). Done here, not in click(), because aiming is a drag, which click ignores.
+          this.fingers.delete(e.pointerId);
+          const aimed = this.kind && !this.gesture && type === 'pointerup';
+          if (this.fingers.size === 0) this.gesture = false;
+          this.finger = null;
           this.hover = null;
           this.hoverSnap = null;
+          if (aimed) {
+            const picked = this.pickPoint(e.clientX, e.clientY);
+            if (picked) this.candidate = picked;
+          }
           this.viewport.invalidate();
         },
         { passive: true },
@@ -160,6 +207,19 @@ export class MeasureTool {
     if (kind) beginTool('measure', () => this.setKind(null), false);
     else endTool('measure');
     this.kind = kind;
+    // A finger on the view aims the point instead of turning the camera (two fingers still
+    // zoom and pan); put back when measuring stops. The mouse buttons are not affected.
+    const touches = this.viewport.orbit.touches;
+    if (kind && !this.savedTouches) {
+      this.savedTouches = { ...touches };
+      touches.ONE = null;
+    } else if (!kind && this.savedTouches) {
+      Object.assign(touches, this.savedTouches);
+      this.savedTouches = null;
+    }
+    this.fingers.clear();
+    this.gesture = false;
+    this.finger = null;
     this.pending = [];
     this.hover = null;
     this.hoverSnap = null;
@@ -181,24 +241,10 @@ export class MeasureTool {
     this.doc.transact(() => this.doc.setMeasurements([]));
   }
 
-  /** Where a pointer at these coordinates aims: a finger aims above itself, a mouse where it is. */
-  private aim(clientX: number, clientY: number): [number, number] {
-    if (!this.touchPointer) return [clientX, clientY];
-    const top = this.viewport.element.getBoundingClientRect().top;
-    return [clientX, Math.max(top, clientY - TOUCH_OFFSET_PX)];
-  }
-
-  /** A click in the view while measuring. A finger only proposes the point (see the chip). */
+  /** A click in the view while measuring. A finger is handled when it lifts (see the constructor): it only proposes the point (see the chip). */
   click(clientX: number, clientY: number): void {
-    if (!this.kind) return;
-    const picked = this.pickPoint(...this.aim(clientX, clientY));
-    if (this.touchPointer) {
-      this.hover = null;
-      this.hoverSnap = null;
-      if (picked) this.candidate = picked;
-      this.viewport.invalidate();
-      return;
-    }
+    if (!this.kind || this.touchPointer) return;
+    const picked = this.pickPoint(clientX, clientY);
     if (!picked) return;
     this.place(picked.point);
   }
@@ -226,8 +272,8 @@ export class MeasureTool {
   }
 
   move(clientX: number, clientY: number): void {
-    if (!this.kind) return;
-    const picked = this.pickPoint(...this.aim(clientX, clientY));
+    if (!this.kind || this.gesture) return;
+    const picked = this.pickPoint(clientX, clientY);
     this.hover = picked?.point ?? null;
     this.hoverSnap = picked?.snap ?? null;
     this.hoverHidden = picked?.hidden ?? false;
@@ -249,6 +295,7 @@ export class MeasureTool {
   }
 
   private pickPoint(clientX: number, clientY: number): Picked | null {
+    this.picker.snapPx = SNAP_PX * (this.touchPointer ? TOUCH_SNAP_FACTOR : 1);
     return this.picker.pick(clientX, clientY);
   }
 
@@ -349,6 +396,9 @@ export class MeasureTool {
     // A touch candidate whose object is gone is dropped.
     if (this.candidate && !this.world(this.candidate.point)) this.candidate = null;
     let chipAt: THREE.Vector2 | null = null;
+    // The snap marker takes the cursor's place, so the crosshair is hidden while a point is hovered.
+    // Set here, which every reset of the hover (and stopping) redraws through, so it can't get stuck.
+    this.viewport.element.classList.toggle('snapped', this.kind !== null && this.hover !== null);
     if (this.kind) {
       // The candidate of a touch counts as the aimed point while no finger is moving one.
       const aimed = this.hover ?? this.candidate?.point ?? null;
@@ -370,6 +420,7 @@ export class MeasureTool {
       }
     }
     this.svg.innerHTML = svg.join('');
+    this.drawLoupe();
 
     // Labels: put them in, measure them, then move any that would cover another.
     this.labels.innerHTML =
@@ -390,6 +441,49 @@ export class MeasureTool {
       const x = Math.min(Math.max(chipAt.x, w / 2 + 4), Math.max(w / 2 + 4, this.viewport.element.clientWidth - w / 2 - 4));
       this.chip.style.left = `${x}px`;
       this.chip.style.top = `${Math.max(chipAt.y - 34, h + 4)}px`;
+    }
+  }
+
+  /**
+   * The loupe above the aiming finger: a zoomed copy of the view around it, with a
+   * crosshair on the aimed point. Copied from the WebGL canvas, which only keeps its
+   * picture until the frame is composited, so this must run in the same task as the
+   * render: draw() is called right after it.
+   */
+  private drawLoupe(): void {
+    const finger = this.finger;
+    this.loupe.hidden = !this.kind || !finger;
+    if (!this.kind || !finger) return;
+    const view = this.viewport.element.getBoundingClientRect();
+    const fx = finger.x - view.left, fy = finger.y - view.top;
+    // Above the finger; below it when that would leave the view; kept inside the view.
+    const half = LOUPE_PX / 2;
+    const cx = Math.min(Math.max(fx, half + 2), Math.max(half + 2, view.width - half - 2));
+    let cy = fy - LOUPE_GAP;
+    if (cy - half < 0) cy = fy + LOUPE_GAP;
+    cy = Math.min(Math.max(cy, half + 2), Math.max(half + 2, view.height - half - 2));
+    this.loupe.style.left = `${cx}px`;
+    this.loupe.style.top = `${cy}px`;
+
+    const gl = this.viewport.renderer.domElement;
+    const ratio = gl.width / Math.max(1, view.width);
+    const size = Math.round(LOUPE_PX * Math.min(window.devicePixelRatio, 2));
+    if (this.loupeCanvas.width !== size) this.loupeCanvas.width = this.loupeCanvas.height = size;
+    const ctx = this.loupeCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, size, size);
+    // The area LOUPE_PX / zoom wide around the finger, in the WebGL canvas's own pixels.
+    const src = (LOUPE_PX / LOUPE_ZOOM) * ratio;
+    ctx.drawImage(gl, fx * ratio - src / 2, fy * ratio - src / 2, src, src, 0, 0, size, size);
+    // Crosshair on the aimed point: dark under light so it shows on any background.
+    const mid = size / 2, arm = size * 0.14;
+    for (const [colour, extra] of [['rgba(0,0,0,0.85)', 1.5], ['#fff', 0]] as const) {
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = Math.max(1, size / 100) + extra;
+      ctx.beginPath();
+      ctx.moveTo(mid - arm, mid); ctx.lineTo(mid + arm, mid);
+      ctx.moveTo(mid, mid - arm); ctx.lineTo(mid, mid + arm);
+      ctx.stroke();
     }
   }
 

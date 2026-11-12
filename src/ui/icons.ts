@@ -7,10 +7,16 @@ import {
   House, Image, Info, Keyboard, LayoutDashboard, LayoutGrid, ListChecks, LocateFixed, Lock, LockOpen, Menu,
   Move, PanelBottom, PanelRightOpen, PencilRuler, Pipette, Plus, Pyramid, Redo2, RefreshCw, Rotate3d,
   RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
-  SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, Squircle, Sun, Torus, Trash2, Triangle,
+  SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, SquareRoundCorner, Sun, Torus, Trash2, Triangle,
   TriangleRight, Type, Undo2, Ungroup, Wrench,
   createElement, createIcons, type IconNode,
 } from 'lucide';
+
+// Lucide has no usable bevel (corner cut off by a diagonal) in this version: drawn
+// here in the same format and stroke style as the library's icons.
+const Bevel: IconNode = [['path', { d: 'M3 5a2 2 0 0 1 2-2h9l7 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }]];
+/** lucide's triangle-right turned the other way (this lucide version has no triangle-left). */
+const TriangleLeft: IconNode = [['path', { d: 'M2 18a2 2 0 0 0 2 2h17c1.1 0 1.3-.6.4-1.3L3.6 4.3c-.9-.7-1.6-.4-1.6.7Z' }]];
 
 // Only the icons we use are imported, so the bundle stays small.
 const ICONS: Record<string, IconNode> = {
@@ -22,8 +28,9 @@ const ICONS: Record<string, IconNode> = {
   House, Image, Info, Keyboard, LayoutDashboard, LayoutGrid, ListChecks, LocateFixed, Lock, LockOpen, Menu,
   Move, PanelBottom, PanelRightOpen, PencilRuler, Pipette, Plus, Pyramid, Redo2, RefreshCw, Rotate3d,
   RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
-  SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, Squircle, Sun, Torus, Trash2, Triangle,
+  SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, SquareRoundCorner, Sun, Torus, Trash2, Triangle,
   TriangleRight, Type, Undo2, Ungroup, Wrench,
+  Bevel, TriangleLeft,
 };
 
 /** A fresh SVG element for an icon (for elements created in code). */

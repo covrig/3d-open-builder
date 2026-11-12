@@ -30,7 +30,7 @@ export function mirroredCopyStates(
 }
 
 /**
- * Mirror and Rotate 90° (Edit group of the toolbar). Both open the parameter
+ * Mirror and Rotate (Edit group of the toolbar). Both open the parameter
  * bar with an orange preview of the result; Apply is one undo step, Cancel
  * leaves everything as it was.
  */
@@ -233,7 +233,7 @@ export class TurnTools {
     });
   }
 
-  // --- Rotate 90° ----------------------------------------------------------------
+  // --- Rotate ----------------------------------------------------------------
 
   /**
    * Each click on X, Y or Z adds a quarter turn clockwise seen from the positive
@@ -261,10 +261,10 @@ export class TurnTools {
     const title = document.querySelector<HTMLElement>('#feature-bar .bar-title');
     const show = () => {
       const t = total();
-      if (title) title.textContent = t ? `Rotate 90°: ${t}` : 'Rotate 90°';
+      if (title) title.textContent = t ? `Rotate: ${t}` : 'Rotate';
       showHint('feature', t
-        ? `Rotate 90°: total ${t}. Click X, Y or Z to turn further, Reset to start again, Apply to turn the selection.`
-        : 'Rotate 90°: click X, Y or Z for a quarter turn clockwise (as often as you like), then Apply.');
+        ? `Rotate: total ${t}. Click X, Y or Z to turn further, Reset to start again, Apply to turn the selection.`
+        : 'Rotate: click X, Y or Z for a quarter turn clockwise (as often as you like), then Apply.');
     };
 
     /** The placements after all the turns, worked out on the real objects and put back. */
@@ -298,7 +298,7 @@ export class TurnTools {
       this.bar.refresh(0);
     };
     this.bar.open<Placed[]>({
-      title: 'Rotate 90°',
+      title: 'Rotate',
       hint: '',
       fields: [
         ...AXIS_NAMES.map((name, i) => ({
