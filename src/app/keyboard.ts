@@ -27,7 +27,7 @@ export interface KeyboardContext {
 }
 
 /** Buttons whose tool can be run again with R (e.g. a second brace): edit, combine, add and mirror tools. */
-const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-action="mirror"], [data-action="rotate90"], [data-action="split"], [data-action="extrude-down"]';
+const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-action="mirror"], [data-action="duplicate"], [data-action="rotate90"], [data-action="split"], [data-action="extrude-down"]';
 
 /** Single-key shortcuts: key → the button it presses (first match, the toolbar one when there are two). */
 const TOOL_KEYS: Record<string, string> = {

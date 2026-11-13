@@ -30,9 +30,25 @@ export function mirroredCopyStates(
 }
 
 /**
- * Mirror and Rotate (Edit group of the toolbar). Both open the parameter
- * bar with an orange preview of the result; Apply is one undo step, Cancel
- * leaves everything as it was.
+ * The states of the copies made by Duplicate: the objects as they are (shape,
+ * rotation, scale, thread), each moved by its shift.
+ */
+export function shiftedCopyStates(
+  doc: Pick<SceneDocument, 'capture'>,
+  copies: { obj: SceneObject; shift: THREE.Vector3 }[],
+): ObjectState[] {
+  return copies.map((c) => {
+    const state = doc.capture(c.obj);
+    const [x, y, z] = state.position;
+    return { ...state, position: [x + c.shift.x, y + c.shift.y, z + c.shift.z] as [number, number, number] };
+  });
+}
+
+/**
+ * Mirror, Duplicate and Rotate (Edit group of the toolbar). All open the
+ * parameter bar with an orange preview of the result; Apply is one undo step,
+ * Cancel leaves everything as it was. Duplicate is Mirror without the
+ * flipping: the copy lands where the mirror image would, and the original stays.
  */
 export class TurnTools {
   private readonly points: SnapPicker;
@@ -44,19 +60,24 @@ export class TurnTools {
   ) {
     this.points = new SnapPicker(bar.viewport, doc);
     for (const b of document.querySelectorAll('[data-action="mirror"]')) b.addEventListener('click', () => this.mirror());
+    for (const b of document.querySelectorAll('[data-action="duplicate"]')) b.addEventListener('click', () => this.mirror(true));
     for (const b of document.querySelectorAll('[data-action="rotate90"]')) b.addEventListener('click', () => this.rotate());
   }
 
   // --- Mirror -------------------------------------------------------------------
 
-  private mirror(): void {
+  /** Mirror, or (copy) Duplicate: the same bar and placement, but the copy keeps the original's shape. */
+  private mirror(copy = false): void {
     const objs = [...this.doc.selection];
     if (objs.length === 0) return this.toast('Select an object first');
     const doc = this.doc;
     const bar = this.bar;
+    const name = copy ? 'Duplicate' : 'Mirror';
+    const axisHint = copy ? 'Duplicate: pick the axis to place the copy along. Apply to add it.' : 'Mirror: pick the axis to flip along. Apply to flip the selection.';
     const picker = this.points;
     const camera = bar.viewport.camera;
-    interface Flipped { obj: SceneObject; mesh: MeshData; position: THREE.Vector3 }
+    /** `shift` is how far a Duplicate copy lies from its original */
+    interface Flipped { obj: SceneObject; mesh: MeshData; position: THREE.Vector3; shift?: THREE.Vector3 }
     interface Result { flipped: Flipped[]; ready: boolean; picked: THREE.Vector3[]; normal: Vec3 | null; mode: string; keep: boolean }
 
     // Picking for the Line (2 points) mode.
@@ -75,10 +96,10 @@ export class TurnTools {
     const askNext = () => {
       if (picked.length >= needed()) {
         return showHint('feature', plane
-          ? 'Mirror: Apply to flip the selection, or Pick again to choose other points.'
-          : 'Mirror: those points do not define a plane (they lie in a line). Click Pick again.');
+          ? `${name}: Apply to ${copy ? 'add the copy' : 'flip the selection'}, or Pick again to choose other points.`
+          : `${name}: those points do not define a plane (they lie in a line). Click Pick again.`);
       }
-      showHint('feature', `Mirror: click point ${picked.length + 1} of 2 for the line (corners, edge middles and face centres snap). Esc stops picking.`);
+      showHint('feature', `${name}: click point ${picked.length + 1} of 2 for the line (corners, edge middles and face centres snap). Esc stops picking.`);
       picker.start({
         extraPoints: () => picked,
         onPick: (at) => {
@@ -94,7 +115,7 @@ export class TurnTools {
       picked = [];
       plane = null;
       if (needed() > 0) askNext();
-      else showHint('feature', 'Mirror: pick the axis to flip along. Apply to flip the selection.');
+      else showHint('feature', axisHint);
     };
 
     const ghost = new THREE.MeshStandardMaterial({
@@ -104,6 +125,19 @@ export class TurnTools {
     const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4cb8ff, depthTest: false });
     const span = Math.max(doc.worldBox(objs).getSize(new THREE.Vector3()).length(), 10);
 
+    /** A copy where the mirror image would be, with the original's own shape (Duplicate). */
+    const copyAt = (obj: SceneObject, shift: THREE.Vector3): Flipped => {
+      const m = obj.mesh;
+      const linear = new THREE.Matrix4().compose(new THREE.Vector3(), m.quaternion, m.scale);
+      const { mesh, center } = recenter(bakeMesh({ mesh: obj.data, matrix: linear.elements }));
+      return { obj, mesh, shift, position: m.position.clone().add(shift).add(new THREE.Vector3(...center)) };
+    };
+    /** Duplicate across a line: each group (or loose object) moves as one to the other side of the plane. */
+    const copyAbout = (n: Vec3, at: Vec3): Flipped[] => units(doc, objs).flatMap((unit) => {
+      const c = unit.box.getCenter(new THREE.Vector3());
+      const shift = new THREE.Vector3(...reflectPoint(c.toArray() as Vec3, at, n)).sub(c);
+      return unit.objs.map((obj) => copyAt(obj, shift));
+    });
     const mirrorAbout = (n: Vec3, at: Vec3): Flipped[] => objs.map((obj) => {
       // Rotation and scale are baked into the geometry, which is reflected about the
       // object's own origin; then the origin's mirror image is where it goes.
@@ -115,20 +149,25 @@ export class TurnTools {
     });
 
     bar.open<Result>({
-      title: 'Mirror',
-      hint: 'Mirror: pick the axis to flip along. Apply to flip the selection.',
+      title: name,
+      hint: axisHint,
       fields: [
         {
-          key: 'mode', label: 'Mirror across', type: 'select', value: 'axis',
-          tip: 'Axis: flip through the middle of the selection. Line: click two points; the mirror is the vertical plane through them.',
+          key: 'mode', label: copy ? 'Copy across' : 'Mirror across', type: 'select', value: 'axis',
+          tip: copy
+            ? 'Axis: the copy lands on the other side of the middle of the selection, along the axis. Line: click two points; the copy lands where a mirror image would, the vertical plane through them being the middle between original and copy.'
+            : 'Axis: flip through the middle of the selection. Line: click two points; the mirror is the vertical plane through them.',
           options: [['axis', 'Axis'], ['line', 'Line (2 points)']],
         },
-        { key: 'axis', label: 'Axis', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: ['mode', 'axis'], tip: 'The selection is flipped along this axis.' },
+        { key: 'axis', label: 'Axis', type: 'select', value: 'x', options: [['x', 'X'], ['y', 'Y'], ['z', 'Z']], showIf: ['mode', 'axis'], tip: copy ? 'The copy is placed along this axis.' : 'The selection is flipped along this axis.' },
         {
           key: 'distance', label: 'Distance', type: 'number', unit: 'mm', value: 0, step: 1, showIf: ['mode', 'axis'],
-          tip: '0 flips in place. Otherwise the copy lands this far from the original (negative: the other side).',
+          tip: copy
+            ? '0 puts the copy on top of the original. Otherwise it lands this far from the original (negative: the other side).'
+            : '0 flips in place. Otherwise the copy lands this far from the original (negative: the other side).',
         },
-        { key: 'keep', label: 'Keep the original', type: 'checkbox', value: false, tip: 'Keep the original and add the mirrored copy next to it.' },
+        // Duplicate always keeps the original.
+        ...(copy ? [] : [{ key: 'keep', label: 'Keep the original', type: 'checkbox' as const, value: false, tip: 'Keep the original and add the mirrored copy next to it.' }]),
         {
           key: 'again', label: 'Pick again', type: 'button', value: '', showIf: (v) => v.mode !== 'axis',
           tip: 'Throw away the points and click them again.',
@@ -145,9 +184,9 @@ export class TurnTools {
           mode = String(v.mode);
           restart();
         }
-        const keep = v.keep === true;
+        const keep = copy || v.keep === true;
         if (mode !== 'axis') {
-          return { flipped: plane ? mirrorAbout(plane.n, plane.at) : [], ready: plane !== null, picked: [...picked], normal: plane?.n ?? null, mode, keep };
+          return { flipped: plane ? (copy ? copyAbout(plane.n, plane.at) : mirrorAbout(plane.n, plane.at)) : [], ready: plane !== null, picked: [...picked], normal: plane?.n ?? null, mode, keep };
         }
         const axis = AXIS_NAMES.indexOf(String(v.axis).toUpperCase() as 'X') as 0 | 1 | 2;
         const out: Flipped[] = [];
@@ -156,6 +195,13 @@ export class TurnTools {
         // parts swap sides too. A loose object mirrors through its own middle.
         for (const unit of units(doc, objs)) {
           const mid = mirrorPlaneAt(unit.box.min.getComponent(axis), unit.box.max.getComponent(axis), distance);
+          if (copy) {
+            // The copy has the shape of the original, moved to where the mirror image would lie.
+            const shift = new THREE.Vector3();
+            shift.setComponent(axis, 2 * mid - (unit.box.min.getComponent(axis) + unit.box.max.getComponent(axis)));
+            for (const obj of unit.objs) out.push(copyAt(obj, shift));
+            continue;
+          }
           for (const obj of unit.objs) {
             // Bake rotation and scale into the geometry and mirror it about the
             // object's own origin, then place the origin's mirror image. The
@@ -212,9 +258,13 @@ export class TurnTools {
         return out;
       },
       apply: (r) => {
-        if (!r.ready) return this.toast('Mirror: pick the points first');
+        if (!r.ready) return this.toast(`${name}: pick the points first`);
         if (!r.flipped.every((f) => doc.objects.includes(f.obj))) return;
         doc.transact(() => {
+          if (copy) {
+            doc.setSelection(doc.addCopies(shiftedCopyStates(doc, r.flipped.map((f) => ({ obj: f.obj, shift: f.shift! })))));
+            return;
+          }
           if (r.keep) {
             // Mirrored copies; copies of a group form a group of their own.
             doc.setSelection(doc.addCopies(mirroredCopyStates(doc, r.flipped)));

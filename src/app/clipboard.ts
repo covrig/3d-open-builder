@@ -72,6 +72,8 @@ export async function setupEditActions(ctx: EditActionsContext): Promise<EditAct
   };
   for (const [name, fn] of Object.entries(actions)) {
     // Some actions (Delete) are keyboard and row-button only, with no toolbar button.
+    // The Duplicate button opens its own bar (see TurnTools), so only Copy and the rest are wired here.
+    if (name === 'duplicate') continue;
     document.querySelector(`[data-action="${name}"]`)?.addEventListener('click', fn);
   }
 

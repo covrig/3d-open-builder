@@ -181,6 +181,10 @@ async function runChecks(b) {
     await page.mouse.click(5, 300);
     await page.evaluate(() => window.app.doc.setSelection(window.app.doc.objects));
     await page.keyboard.press('d');
+    // Duplicate opens its bar (like Mirror); Apply adds the copy.
+    await page.waitForSelector('#feature-bar:not([hidden])', { timeout: 5000 });
+    await applyFeature(page);
+    await page.waitForFunction(() => window.app.doc.objects.length === 2, { timeout: 15000 }).catch(() => {});
     const afterD = await page.evaluate(() => window.app.doc.objects.length);
     if (afterD !== 2) throw new Error(`D did not duplicate although single-key shortcuts start on (${afterD} objects)`);
     // The remaining checks type into the page, so they run with single-key shortcuts switched
@@ -885,6 +889,9 @@ async function runChecks(b) {
     if (names.join() !== 'Cube,Cylinder,Sphere') throw new Error(`1, 2, 3 added: ${names.join(', ')}`);
     await page.evaluate(() => window.app.doc.setSelection([window.app.doc.objects[0]]));
     await page.keyboard.press('d');
+    await page.waitForSelector('#feature-bar:not([hidden])', { timeout: 5000 });
+    await applyFeature(page);
+    await page.waitForFunction(() => window.app.doc.objects.length === 4, { timeout: 15000 }).catch(() => {});
     if ((await count()) !== 4) throw new Error('D did not duplicate');
     const titles = {};
     for (const [key, want] of [['b', 'Bevel'], ['o', 'Round'], ['p', 'Pattern'], ['e', 'Extrude down']]) {
