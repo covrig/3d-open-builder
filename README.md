@@ -17,16 +17,16 @@ Nothing to install, no account, and your files never leave your computer.
 
 </div>
 
-## What you can do
+## Features
 
-- **Shapes and threads:** basic shapes with their measurements set before they are added (they appear at the origin, on the plate), plus bolts, nuts and threads (also for cutting threaded holes) in metric and imperial sizes.
-- **Combine and edit:** merge, subtract and intersect (pieces that end up apart become separate objects), split, mirror (with an optional distance, so the copy lands that far from the original) and rotate in quarter turns (both show an orange preview and the axis choice before Apply), pattern, extrude down to the plate (the plane can be tilted), shell, edge bevel and rounding, braces, and raised or cut-in text (also on curved faces). Groups work with move, mirror, split, extrude and pattern.
+- **Shapes and threads:** basic shapes with their measurements set before they are added, plus bolts, nuts and threads (also for cutting threaded holes) in metric and imperial sizes.
+- **Combine and edit:** merge, subtract and intersect, split, mirror and rotate in quarter turns, pattern, extrude down to the plate, shell, edge bevel and rounding, braces, and raised or cut-in text. Groups work with move, mirror, split, extrude and pattern.
 - **Place precisely:** move, rotate and size handles with snapping, put on the plate, lay flat, align, distribute and pack, and a reference picture to trace over.
 - **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges, edge middles and the lines where objects overlap; a section view that cuts the view open, with measuring on the cut.
-- **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour (also through X-ray), best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.
-- **See it your way:** X-ray, wireframe, edges (with faint lines where objects overlap) and shadows, rulers (on the sides facing you, in the scene's unit; tool bars use that unit too), a view cube, hide objects you don't need right now, and light or dark colours. The View section is a grid of buttons (Fit, Reflection, Plate / Home, Rulers, Shadows / X-ray, Wireframe, Edges). Reflection, Plate and Edges open sliders: the reflection's strength and depth, the plate's see-through and grid lines (plus a switch for numbers, in the scene's unit, along the X and Y axis lines), and how strong the edge lines are. A setting in Settings turns the dashed lines where objects overlap on or off. The dice beside the Objects title gives every object a different colour.
-- **Any device:** mouse, trackpad (two fingers pan, pinch zooms) or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a key to repeat the last tool.
-- **Safe to use:** 100 undo steps, autosave, Save, and saving the whole drawing to a project file you can open again; every tool ends with Apply or Cancel, and nothing else can change the model while one is open.
+- **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour, best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.
+- **See it your way:** X-ray, wireframe, edges (with faint lines where objects overlap) and shadows, rulers, a view cube, hide objects you don't need right now, and light or dark themes.
+- **Any device:** mouse, trackpad or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a key to repeat the last tool.
+- **Safe to use:** 100 undo steps, autosave/save, and saving the whole drawing to a project file you can open again.
 
 ## Private by design
 

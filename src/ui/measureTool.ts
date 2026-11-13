@@ -201,6 +201,8 @@ export class MeasureTool {
       });
     }
     panel.querySelector('[data-action="measure-clear"]')!.addEventListener('click', () => this.clear());
+    // Touch screens: a button under the hint stops the tool while the panel is open (see the stylesheet).
+    document.querySelector('#measure-stop')?.addEventListener('click', () => this.setKind(null));
   }
 
   get active(): boolean {

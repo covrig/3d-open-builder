@@ -80,6 +80,30 @@ function pointInside(wasm: ManifoldToplevel, solid: Manifold, p: V3, reach: numb
 }
 
 const TOO_LARGE = 'This size is too large for the faces next to the picked edge. Use a smaller one.';
+const NOT_FLAT = 'The surface next to this edge is curved or bumpy, so a clean bevel or round is not possible. Pick other edges or use a smaller size.';
+
+/**
+ * Does the surface still lie where the tool's face will be? The tool runs
+ * straight along each face from the edge; on a faceted curve (the rim of a hole
+ * in a ball-shaped hollow, a scan) the next triangles bend away from that
+ * straight line, and the cut then digs notches or leaves teeth along the rim.
+ * `p` is the point at the end of the leg, `n` the face's normal there. The
+ * nearest surface along the normal must be within a small tolerance of `p`
+ * (checked a little to either side too, in case the ray runs along a triangle
+ * edge). Flat faces, cylinders and cones come out at exactly 0.
+ */
+function surfaceFollows(solid: Manifold, p: V3, n: V3, leg: number, u: V3, length: number): boolean {
+  const tolerance = Math.max(0.01, 0.03 * leg);
+  const range = Math.max(0.5, leg);
+  for (const shift of [0, 0.02, -0.02]) {
+    const q = add(p, u, shift * length);
+    const hits = solid.rayCast(add(q, n, range), add(q, n, -range));
+    if (hits.length === 0) continue;
+    const off = Math.min(...hits.map((h) => Math.abs((h.position[0] - q[0]) * n[0] + (h.position[1] - q[1]) * n[1] + (h.position[2] - q[2]) * n[2])));
+    return off <= tolerance;
+  }
+  return false;
+}
 
 /**
  * Refuse sizes the geometry cannot take, before anything is cut. Each picked
@@ -114,6 +138,7 @@ function checkSizes(
           ? inside(add(along, n, -near))
           : !inside(add(along, n, near)) && inside(add(along, n, -near));
         if (!ok) throw new Error(TOO_LARGE);
+        if (s.convex && !surfaceFollows(solid, along, n, leg, f.u, f.length)) throw new Error(NOT_FLAT);
       }
     }
   });

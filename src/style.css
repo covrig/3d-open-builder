@@ -1004,6 +1004,12 @@ body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orien
   pointer-events: auto;
 }
 #busy button { padding: 4px 12px; }
+/* Touch screens: while the side panel is closed and a measure tool is on, a finger-sized button under the hint stops it,
+   so the panel need not be opened just for that. */
+#measure-stop { display: none; pointer-events: auto; padding: 9px 18px; font-size: 14px; box-shadow: var(--shadow); }
+@media (pointer: coarse) {
+  body.panel-closed #viewport.measuring #measure-stop { display: inline-flex; }
+}
 /* Measuring: a point under the cursor that snapped to a corner, edge middle or edge. */
 svg.measure circle.hover.snapped { stroke: #ffb224; stroke-width: 2.5; opacity: 1; fill: rgba(255, 178, 36, 0.18); }
 svg.measure circle.snap-dot { fill: #ffb224; stroke: #ffb224; }
