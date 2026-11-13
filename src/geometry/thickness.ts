@@ -45,6 +45,38 @@ export const MIN_REACH_BASE = 1.5;
 /** How far a ray goes for this minimum wall: enough to colour every minimum wall up to REACH_FACTOR/1.5 times it exactly. */
 export const thicknessReach = (minWall: number): number => REACH_FACTOR * Math.max(minWall, MIN_REACH_BASE);
 
+/**
+ * Most triangles one object may have for the Wall thickness view. Building the
+ * solid and sorting out its shells cost seconds on a model this size and the
+ * time keeps growing with it (a mesh several times larger took minutes). A
+ * limit chosen from timings on one machine: a slower one needs longer, which is
+ * why THICKNESS_TIME_LIMIT_MS also stops a run that takes too long.
+ */
+export const THICKNESS_MAX_TRIANGLES = 1_000_000;
+
+/** A measuring run still going after this long (ms) is stopped; what finished before is kept. */
+export const THICKNESS_TIME_LIMIT_MS = 60_000;
+
+/** A triangle count for people: "295,000" (rounded to thousands) or "2.1 million". */
+export function triangleCountText(triangles: number): string {
+  if (triangles >= 1_000_000) return `${(triangles / 1_000_000).toFixed(1)} million`;
+  return (triangles >= 1000 ? Math.round(triangles / 1000) * 1000 : triangles).toLocaleString('en-US');
+}
+
+/** Why an object is too detailed for the view, or null when its size is fine. */
+export function thicknessLimitMessage(name: string, triangles: number): string | null {
+  if (!(triangles > THICKNESS_MAX_TRIANGLES)) return null;
+  const limit = triangleCountText(THICKNESS_MAX_TRIANGLES);
+  // Just over the limit would read "1.0 million ... (limit 1.0 million)": one more digit then.
+  const count = triangleCountText(triangles) === limit ? `${(triangles / 1_000_000).toFixed(2)} million` : triangleCountText(triangles);
+  return `${name}: ${count} triangles is too detailed to measure (limit ${limit}). Hide it, select a smaller part, or simplify the model.`;
+}
+
+/** The note for objects whose measuring was stopped by the time limit, e.g. "Stopped after 60 s: Trex 2 took too long to measure". */
+export function thicknessStopMessage(names: string[], limitMs: number): string {
+  return `Stopped after ${+(limitMs / 1000).toFixed(1)} s: ${names.join(', ')} took too long to measure`;
+}
+
 export const NOT_CLOSED_MESSAGE =
   'This object is not a closed solid (it has holes, open surfaces or faces pointing the wrong way), so its walls cannot be measured. Use Check and repair first.';
 
@@ -71,6 +103,9 @@ export interface ThicknessResult {
  * reach) comes out as the reach, "thick enough". Refuses what is not a closed solid.
  */
 export function measureThickness(wasm: ManifoldToplevel, item: PlacedMesh, minWall: number): ThicknessResult {
+  // Before any work: the caller (the view) checks this too, but nothing else may start a run that takes minutes.
+  const tooBig = thicknessLimitMessage('This object', item.mesh.indices.length / 3);
+  if (tooBig) throw new Error(tooBig);
   const world = bakeMesh(item);
   const problem = meshProblem(world);
   if (problem) throw new Error(problem);

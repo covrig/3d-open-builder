@@ -1,6 +1,8 @@
 import { friendlyError } from '../app/messages';
 import { CANCELLED, runOp } from '../geometry/workerClient';
-import { summarizeThickness, type ThicknessResult } from '../geometry/thickness';
+import {
+  summarizeThickness, THICKNESS_TIME_LIMIT_MS, thicknessLimitMessage, thicknessStopMessage, type ThicknessResult,
+} from '../geometry/thickness';
 import type { MeshData } from '../geometry/meshData';
 import type { SceneDocument, SceneObject } from '../scene/document';
 import type { Gizmo } from '../scene/gizmo';
@@ -45,6 +47,11 @@ export class ThicknessTool {
   /** Objects the last open could not measure (not closed solids) */
   private skipped = 0;
   private measuring = false;
+  /** Objects finished (measured or not) of those sent to the worker in the current run, for the progress note */
+  private progress = { done: 0, total: 0 };
+  /** Stops the run when it takes too long (THICKNESS_TIME_LIMIT_MS) */
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private timeLimitMs = THICKNESS_TIME_LIMIT_MS;
 
   constructor(
     private readonly viewport: Viewport,
@@ -86,50 +93,97 @@ export class ThicknessTool {
     await this.measure(objs);
   }
 
-  /** Measure the objects (the worker looks as far as the minimum wall needs) and paint their layers. */
+  /**
+   * Measure the objects (the worker looks as far as the minimum wall needs) and
+   * paint their layers. Objects with too many triangles are left out at once,
+   * without sending them to the worker. Each object's layer appears as soon as
+   * its measurement arrives; when the time limit is up the unfinished ones are
+   * stopped and the finished ones stay.
+   */
   private async measure(objs: SceneObject[]): Promise<void> {
     this.targets = objs;
     this.skipped = 0;
-    this.setMeasuring(true);
-    this.summary.textContent = 'Measuring…';
     this.abort?.abort();
+    this.clearTimer();
     const abort = new AbortController();
     this.abort = abort;
-    const shapes = objs.map((o) => o.data);
+    // This run is still the wanted one: not closed, not measured again meanwhile.
+    const current = () => this.abort === abort && this.on;
     const minWall = settings.ui.minWall;
-    const settled = await Promise.allSettled(
-      objs.map((o) => runOp('thickness', { item: this.doc.placed(o), minWall }, { quiet: true, signal: abort.signal })),
-    );
-    // Closed (or measured again) meanwhile: nothing of this run is wanted.
-    if (this.abort !== abort || !this.on) return;
+    const tooBig: string[] = [];
+    const refused: string[] = [];
+    const stopped: string[] = [];
+    let timedOut = false;
+    const runnable: SceneObject[] = [];
+    for (const o of objs) {
+      const why = thicknessLimitMessage(o.name, o.data.indices.length / 3);
+      if (why) {
+        tooBig.push(why);
+        this.skipped++;
+      } else runnable.push(o);
+    }
+    this.progress = { done: 0, total: runnable.length };
+    this.setMeasuring(true);
+    this.updateSummary();
+    if (runnable.length) {
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        timedOut = true;
+        abort.abort();
+      }, this.timeLimitMs);
+    }
+    await Promise.all(runnable.map(async (obj) => {
+      const shape = obj.data;
+      try {
+        const result = await runOp('thickness', { item: this.doc.placed(obj), minWall }, { quiet: true, signal: abort.signal });
+        if (!current()) return;
+        // The object may have been removed or reshaped meanwhile.
+        if (!this.doc.objects.includes(obj) || obj.data !== shape) return;
+        const layer = thicknessLayer(obj.mesh.geometry, result.thickness, settings.ui.minWall);
+        if (!layer) {
+          this.skipped++;
+          return;
+        }
+        obj.mesh.add(layer);
+        this.entries.push({ obj, data: shape, result, layer });
+        this.viewport.invalidate();
+      } catch (e) {
+        if (!current()) return;
+        this.skipped++;
+        if (e instanceof Error && e.message === CANCELLED) {
+          // Stopped by the time limit; any other stop (Cancel) is silent.
+          if (timedOut) stopped.push(obj.name);
+        } else refused.push(friendlyError(e));
+      } finally {
+        if (current()) {
+          this.progress.done++;
+          this.updateSummary();
+        }
+      }
+    }));
+    if (!current()) return;
+    this.clearTimer();
     this.abort = null;
     this.setMeasuring(false);
-    const refused: string[] = [];
-    settled.forEach((s, i) => {
-      const obj = objs[i];
-      if (s.status === 'rejected') {
-        if (!(s.reason instanceof Error && s.reason.message === CANCELLED)) refused.push(friendlyError(s.reason));
-        this.skipped++;
-        return;
-      }
-      // The object may have been removed or reshaped meanwhile.
-      if (!this.doc.objects.includes(obj) || obj.data !== shapes[i]) return;
-      const layer = thicknessLayer(obj.mesh.geometry, s.value.thickness, settings.ui.minWall);
-      if (!layer) {
-        this.skipped++;
-        return;
-      }
-      obj.mesh.add(layer);
-      this.entries.push({ obj, data: shapes[i], result: s.value, layer });
-    });
+    const notes: string[] = [];
+    if (tooBig.length) notes.push(tooBig.slice(0, 2).join(' ') + (tooBig.length > 2 ? ` (and ${tooBig.length - 2} more too detailed)` : ''));
     if (this.entries.length === 0) {
-      this.toast(refused[0] ?? 'Nothing could be measured');
+      if (refused.length) notes.push(refused[0]);
+    } else if (refused.length) notes.push(`${refused.length === 1 ? '1 object' : `${refused.length} objects`} skipped: ${refused[0]}`);
+    if (stopped.length) notes.push(thicknessStopMessage(stopped, this.timeLimitMs));
+    if (this.entries.length === 0) {
+      this.toast(notes.join(' ') || 'Nothing could be measured');
       this.close();
       return;
     }
-    if (refused.length) this.toast(`${refused.length === 1 ? '1 object' : `${refused.length} objects`} skipped: ${refused[0]}`);
+    if (notes.length) this.toast(notes.join(' '));
     this.updateSummary();
     this.viewport.invalidate();
+  }
+
+  private clearTimer(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
   }
 
   /** Close the panel; false if it wasn't open. */
@@ -137,6 +191,7 @@ export class ThicknessTool {
     if (!this.on) return false;
     this.on = false;
     this.setMeasuring(false);
+    this.clearTimer();
     this.abort?.abort();
     this.abort = null;
     for (const e of this.entries) disposeThicknessLayer(e.layer);
@@ -197,6 +252,11 @@ export class ThicknessTool {
 
   /** "12 % of the surface is thinner than 0.8 mm, thinnest 0.42 mm" (and "(sampled)" when only part of it was measured). */
   private updateSummary(): void {
+    if (this.measuring) {
+      const { done, total } = this.progress;
+      this.summary.textContent = total > 1 ? `Measuring… ${done} of ${total}` : 'Measuring…';
+      return;
+    }
     const min = settings.ui.minWall;
     const s = summarizeThickness(this.entries.map((e) => e.result), min);
     if (!s.measured) {
