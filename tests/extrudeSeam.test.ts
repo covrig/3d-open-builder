@@ -44,7 +44,7 @@ const smallest = (mesh: MeshData) => {
 describe('extrude down leaves no step at the plane', () => {
   it('a sphere cut at z = 45: one ring of sharp edges at the plane, nothing collapsed', () => {
     const sphere = createPrimitive(wasm, 'sphere', { diameter: 40 }); // centred, lifted to z = 30
-    const r = extrudeToPlane(wasm, { mesh: sphere, matrix: lift(30) }, 45);
+    const r = extrudeToPlane(wasm, { mesh: sphere, matrix: lift(30) }, 45)[0];
     const world = inWorld(r);
     expect(smallest(world)).toBeGreaterThan(1e-12);
     const edges = findEdges(world);
@@ -65,7 +65,7 @@ describe('extrude down leaves no step at the plane', () => {
 
   it('a cylinder cut through its middle: 12,546.19 mm³, from the plate up to z = 40', () => {
     const cylinder = createPrimitive(wasm, 'cylinder', { diameter: 20, height: 20 });
-    const r = extrudeToPlane(wasm, { mesh: cylinder, matrix: lift(30) }, 30);
+    const r = extrudeToPlane(wasm, { mesh: cylinder, matrix: lift(30) }, 30)[0];
     expect(volume(r.mesh)).toBeCloseTo(12546.19, 1);
     const b = bounds(inWorld(r));
     expect(b.min[2]).toBeCloseTo(0, 4);
@@ -79,7 +79,8 @@ describe('extrude down leaves no step at the plane', () => {
     const g = both.getMesh();
     const mesh: MeshData = { positions: g.vertProperties.slice(), indices: g.triVerts.slice() };
     const r = extrudeToPlane(wasm, { mesh, matrix: lift(30) }, 30);
-    expect(shells(r.mesh)).toBe(2);
-    expect(volume(r.mesh)).toBeCloseTo(7000, 2);
+    expect(r.length).toBe(2); // loose parts come back one piece each
+    expect(r.every((p) => shells(p.mesh) === 1)).toBe(true);
+    expect(r.reduce((sum, p) => sum + volume(p.mesh), 0)).toBeCloseTo(7000, 2);
   });
 });

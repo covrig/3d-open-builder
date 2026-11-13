@@ -58,6 +58,10 @@ export const NEEDS_TWO = [
   '#align-menu button', '#distribute-menu button',
 ].join(', ');
 export const NEEDS_TWO_MESSAGE = 'Needs at least two objects in the drawing';
+/** Ungroup only means something while a group is selected. */
+export const NEEDS_GROUP = '[data-action="ungroup"]';
+export const NEEDS_GROUP_MESSAGE = 'Select a group to ungroup';
+let groupSelected = false;
 let singleObject = false;
 
 /** Why this control can't be used right now, or null if it can. */
@@ -65,6 +69,7 @@ export function blockReason(el: Element): string | null {
   if (lockedNow(el)) return isLocked() ? LOCKED_MESSAGE : BUSY_MESSAGE;
   if (manySelected && el.closest(SINGLE_ONLY)) return SINGLE_ONLY_MESSAGE;
   if (singleObject && el.closest(NEEDS_TWO)) return NEEDS_TWO_MESSAGE;
+  if (!groupSelected && el.closest(NEEDS_GROUP)) return NEEDS_GROUP_MESSAGE;
   return null;
 }
 
@@ -80,6 +85,13 @@ export function setupToolGuard(toast: (msg: string) => void, doc: SceneDocument)
   };
   for (const type of ['change', 'selection', 'history'] as const) doc.addEventListener(type, countObjects);
   countObjects();
+  // A group is selected (some selected object has a group id): only then Ungroup does anything.
+  const markGroup = () => {
+    groupSelected = doc.selection.some((o) => o.groupId !== undefined);
+    document.body.classList.toggle('group-selected', groupSelected);
+  };
+  for (const type of ['change', 'selection', 'history'] as const) doc.addEventListener(type, markGroup);
+  markGroup();
   // The control last pressed: when it opens a tool, it is that tool's button.
   let pressed: HTMLElement | null = null;
   let current: HTMLElement | null = null;

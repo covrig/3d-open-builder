@@ -281,7 +281,7 @@
             <button data-pop="reflection" data-tip-title="Reflection" data-tip="Show a mirror image of the objects in the plate. Switching it on opens its sliders; the arrow in the tile opens them again."><i data-lucide="flip-horizontal-2"></i><span>Reflection</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-pop="plate" data-tip-title="Plate" data-tip="Show the build plate. Switching it on opens a slider for how see-through it is; the arrow in the tile opens it again."><i data-lucide="grid-3x3"></i><span>Plate</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-action="home" data-tip-title="Home view" data-shortcut="H" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
-            <button data-view="rulers" data-tip-title="Rulers" data-tip="Show the rulers and axis arrows next to the objects."><i data-lucide="ruler"></i><span>Rulers</span></button>
+            <button data-view="rulers" data-pop="rulers" data-tip-title="Rulers" data-tip="Show the rulers and axis arrows next to the objects. Switching it on opens a slider for the size of the numbers; the arrow in the tile opens it again."><i data-lucide="ruler"></i><span>Rulers</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-view="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate."><i data-lucide="sun"></i><span>Shadows</span></button>
             <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
             <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
@@ -345,9 +345,9 @@
             <button data-measure="circle" data-tip-title="Circle" data-tip="Click three points on the model, on the edge of a circle or hole. Shows its diameter and radius."><i data-lucide="circle-dashed"></i><span>Circle</span></button>
           </div>
           <div class="chips one-row">
-            <button data-measure-option="snap" class="chip active" data-tip-title="Snapping" data-tip="Points jump to the nearest corner, measurement point, middle of an edge, centre of a flat face or sharp edge when close.">Snapping</button>
-            <button data-measure-option="dotted" class="chip active" data-tip-title="Dotted line" data-tip="Draw measurement lines dotted instead of solid.">Dotted line</button>
-            <button data-measure-option="deltas" class="chip" data-tip-title="Show ΔX ΔY ΔZ" data-tip="Also show the distance along each axis.">Show ΔXΔYΔZ</button>
+            <button data-measure-option="snap" class="chip active" data-tip-title="Snap" data-tip="Points jump to the nearest corner, measurement point, middle of an edge, centre of a flat face or sharp edge when close.">Snap</button>
+            <button data-measure-option="dotted" class="chip active" data-tip-title="Dotted" data-tip="Draw measurement lines dotted instead of solid.">Dotted</button>
+            <button data-measure-option="deltas" class="chip" data-tip-title="ΔX ΔY ΔZ" data-tip="Also show the distance along each axis.">ΔX ΔY ΔZ</button>
           </div>
           <div class="button-grid cols-1">
             <button data-action="measure-clear" class="clear-button" data-tip-title="Clear measurements" data-tip="Remove all measurements. Undo brings them back."><i data-lucide="eraser"></i><span>Clear</span></button>

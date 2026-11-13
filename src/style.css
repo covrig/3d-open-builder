@@ -490,8 +490,9 @@ button.primary:hover { filter: brightness(1.1); background: var(--accent); }
 .button-grid span { overflow: hidden; text-overflow: ellipsis; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.chip { font-size: 12px; padding: 4px 10px; border-radius: 6px; }
-.chip.active { background: var(--accent-soft); border-color: transparent; color: var(--text); }
+/* The small option buttons get a fainter border than the main buttons, so they read as secondary. */
+.chip { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.chip.active { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--text); }
 
 #sidebar details.panel {
   border: 1px solid var(--border);
@@ -590,6 +591,23 @@ svg.measure circle.hover { fill: none; stroke: var(--text); stroke-width: 1.5; o
 }
 .measure-loupe[hidden] { display: none; }
 .measure-loupe canvas { display: block; width: 100%; height: 100%; }
+/* What the aimed point snapped to; the bubble's overflow and rounding clip it to the circle. */
+.measure-loupe .loupe-snap {
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  transform: translateX(-50%);
+  max-width: 90%;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: rgba(20, 24, 30, 0.78);
+  color: #ffb224;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+}
+.measure-loupe .loupe-snap[hidden] { display: none; }
 /* Over a snapped point the marker drawn by the tool is the cursor. */
 #viewport.measuring.snapped:not(.orbiting):not(.panning):not(.zooming-in):not(.zooming-out) canvas { cursor: none; }
 /* With Edges on, edge lines use the text colour; measurements switch to a warm colour. */
@@ -627,11 +645,10 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
 .items li.hidden-object .row-action.visibility { display: inline-flex; }
 .items .group-tag { margin-left: 0; }
 
-/* Short screens: tiles show only their icon (the tooltip still names them),
-   and spacing tightens, so the whole sidebar fits without scrolling. */
+/* Short or narrow windows: spacing tightens. The tiles keep their labels (the sidebar
+   scrolls when it doesn't fit). */
 @media (max-height: 860px), (max-width: 1100px) {
   .button-grid.tiles > button { padding: 4px 4px; }
-  .button-grid.tiles > button span { display: none; }
   #sidebar { gap: 8px; padding: 8px; }
   #sidebar section, #sidebar details.panel { padding: 8px; gap: 6px; }
   .items { max-height: 364px; } /* about 10 rows */
@@ -954,6 +971,8 @@ body:not(.panel-closed) #view-corner .corner-label { display: none; }
 }
 #view-corner button svg { width: 18px; height: 18px; }
 #view-corner button.active { background: color-mix(in srgb, var(--accent) 25%, var(--overlay)); border-color: var(--accent); }
+/* With the panel open Home, Delete and Select several are hidden (the panel has its own buttons). */
+body:not(.panel-closed) #view-corner .touch-only { display: none; }
 body:not(.panel-closed) #view-corner .panel-open,
 body.panel-closed #view-corner .panel-close { display: none; }
 #view-corner .touch-only { display: none; }
@@ -1141,6 +1160,7 @@ body.tool-locked .toolbar button.tool-current {
 #overhang-bar input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
 
 /* Tools that need two or more objects while the drawing has only one (NEEDS_TWO in src/ui/toolGuard.ts). */
+body:not(.group-selected) [data-action="ungroup"] { opacity: 0.35; cursor: not-allowed; }
 body.single-object :is([data-boolean], [data-action="group"], [data-menu="align-menu"], [data-menu="distribute-menu"], #align-menu button, #distribute-menu button) {
   opacity: 0.35; cursor: not-allowed;
 }

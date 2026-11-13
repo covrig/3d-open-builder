@@ -28,7 +28,7 @@ describe('extrude down with a plane', () => {
   it('keeps what is above the plane and extends the cut shape to the plate', () => {
     // A 20 mm cube floating 10 mm above the plate, plane 5 mm into it.
     const cube = meshOf(() => wasm.Manifold.cube([20, 20, 20], true));
-    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(20) }, 15);
+    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(20) }, 15)[0];
     // Above the plane: 20 × 20 × 15; below: 20 × 20 × 15 down to the plate.
     expect(volume(r.mesh)).toBeCloseTo(20 * 20 * 30, 0);
     expect(countPieces(r.mesh)).toBe(1);
@@ -38,7 +38,7 @@ describe('extrude down with a plane', () => {
   it('replaces the part below the plane by the shape at the plane (upside-down cone)', () => {
     // Cone, point down: radius 0 at z = 0 → 20 at z = 40 (local), lifted so the tip is at z = 10.
     const cone = meshOf(() => wasm.Manifold.cylinder(40, 0, 20, 64));
-    const r = extrudeToPlane(wasm, { mesh: cone, matrix: lift(10) }, 30);
+    const r = extrudeToPlane(wasm, { mesh: cone, matrix: lift(10) }, 30)[0];
     const solid = meshDataToManifold(wasm, cone, lift(10));
     const above = solid.trimByPlane([0, 0, 1], 30);
     const section = solid.slice(30).area();
@@ -51,7 +51,7 @@ describe('extrude down with a plane', () => {
 
   it('gives the same result for a level plane given as a point and normal', () => {
     const cube = meshOf(() => wasm.Manifold.cube([20, 20, 20], true));
-    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(20) }, { point: [3, -2, 15], normal: [0, 0, 1] });
+    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(20) }, { point: [3, -2, 15], normal: [0, 0, 1] })[0];
     expect(volume(r.mesh)).toBeCloseTo(20 * 20 * 30, 0);
   });
 
@@ -60,7 +60,7 @@ describe('extrude down with a plane', () => {
     // along +x (z = 30 - 0.5x), so it stays inside the cube everywhere.
     const cube = meshOf(() => wasm.Manifold.cube([40, 40, 40], true));
     const n = Math.hypot(0.5, 1);
-    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(30) }, { point: [0, 0, 30], normal: [0.5 / n, 0, 1 / n] });
+    const r = extrudeToPlane(wasm, { mesh: cube, matrix: lift(30) }, { point: [0, 0, 30], normal: [0.5 / n, 0, 1 / n] })[0];
     // Above the plane: 1600 × average height 20; below: 1600 × average height 30 down to the plate.
     expect(volume(r.mesh)).toBeCloseTo(1600 * 20 + 1600 * 30, 0);
     expect(countPieces(r.mesh)).toBe(1);

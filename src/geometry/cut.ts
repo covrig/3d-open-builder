@@ -62,7 +62,7 @@ export function extrudeToPlane(
   /** a level plane at this height, or any plane (point + unit normal pointing up-ish) */
   plane: number | { point: Vec3; normal: Vec3 },
   floor = 0,
-): Piece {
+): Piece[] {
   const point: Vec3 = typeof plane === 'number' ? [0, 0, plane] : plane.point;
   const normal: Vec3 = typeof plane === 'number' ? [0, 0, 1] : plane.normal;
   const height = point[2];
@@ -90,9 +90,10 @@ export function extrudeToPlane(
       ?? extrudeByBoolean(solid, section, normal, offset, point, height, floor, level, a, b, keep));
     const status = result.status();
     if (status !== 'NoError') throw new Error(`Extrude failed (${status})`);
-    const piece = toPiece(result);
-    if (!piece) throw new Error('Nothing is left to extrude');
-    return piece;
+    // Loose parts (a cut through a ring, say) come back one piece each, largest first.
+    const pieces = piecesOf(result);
+    if (pieces.length === 0) throw new Error('Nothing is left to extrude');
+    return pieces;
   } finally {
     for (const m of owned) m.delete();
   }

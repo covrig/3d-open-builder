@@ -114,7 +114,9 @@ export class Viewport extends EventTarget {
   labelFactor = 1;
   /** Numbers along the plate's X and Y axis lines (Plate popover: "Grid values"), rebuilt when the step changes */
   private gridValues = false;
-  private gridLabels: { group: THREE.Group; step: number; unit: Unit; dark: boolean; cx: number; cy: number; radius: number; scale: number } | null = null;
+  private gridLabels: { group: THREE.Group; step: number; unit: Unit; dark: boolean; cx: number; cy: number; radius: number; scale: number; textScale: number } | null = null;
+  /** The Plate popover's "Number size": the axis numbers and the origin "0" are this much bigger (1 = as designed) */
+  private gridTextScale = 1;
   /** Mirror image of the objects in the plate (Settings; off by default) */
   readonly reflection: Reflection;
   /** The plate fill's see-through value from Settings (null: the colour theme's own) */
@@ -443,7 +445,7 @@ export class Viewport extends EventTarget {
   private placeOriginLabel(): void {
     // Its geometry and material are shared with other labels: removed, never disposed.
     if (this.originLabel) this.ground.group.remove(this.originLabel);
-    const s = this.labelFactor;
+    const s = this.labelFactor * this.gridTextScale;
     this.originLabel = makeLabel('0', this.palette.label, ORIGIN_HEIGHT * s);
     this.originLabel.position.set(-3.5 * s, -4 * s, 0.05);
     this.ground.group.add(this.originLabel);
@@ -459,6 +461,22 @@ export class Viewport extends EventTarget {
   setGridValues(on: boolean): void {
     this.gridValues = on;
     if (!on) this.clearGridValues();
+    this.invalidate();
+  }
+
+  /** Size of the numbers along the plate's axis lines and of the origin "0" (1: as designed). */
+  setGridTextScale(value: number): void {
+    if (value === this.gridTextScale) return;
+    this.gridTextScale = value;
+    this.placeOriginLabel();
+    // Rebuilt on the next frame (the cache key holds the scale); only dropped here so nothing old lingers when the numbers are off.
+    this.clearGridValues();
+    this.invalidate();
+  }
+
+  /** The ruler numbers follow settings.ui.rulerTextScale; this makes the rulers rebuild with the current value. */
+  setRulerTextScale(): void {
+    this.dispatchEvent(new Event('labelscale'));
     this.invalidate();
   }
 
@@ -498,7 +516,7 @@ export class Viewport extends EventTarget {
     const fits = (step: number) => {
       const t = text(step);
       const decimals = t.includes('.') ? t.length - t.indexOf('.') : 0;
-      const width = GRID_NUMBER_HEIGHT * this.labelFactor * ((digits + decimals + 1) * 0.5 + 0.3);
+      const width = GRID_NUMBER_HEIGHT * this.labelFactor * this.gridTextScale * ((digits + decimals + 1) * 0.5 + 0.3);
       return step * pxPerMm >= Math.max(GRID_NUMBER_GAP, width * pxPerMm * 1.3);
     };
     let step = minor;
@@ -509,12 +527,12 @@ export class Viewport extends EventTarget {
       }
     }
     const cur = this.gridLabels;
-    if (cur && cur.step === step && cur.unit === unit && cur.dark === this.palette.dark && cur.scale === this.labelFactor
+    if (cur && cur.step === step && cur.unit === unit && cur.dark === this.palette.dark && cur.scale === this.labelFactor && cur.textScale === this.gridTextScale
       && Math.hypot(target.x - cur.cx, target.y - cur.cy) < cur.radius * 0.25
       && radius < cur.radius * 1.3 && radius > cur.radius * 0.6) return;
     this.clearGridValues();
     const group = new THREE.Group();
-    const height = GRID_NUMBER_HEIGHT * this.labelFactor;
+    const height = GRID_NUMBER_HEIGHT * this.labelFactor * this.gridTextScale;
     const fadeAt = Math.max(400, distance * 3);
     const add = (index: number, x: number, y: number, alongX: boolean) => {
       if (index === 0) return; // the "0" label is already there
@@ -532,7 +550,7 @@ export class Viewport extends EventTarget {
     for (let k = from(target.x); k * step <= target.x + radius; k++) add(k, k * step, 0, true);
     for (let k = from(target.y); k * step <= target.y + radius; k++) add(k, 0, k * step, false);
     this.ground.group.add(group);
-    this.gridLabels = { group, step, unit, dark: this.palette.dark, cx: target.x, cy: target.y, radius, scale: this.labelFactor };
+    this.gridLabels = { group, step, unit, dark: this.palette.dark, cx: target.x, cy: target.y, radius, scale: this.labelFactor, textScale: this.gridTextScale };
   }
 
   setGridVisible(visible: boolean): void {

@@ -72,7 +72,9 @@ export function setupViewToggles(doc: SceneDocument, viewport: Viewport, rulers:
     const key = btn.dataset.view as keyof typeof settings.ui.view;
     btn.classList.toggle('active', settings.ui.view[key]);
     apply(key, settings.ui.view[key]);
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      // The small arrow in a tile only opens its sliders (viewPopovers.ts); it must not switch the view off.
+      if ((e.target as Element).closest('.tile-more')) return;
       const on = !settings.ui.view[key];
       updateUi((ui) => (ui.view[key] = on));
       btn.classList.toggle('active', on);

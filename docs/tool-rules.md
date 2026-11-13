@@ -80,7 +80,7 @@ Selecting a part of a group selects the whole group.
 | Center, align, distribute, pack | Yes | The group counts as one piece |
 | Pattern | Yes | Copies of the whole group |
 | Split | Yes | One plane across the group; every part it crosses is split; the pieces on each side form their own group |
-| Extrude down | Yes | One plane across the group; every part it crosses is extended down; parts it misses stay as they are |
+| Extrude down | Yes | One plane across the group; every part it crosses is extended down; parts it misses stay as they are; loose parts of the result become objects of their own |
 | Merge | Yes | All parts become one object |
 | Subtract | Yes | One step: the selection (whole groups) is cut out of every object it goes into, then removed; objects it doesn't touch stay as they are |
 | Intersect | Yes | Clicking a part puts the whole group in the role |

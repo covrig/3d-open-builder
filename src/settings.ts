@@ -32,6 +32,10 @@ export interface UiState {
   gridLineOpacity: number;
   /** Numbers along the plate's X and Y axis lines */
   gridValues: boolean;
+  /** Size of those numbers relative to the normal size (1 = as designed) */
+  plateTextScale: number;
+  /** Size of the ruler numbers relative to the normal size (1 = as designed) */
+  rulerTextScale: number;
   /** Opacity of the edge lines in the Edges view (1 = solid) */
   edgeStrength: number;
   /** Dashed lines where objects overlap, in the Edges view */
@@ -92,6 +96,8 @@ const DEFAULTS: Settings = {
     plateOpacity: 0.35,
     gridLineOpacity: 1,
     gridValues: false,
+    plateTextScale: 1,
+    rulerTextScale: 1,
     edgeStrength: 1,
     internalIntersections: true,
     reflection: { on: false, strength: 0.3, depth: 60 },
@@ -147,6 +153,8 @@ function load(): Settings {
   s.ui.gridLineOpacity = clamp01(s.ui.gridLineOpacity, 1);
   s.ui.edgeStrength = clamp01(s.ui.edgeStrength, 1);
   s.ui.gridValues = s.ui.gridValues === true;
+  s.ui.plateTextScale = inRange(s.ui.plateTextScale, 0.5, 2, DEFAULTS.ui.plateTextScale);
+  s.ui.rulerTextScale = inRange(s.ui.rulerTextScale, 0.5, 2, DEFAULTS.ui.rulerTextScale);
   s.ui.importSeparate = s.ui.importSeparate === true;
   s.ui.exportHidden = s.ui.exportHidden === true;
   s.ui.internalIntersections = s.ui.internalIntersections !== false;

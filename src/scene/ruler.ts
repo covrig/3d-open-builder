@@ -100,8 +100,9 @@ export class Ruler {
     const f = (this.facing = this.facingOf(this.box, camera));
 
     const size = box.getSize(new THREE.Vector3());
-    // Same size as the numbers along the plate's axis lines.
-    const textHeight = GRID_NUMBER_HEIGHT * s;
+    // Same size as the numbers along the plate's axis lines at 100%; the Rulers popover's slider scales it
+    // (read here so every rebuild, including the one Viewport.setRulerTextScale triggers, picks it up).
+    const textHeight = GRID_NUMBER_HEIGHT * s * settings.ui.rulerTextScale;
     const gap = textHeight * 2;
     const z = 0.06;
     // Which way is outwards from the footprint on each ruler's side.

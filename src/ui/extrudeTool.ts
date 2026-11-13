@@ -90,7 +90,7 @@ export class ExtrudeTool {
     this.plane.visible = true;
     const centre: [number, number] = [this.plane.position.x, this.plane.position.y];
 
-    this.bar.open<(Piece | null)[]>({
+    this.bar.open<(Piece[] | null)[]>({
       title: 'Extrude down',
       hint: 'Extrude down: drag the blue arrow or type a height. Tilt the plane if you like. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
       fields: [
@@ -124,15 +124,33 @@ export class ExtrudeTool {
         return pieces;
       },
       // The new shapes, and the objects the plane misses as they are.
-      show: (pieces) => pieces.map((p, i) => p ? previewMesh(p.mesh, p.center) : previewMesh(bakeMesh(this.doc.placed(objs[i])), [0, 0, 0])),
-      apply: (pieces) => {
+      show: (results) => results.flatMap((r, i) => r
+        ? r.map((p) => previewMesh(p.mesh, p.center))
+        : [previewMesh(bakeMesh(this.doc.placed(objs[i])), [0, 0, 0])]),
+      apply: (results) => {
         if (!objs.every((o) => this.doc.objects.includes(o))) return;
+        let split = 0;
         this.doc.transact(() => {
-          pieces.forEach((p, i) => {
-            if (p) this.doc.replaceWithPiece(objs[i], p);
+          const kept: SceneObject[] = [];
+          results.forEach((r, i) => {
+            const obj = objs[i];
+            kept.push(obj);
+            if (!r) return; // the plane misses it: stays as it is
+            const [first, ...rest] = r;
+            this.doc.replaceWithPiece(obj, first);
+            // Every other loose part becomes an object of its own (in the same group, if the object had one).
+            for (const p of rest) {
+              const extra = this.doc.add(obj.name.replace(/ \d+$/, ''), p.mesh, obj.color);
+              extra.mesh.position.set(...p.center);
+              extra.groupId = obj.groupId;
+              kept.push(extra);
+              split++;
+            }
           });
+          this.doc.setSelection(kept);
           this.doc.emit('transform');
         });
+        if (split) this.toast(`${split} more separate piece${split > 1 ? 's' : ''} became ${split > 1 ? 'their own objects' : 'its own object'}`);
       },
       onClose: () => this.stop(),
     });

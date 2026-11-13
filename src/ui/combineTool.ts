@@ -201,7 +201,7 @@ export class CombineTool {
     if (!all.every((o) => this.doc.objects.includes(o))) return;
     if (pieces.every((p) => p === null)) return this.toast("The selected objects don't go into any other object");
     if (pieces.every((p) => p !== null && p.length === 0)) {
-      return this.toast(op === 'subtract' ? 'Nothing would be left: the cutters cover the whole object' : 'Nothing is left: the objects do not overlap');
+      return this.toast(op === 'subtract' ? 'Nothing would be left: the cutters cover the whole object' : "The objects don't overlap");
     }
     const { emptied, split } = this.doc.transact(() => this.replaceTargets(targets, tools, pieces));
     const notes: string[] = [];

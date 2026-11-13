@@ -252,7 +252,7 @@ for (const btn of $$<HTMLButtonElement>('[data-boolean]')) {
     const selected = [...doc.selection];
     if (selected.length < 2) return toast('Select at least two objects (Ctrl+click adds to the selection)');
     void heavy(selected, () => runOp('boolean', { op, items: selected.map((o) => doc.placed(o)) }), (result) => {
-      if (result.empty) return toast('Nothing is left: the objects do not overlap');
+      if (result.empty) return toast("The objects don't overlap");
       doc.transact(() => {
         const color = selected[0].color;
         doc.remove(selected);

@@ -85,6 +85,7 @@ export class MeasureTool {
   /** The loupe shown above a finger that is aiming, and the canvas inside it that gets the zoomed copy of the view */
   private readonly loupe: HTMLElement;
   private readonly loupeCanvas: HTMLCanvasElement;
+  private readonly loupeSnap: HTMLElement;
   /** Where the aiming finger is (client coordinates), null when no finger is down */
   private finger: { x: number; y: number } | null = null;
   /** Fingers now on the view; with two or more it is a camera gesture, not aiming */
@@ -124,7 +125,11 @@ export class MeasureTool {
     this.loupe.className = 'measure-loupe';
     this.loupe.hidden = true;
     this.loupeCanvas = document.createElement('canvas');
-    this.loupe.append(this.loupeCanvas);
+    // What the aimed point snapped to, along the bubble's bottom: a tag next to the point would sit under the finger.
+    this.loupeSnap = document.createElement('div');
+    this.loupeSnap.className = 'loupe-snap';
+    this.loupeSnap.hidden = true;
+    this.loupe.append(this.loupeCanvas, this.loupeSnap);
     viewport.element.append(this.svg, this.labels, this.chip, this.loupe);
     viewport.onFrame(() => this.draw());
 
@@ -305,6 +310,7 @@ export class MeasureTool {
     const svg: string[] = [];
     const specs: LabelSpec[] = [];
     let snapTag = '';
+    let loupeText = '';
     const P = (v: THREE.Vector3) => this.viewport.project(v);
     const num = (mm: number) => (Math.round(toUnit(mm) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const unit = settings.unit;
@@ -415,10 +421,14 @@ export class MeasureTool {
         // looks right from this angle isn't placed by mistake.
         const marker = hoverMarker(p, aimedSnap, aimedHidden);
         svg.push(marker.svg);
-        snapTag = marker.tag;
+        // While a finger is aiming, the words go in the loupe instead (the finger covers the point).
+        if (this.touchPointer && this.finger) loupeText = marker.tag.replace(/<[^>]*>/g, '');
+        else snapTag = marker.tag;
         if (!this.hover) chipAt = p;
       }
     }
+    this.loupeSnap.textContent = loupeText;
+    this.loupeSnap.hidden = !loupeText;
     this.svg.innerHTML = svg.join('');
     this.drawLoupe();
 

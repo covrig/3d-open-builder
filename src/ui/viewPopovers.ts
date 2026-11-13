@@ -36,7 +36,7 @@ interface Tile {
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 /**
- * The Reflection, Plate and Edges tiles of the View section. A click switches the
+ * The Reflection, Plate, Edges and Rulers tiles of the View section. A click switches the
  * feature on or off; switching it on opens a small popover under the tile
  * with its sliders, and the ▾ inside a tile that is on reopens it. The popover
  * closes on a click elsewhere or Esc. The values are remembered (settings.ui)
@@ -53,8 +53,10 @@ export function setupViewPopovers(viewport: Viewport): void {
     viewport.setPlateOpacity(settings.ui.plateOpacity);
     viewport.setGridLineOpacity(settings.ui.gridLineOpacity);
     viewport.setGridValues(settings.ui.gridValues);
+    viewport.setGridTextScale(settings.ui.plateTextScale);
     viewport.invalidate();
   };
+  const applyRulers = () => viewport.setRulerTextScale();
 
   const applyEdges = () => {
     setEdgeStrength(settings.ui.edgeStrength);
@@ -62,6 +64,21 @@ export function setupViewPopovers(viewport: Viewport): void {
   };
 
   const tiles: Record<string, Tile> = {
+    rulers: {
+      title: 'Rulers',
+      isOn: () => settings.ui.view.rulers,
+      setOn: () => {},
+      switchedElsewhere: true,
+      sliders: [{
+        label: 'Number size', tip: 'Make the ruler numbers smaller or bigger. 100% is the normal size.', min: 0.5, max: 2, step: 0.05,
+        get: () => settings.ui.rulerTextScale,
+        set: (v) => {
+          updateUi((ui) => (ui.rulerTextScale = v));
+          applyRulers();
+        },
+        show: pct,
+      }],
+    },
     edges: {
       title: 'Edges',
       isOn: () => settings.ui.view.edges,
@@ -125,6 +142,14 @@ export function setupViewPopovers(viewport: Viewport): void {
         get: () => settings.ui.gridLineOpacity,
         set: (v) => {
           updateUi((ui) => (ui.gridLineOpacity = v));
+          applyPlate();
+        },
+        show: pct,
+      }, {
+        label: 'Number size', tip: "Make the numbers along the plate's axis lines smaller or bigger. 100% is the normal size.", min: 0.5, max: 2, step: 0.05,
+        get: () => settings.ui.plateTextScale,
+        set: (v) => {
+          updateUi((ui) => (ui.plateTextScale = v));
           applyPlate();
         },
         show: pct,
@@ -237,6 +262,7 @@ export function setupViewPopovers(viewport: Viewport): void {
   applyReflection();
   applyPlate();
   applyEdges();
+  applyRulers();
 
   document.addEventListener('pointerdown', (e) => {
     if (pop.hidden) return;
