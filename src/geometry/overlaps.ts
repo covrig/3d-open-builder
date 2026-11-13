@@ -23,8 +23,17 @@ function worldBox({ mesh, matrix: e }: PlacedMesh): Box {
   return b;
 }
 
-/** What each pair of placed objects gave last time, so only new or moved pairs are worked out again. */
-const pairCache = new Map<string, { segments: Float32Array; triangles: number }>();
+/** Edges of an object steeper than this (degrees) between two faces are real edges, as in findEdges. */
+const SHARP = Math.cos((30 * Math.PI) / 180);
+
+/** What a set of overlaps gave: crossing curves, and edges of objects that run inside another object (6 numbers per segment). */
+export interface OverlapResult {
+  crossings: Float32Array;
+  inner: Float32Array;
+}
+
+/** What each pair of placed objects gave last time, so only new or moved pairs are worked out again. `inner` is null until asked for. */
+const pairCache = new Map<string, { crossings: Float32Array; inner: Float32Array | null; triangles: number }>();
 
 /** Forget every remembered pair (for tests). */
 export function clearOverlapCache(): void {
@@ -43,8 +52,14 @@ const overlap = (a: Box, b: Box) => a[0] < b[3] && b[0] < a[3] && a[1] < b[4] &&
  * input every triangle of the result came from, so the crossing is exactly
  * the edges between a triangle of A and a triangle of B. Objects that only
  * touch share no volume and give no line.
+ *
+ * With `withInner`, also the edges of one object that run inside the other
+ * (the cube's corner edge inside a cylinder): sharp edges of A∩B between two
+ * triangles of the same original, so they are real edges of that object.
+ * Otherwise `inner` is empty and not worked out (a pair remembered without
+ * them is worked out again when they are asked for).
  */
-export function overlapLines(wasm: ManifoldToplevel, items: PlacedMesh[]): Float32Array {
+export function overlapLines(wasm: ManifoldToplevel, items: PlacedMesh[], withInner: boolean): OverlapResult {
   const boxes = items.map(worldBox);
   const solids = new Map<number, Manifold | null>();
   const owned: Manifold[] = [];
@@ -65,6 +80,8 @@ export function overlapLines(wasm: ManifoldToplevel, items: PlacedMesh[]): Float
     return solids.get(i)!;
   };
   const out: number[] = [];
+  const outInner: number[] = [];
+  const result = () => ({ crossings: new Float32Array(out), inner: new Float32Array(outInner) });
   let triangles = 0;
   const places = items.map(placement);
   /** Cache keys of the pairs met in this call; the others are forgotten at the end. */
@@ -77,34 +94,41 @@ export function overlapLines(wasm: ManifoldToplevel, items: PlacedMesh[]): Float
         const key = pi !== null && pj !== null ? (pi < pj ? `${pi}|${pj}` : `${pj}|${pi}`) : null;
         const known = key === null ? undefined : pairCache.get(key);
         if (key !== null) seen.add(key);
-        if (known) {
+        if (known && (known.inner || !withInner)) {
           triangles += known.triangles;
-          if (triangles > TRIANGLE_BUDGET) return new Float32Array(out);
-          for (let k = 0; k < known.segments.length; k++) out.push(known.segments[k]);
+          if (triangles > TRIANGLE_BUDGET) return result();
+          for (let k = 0; k < known.crossings.length; k++) out.push(known.crossings[k]);
+          if (known.inner) for (let k = 0; k < known.inner.length; k++) outInner.push(known.inner[k]);
           continue;
         }
         const a = solid(i), b = solid(j);
         if (!a || !b) continue;
         const pairTriangles = a.numTri() + b.numTri();
         triangles += pairTriangles;
-        if (triangles > TRIANGLE_BUDGET) return new Float32Array(out);
+        if (triangles > TRIANGLE_BUDGET) return result();
         const both = a.intersect(b);
         owned.push(both);
-        const segments: number[] = [];
-        if (!both.isEmpty()) crossings(both, a.originalID(), b.originalID(), segments);
-        if (key !== null) pairCache.set(key, { segments: new Float32Array(segments), triangles: pairTriangles });
-        for (let k = 0; k < segments.length; k++) out.push(segments[k]);
+        const segments: number[] = [], inner: number[] | null = withInner ? [] : null;
+        if (!both.isEmpty()) crossings(both, a.originalID(), b.originalID(), segments, inner);
+        const found = { crossings: new Float32Array(segments), inner: inner && new Float32Array(mergeCollinear(inner)), triangles: pairTriangles };
+        if (key !== null) pairCache.set(key, found);
+        for (let k = 0; k < found.crossings.length; k++) out.push(found.crossings[k]);
+        if (found.inner) for (let k = 0; k < found.inner.length; k++) outInner.push(found.inner[k]);
       }
     }
-    return new Float32Array(out);
+    return result();
   } finally {
     for (const k of [...pairCache.keys()]) if (!seen.has(k)) pairCache.delete(k);
     for (const m of owned) m.delete();
   }
 }
 
-/** Add the edges of `both` that lie between a triangle from original A and one from B. */
-function crossings(both: Manifold, idA: number, idB: number, out: number[]): void {
+/**
+ * Add the edges of `both` that lie between a triangle from original A and one
+ * from B to `out`, and the sharp edges between two triangles of the same
+ * original to `inner` (unless that is null).
+ */
+function crossings(both: Manifold, idA: number, idB: number, out: number[], inner: number[] | null): void {
   const mesh = both.getMesh();
   const tri = mesh.triVerts;
   const p = mesh.vertProperties;
@@ -144,10 +168,66 @@ function crossings(both: Manifold, idA: number, idB: number, out: number[]): voi
         firstTri.set(key, t);
         continue;
       }
-      if (source[other] === source[t]) continue;
       const n1 = normal(t), n2 = normal(other);
-      if (n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] > SAME_PLANE) continue;
+      const dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
+      if (source[other] === source[t]) {
+        // Two faces of one object that meet at an angle: a real edge of it, lying inside the other.
+        if (inner && dot <= SHARP) inner.push(p[va * np], p[va * np + 1], p[va * np + 2], p[vb * np], p[vb * np + 1], p[vb * np + 2]);
+        continue;
+      }
+      if (dot > SAME_PLANE) continue;
       out.push(p[va * np], p[va * np + 1], p[va * np + 2], p[vb * np], p[vb * np + 1], p[vb * np + 2]);
     }
   }
+}
+
+/** Join segments that meet end to end in a straight line (an edge split by the triangulation), so the dashes run on across the joins. */
+function mergeCollinear(segs: number[]): number[] {
+  const count = segs.length / 6;
+  if (count < 2) return segs;
+  const at = new Map<string, number[]>();
+  const keyOf = (i: number, end: number) => `${segs[i * 6 + end * 3]},${segs[i * 6 + end * 3 + 1]},${segs[i * 6 + end * 3 + 2]}`;
+  for (let i = 0; i < count; i++) {
+    for (let e = 0; e < 2; e++) {
+      const k = keyOf(i, e);
+      const list = at.get(k);
+      if (list) list.push(i);
+      else at.set(k, [i]);
+    }
+  }
+  const used = new Uint8Array(count);
+  const out: number[] = [];
+  /** Unit direction of segment `i`, leaving from its end `from`. */
+  const dir = (i: number, from: number): [number, number, number] => {
+    const o = i * 6;
+    const f = from * 3, g = (1 - from) * 3;
+    const v: [number, number, number] = [segs[o + g] - segs[o + f], segs[o + g + 1] - segs[o + f + 1], segs[o + g + 2] - segs[o + f + 2]];
+    const len = Math.hypot(...v) || 1;
+    return [v[0] / len, v[1] / len, v[2] / len];
+  };
+  /** Follow the chain from end `end` of segment `i` while exactly one other unused segment continues straight on; returns the far point. */
+  const extend = (i: number, end: number): [number, number, number] => {
+    let cur = i, e = end; // e: the end of `cur` we are walking toward
+    for (;;) {
+      const o = cur * 6 + e * 3;
+      const point: [number, number, number] = [segs[o], segs[o + 1], segs[o + 2]];
+      const list = at.get(keyOf(cur, e))!;
+      if (list.length !== 2) return point;
+      const next = list[0] === cur ? list[1] : list[0];
+      if (used[next]) return point;
+      const ne = keyOf(next, 0) === keyOf(cur, e) ? 0 : 1; // the end of `next` we join at
+      const d1 = dir(cur, 1 - e), d2 = dir(next, ne);
+      if (d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2] < 0.99999) return point;
+      used[next] = 1;
+      cur = next;
+      e = 1 - ne;
+    }
+  };
+  for (let i = 0; i < count; i++) {
+    if (used[i]) continue;
+    used[i] = 1;
+    const a = extend(i, 0), b = extend(i, 1);
+    out.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+  }
+  return out;
 }

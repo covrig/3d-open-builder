@@ -36,14 +36,17 @@ export function setupAbout(): void {
   document.querySelector('[data-action="about"]')!.addEventListener('click', () => dialog.showModal());
 }
 
-/** The small keyboard-shortcuts panel on the view, toggled from the File menu and remembered. */
+/**
+ * The small keyboard-shortcuts panel on the view, shown from the File menu (or its × to hide it again).
+ * It is hidden whenever the page loads: it is a reminder to open on demand, not something to see every visit.
+ * (The shortcuts themselves are switched in Settings and work either way.)
+ */
 export function setupShortcutsPanel(): void {
   const panel = document.querySelector<HTMLElement>('#shortcuts-panel')!;
-  panel.hidden = !settings.ui.shortcuts;
+  panel.hidden = true;
   for (const b of document.querySelectorAll('[data-action="shortcuts"]')) {
     b.addEventListener('click', () => {
-      updateUi((ui) => (ui.shortcuts = !ui.shortcuts));
-      panel.hidden = !settings.ui.shortcuts;
+      panel.hidden = !panel.hidden;
     });
   }
 }

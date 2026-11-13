@@ -1,4 +1,5 @@
 import { applyAccent, settings, updateSettings, updateUi, type AccentId } from '../settings';
+import { openColorPicker } from './colorPicker';
 import { fitToolbar } from './toolbarFit';
 
 /**
@@ -29,24 +30,32 @@ export function setupLookSettings(): void {
       applyAccent();
     });
   }
-  // Custom: the swatch holds a colour input laid over it (so it stays keyboard
-  // accessible); picking a colour selects Custom and applies it live.
-  const custom = input('accentCustom');
+  // Custom: clicking the swatch (or Space/Enter on its radio) selects it and opens the in-app
+  // picker; the colour applies live as it is dragged.
   const customRadio = form.querySelector<HTMLInputElement>('input[name="accent"][value="custom"]')!;
-  const paintCustom = () => form.querySelector<HTMLElement>('.accent-swatch[data-accent="custom"]')!.style.setProperty('--swatch', settings.ui.accentCustom);
-  custom.value = settings.ui.accentCustom;
+  const customSwatch = form.querySelector<HTMLElement>('.accent-swatch[data-accent="custom"]')!;
+  const paintCustom = () => customSwatch.style.setProperty('--swatch', settings.ui.accentCustom);
   paintCustom();
-  const chooseCustom = () => {
+  const chooseCustom = (hex: string) => {
     customRadio.checked = true;
     updateUi((ui) => {
       ui.accent = 'custom';
-      ui.accentCustom = custom.value;
+      ui.accentCustom = hex;
     });
     paintCustom();
     applyAccent();
   };
-  custom.addEventListener('input', chooseCustom);
-  custom.addEventListener('change', chooseCustom);
+  const pickCustom = () => {
+    customRadio.checked = true;
+    openColorPicker({ anchor: customSwatch, value: settings.ui.accentCustom, onInput: chooseCustom });
+  };
+  customRadio.addEventListener('click', pickCustom); // mouse, touch, and Space on the focused radio
+  customRadio.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      pickCustom();
+    }
+  });
   applyAccent();
 
   // Copy, Cut and Paste out of the toolbar (only on mouse screens, see the stylesheet): room for more tools.

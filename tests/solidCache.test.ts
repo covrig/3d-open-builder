@@ -101,14 +101,15 @@ describe('overlap cache', () => {
       return segs.sort();
     };
     for (const bx of [10, 10, 12]) {
-      const plain = overlapLines(wasm, scene(bx, false));
-      const cached = overlapLines(wasm, scene(bx, true));
-      expect(plain.length).toBeGreaterThan(0);
-      expect(sorted(cached)).toEqual(sorted(plain));
+      const plain = overlapLines(wasm, scene(bx, false), true);
+      const cached = overlapLines(wasm, scene(bx, true), true);
+      expect(plain.crossings.length).toBeGreaterThan(0);
+      expect(sorted(cached.crossings)).toEqual(sorted(plain.crossings));
+      expect(sorted(cached.inner)).toEqual(sorted(plain.inner));
     }
     // Pairs not in the call are forgotten; a pair left out and back in still gives the same answer.
-    overlapLines(wasm, [scene(10, true)[0]]);
-    expect(sorted(overlapLines(wasm, scene(10, true)))).toEqual(sorted(overlapLines(wasm, scene(10, false))));
+    overlapLines(wasm, [scene(10, true)[0]], false);
+    expect(sorted(overlapLines(wasm, scene(10, true), false).crossings)).toEqual(sorted(overlapLines(wasm, scene(10, false), false).crossings));
   });
 });
 

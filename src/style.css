@@ -257,6 +257,8 @@ svg.gizmo .handle {
   paint-order: stroke;
 }
 svg.gizmo .handle:hover { filter: brightness(1.25); }
+/* The handle of the axis whose number is being typed in the transform bar. */
+svg.gizmo .handle.focus { stroke: #fff; stroke-width: 2.5; stroke-linejoin: round; filter: brightness(1.35) drop-shadow(0 0 5px #fff); }
 svg.gizmo.dragging .handle { cursor: grabbing; }
 svg.gizmo .ring { opacity: 0.85; pointer-events: none; }
 svg.gizmo .ring-hit { stroke: transparent; stroke-width: 10; pointer-events: stroke; cursor: grab; }
@@ -1004,11 +1006,25 @@ body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orien
   pointer-events: auto;
 }
 #busy button { padding: 4px 12px; }
-/* Touch screens: while the side panel is closed and a measure tool is on, a finger-sized button under the hint stops it,
-   so the panel need not be opened just for that. */
-#measure-stop { display: none; pointer-events: auto; padding: 9px 18px; font-size: 14px; box-shadow: var(--shadow); }
+/* Touch screens: while the side panel is closed and a measure tool is on, a row of icon buttons under the hint
+   (distance, angle, circle, stop) changes or ends the measuring without opening the panel. Same size as the
+   corner buttons; at the right so the view cube on the left stays clear. */
+#measure-quick { display: none; gap: 6px; align-self: flex-end; pointer-events: auto; }
+#measure-quick button {
+  width: 38px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+  background: var(--overlay);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+}
+#measure-quick button svg { width: 18px; height: 18px; }
+#measure-quick button.active { background: color-mix(in srgb, var(--accent) 25%, var(--overlay)); border-color: var(--accent); }
+#measure-quick button.stop svg { color: #e5484d; }
+:root[data-theme='light'] #measure-quick button.stop svg { color: #b42318; }
 @media (pointer: coarse) {
-  body.panel-closed #viewport.measuring #measure-stop { display: inline-flex; }
+  body.panel-closed #viewport.measuring #measure-quick { display: flex; }
 }
 /* Measuring: a point under the cursor that snapped to a corner, edge middle or edge. */
 svg.measure circle.hover.snapped { stroke: #ffb224; stroke-width: 2.5; opacity: 1; fill: rgba(255, 178, 36, 0.18); }
@@ -1154,7 +1170,7 @@ button.cancel:hover { background: color-mix(in srgb, #e5484d 30%, var(--panel-2)
 /* While a tool with Apply/Cancel is open: what would disturb it is dimmed and
    doesn't respond (its tooltip says why); the tool's own button stays lit.
    The list matches LOCKED in src/ui/toolGuard.ts. */
-body.tool-locked :is(.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"]), #file-menu [data-action="new"], #file-menu [data-action="open"], #file-menu [data-action="reference"], #sidebar [data-panel="arrange"] button, #sidebar [data-panel="objects"] button, #sidebar .items li, #measure-panel button, #reference-panel button, #transform-bar input, #transform-bar [data-action="reset-rotation"], #transform-bar [data-action="lock"], #view-corner [data-action="multi-select"], #view-corner [data-action="delete-selection"]) { opacity: 0.32; cursor: not-allowed; }
+body.tool-locked :is(.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"]):not([data-action="settings-shortcut"]), #file-menu [data-action="new"], #file-menu [data-action="open"], #file-menu [data-action="reference"], #sidebar [data-panel="arrange"] button, #sidebar [data-panel="objects"] button, #sidebar .items li, #measure-panel button, #reference-panel button, #transform-bar input, #transform-bar [data-action="reset-rotation"], #transform-bar [data-action="lock"], #view-corner [data-action="multi-select"], #view-corner [data-action="delete-selection"]) { opacity: 0.32; cursor: not-allowed; }
 /* Measuring still works beside the cross-section and the overhangs. */
 body.tool-locked.view-tool-only #measure-panel button { opacity: 1; cursor: pointer; }
 body.tool-locked .toolbar button.tool-current {
@@ -1197,3 +1213,38 @@ button.active > .tile-more { display: flex; }
 body.many-selected :is([data-modify="chamfer"], [data-modify="fillet"], [data-modify="shell"], [data-modify="gusset"], [data-modify="text"], [data-action="orient"]) {
   opacity: 0.35; cursor: not-allowed;
 }
+/* --- In-app colour picker ------------------------------------------------ */
+#color-picker {
+  position: fixed; z-index: 200; width: 232px; max-width: calc(100vw - 16px); padding: 10px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow);
+}
+#color-picker[hidden] { display: none; }
+#color-picker .cp-sv, #color-picker .cp-hue { position: relative; touch-action: none; cursor: crosshair; border-radius: 6px; border: 1px solid var(--border-strong); }
+#color-picker .cp-sv {
+  height: 150px;
+  background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--cp-hue, #f00));
+}
+#color-picker .cp-hue { height: 14px; background: linear-gradient(to right, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00); margin: 0 8px; }
+#color-picker .cp-knob {
+  position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; box-sizing: border-box;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.5); pointer-events: none;
+}
+#color-picker .cp-hue .cp-knob { top: 50%; }
+#color-picker .cp-sv:focus-visible, #color-picker .cp-hue:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#color-picker .cp-row { display: flex; align-items: center; gap: 8px; }
+#color-picker .cp-preview { flex: none; width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border-strong); }
+#color-picker .cp-hex {
+  flex: 1; min-width: 0; height: 32px; padding: 0 8px; box-sizing: border-box; font: inherit; font-family: ui-monospace, monospace;
+  color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+}
+#color-picker .cp-hex:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (pointer: coarse) {
+  /* 44px touch targets: the knobs are drawn small but the hit area (the track) is taller */
+  #color-picker .cp-hue { height: 44px; background: linear-gradient(to right, #f00, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00) center / 100% 14px no-repeat; border: 0; border-radius: 0; margin: 0 22px; }
+  #color-picker .cp-knob { width: 28px; height: 28px; margin: -14px 0 0 -14px; }
+  #color-picker .cp-hex, #color-picker .cp-preview { height: 44px; }
+}
+#custom-color-open { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#custom-color-open .swatch-dot { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(127, 127, 127, 0.5); background: var(--accent); flex: none; }
+button.color-swatch { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: var(--swatch, #888); cursor: pointer; }
+button.color-swatch:hover { outline: 2px solid var(--accent); outline-offset: 1px; }

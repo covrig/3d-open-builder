@@ -21,9 +21,17 @@ export class Reflection {
     scene.add(this.group);
   }
 
+  /** Seen from below the plate a mirror image of the objects makes no sense: hide it there. */
+  private below = false;
+
+  hideBelow(below: boolean): void {
+    this.below = below;
+    this.group.visible = this.on && !below;
+  }
+
   set(on: boolean, strength: number, depth: number): void {
     this.on = on;
-    this.group.visible = on;
+    this.group.visible = on && !this.below;
     this.uniforms.uStrength.value = strength;
     this.uniforms.uDepth.value = Math.max(depth, 1);
     if (!on) this.clear();

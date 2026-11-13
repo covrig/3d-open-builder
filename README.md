@@ -45,10 +45,9 @@ repository, this is what each part is for.
 |---|---|
 | [`README.md`](README.md) | This page. |
 | [`LICENSE`](LICENSE) | The app's licence (MIT): you may use, copy and change it freely. |
-| [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | The libraries and fonts the app is built with, and their licences. |
 | [`docs/`](docs) | The picture at the top of this page, and [`tool-rules.md`](docs/tool-rules.md): how tools start and end, and what still works while one is open. |
 | [`index.html`](index.html) | The page your browser opens: the toolbar, the side panel and the dialog boxes. |
-| [`public/`](public) | Files used exactly as they are: the app icon, the three fonts for text on objects, and the licence texts. |
+| [`public/`](public) | Files used exactly as they are: the app icon, the three fonts for text on objects, and the licence texts of the libraries and fonts (with [`THIRD-PARTY-NOTICES.md`](public/licenses/THIRD-PARTY-NOTICES.md), the list of what the app is built with). |
 
 **For developers**
 
@@ -70,7 +69,7 @@ repository, this is what each part is for.
 ## Licence
 
 MIT — see [LICENSE](LICENSE). The bundled libraries and fonts keep their own
-licences: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), or Menu →
+licences: see [THIRD-PARTY-NOTICES.md](public/licenses/THIRD-PARTY-NOTICES.md), or Menu →
 About and libraries in the app.
 
 ## Run it locally

@@ -62,8 +62,37 @@ export function setupViewPopovers(viewport: Viewport): void {
     setEdgeStrength(settings.ui.edgeStrength);
     viewport.invalidate();
   };
+  /** Shine, light direction, shadow strength and surface contrast (the Shadows tile). */
+  const applyLook = () => {
+    const ui = settings.ui;
+    viewport.setLook({ shine: ui.shine, lightAngle: ui.lightAngle, shadowStrength: ui.shadowStrength, contrast: ui.surfaceContrast });
+  };
+  const lookSlider = (
+    key: 'shine' | 'lightAngle' | 'shadowStrength' | 'surfaceContrast',
+    label: string, tip: string, min: number, max: number, step: number, show: (v: number) => string,
+  ): Slider => ({
+    label, tip, min, max, step,
+    get: () => settings.ui[key],
+    set: (v) => {
+      updateUi((ui) => (ui[key] = v));
+      applyLook();
+    },
+    show,
+  });
 
   const tiles: Record<string, Tile> = {
+    shadows: {
+      title: 'Shadows',
+      isOn: () => settings.ui.view.shadows,
+      setOn: () => {},
+      switchedElsewhere: true,
+      sliders: [
+        lookSlider('shine', 'Shine', 'How glossy the objects look: a soft highlight and a faint reflection of the sky. 0% is the normal look.', 0, 1, 0.05, pct),
+        lookSlider('lightAngle', 'Light direction', 'Turn the light around the scene. 0° is the normal place; the shadow moves with it.', -180, 180, 5, (v) => `${v > 0 ? '+' : ''}${v}°`),
+        lookSlider('shadowStrength', 'Shadow strength', 'How dark the cast shadow is.', 0.1, 1, 0.05, pct),
+        lookSlider('surfaceContrast', 'Surface contrast', 'Darker sides turned away from the light, so the shape reads better. 0% is the normal look.', 0, 1, 0.05, pct),
+      ],
+    },
     rulers: {
       title: 'Rulers',
       isOn: () => settings.ui.view.rulers,
@@ -262,6 +291,7 @@ export function setupViewPopovers(viewport: Viewport): void {
   applyReflection();
   applyPlate();
   applyEdges();
+  applyLook();
   applyRulers();
 
   document.addEventListener('pointerdown', (e) => {

@@ -80,29 +80,87 @@ function pointInside(wasm: ManifoldToplevel, solid: Manifold, p: V3, reach: numb
 }
 
 const TOO_LARGE = 'This size is too large for the faces next to the picked edge. Use a smaller one.';
+/**
+ * Next to an open end of a rim: how far from the end (in legs, plus two segments)
+ * the surface may stray from the tool, and how far (in legs). A tilted tube
+ * cut off at a crease measured 0.12 legs; the sphere-hole rims are closed loops.
+ */
+const END_REACH = 2;
+const END_BEND = 0.4;
+/** How far (in legs) beyond the faces a tool reaches where they bend near a rim end; more than END_BEND */
+const TOOL_MARGIN = 0.6;
 const NOT_FLAT = 'The surface next to this edge is curved or bumpy, so a clean bevel or round is not possible. Pick other edges or use a smaller size.';
 
 /**
- * Does the surface still lie where the tool's face will be? The tool runs
+ * How far the surface lies from where the tool's face will be. The tool runs
  * straight along each face from the edge; on a faceted curve (the rim of a hole
  * in a ball-shaped hollow, a scan) the next triangles bend away from that
  * straight line, and the cut then digs notches or leaves teeth along the rim.
  * `p` is the point at the end of the leg, `n` the face's normal there. The
- * nearest surface along the normal must be within a small tolerance of `p`
- * (checked a little to either side too, in case the ray runs along a triangle
- * edge). Flat faces, cylinders and cones come out at exactly 0.
+ * nearest surface along the normal is measured from `p` (checked a little to
+ * either side too, in case the ray runs along a triangle edge); Infinity if
+ * there is none. Flat faces, cylinders and cones come out at exactly 0.
  */
-function surfaceFollows(solid: Manifold, p: V3, n: V3, leg: number, u: V3, length: number): boolean {
-  const tolerance = Math.max(0.01, 0.03 * leg);
+function surfaceOff(solid: Manifold, p: V3, n: V3, leg: number, u: V3, length: number): number {
   const range = Math.max(0.5, leg);
   for (const shift of [0, 0.02, -0.02]) {
     const q = add(p, u, shift * length);
     const hits = solid.rayCast(add(q, n, range), add(q, n, -range));
     if (hits.length === 0) continue;
-    const off = Math.min(...hits.map((h) => Math.abs((h.position[0] - q[0]) * n[0] + (h.position[1] - q[1]) * n[1] + (h.position[2] - q[2]) * n[2])));
-    return off <= tolerance;
+    return Math.min(...hits.map((h) => Math.abs((h.position[0] - q[0]) * n[0] + (h.position[1] - q[1]) * n[1] + (h.position[2] - q[2]) * n[2])));
+  }
+  return Infinity;
+}
+
+/**
+ * How a convex surface falls away from a straight tool leg. On a faceted ball
+ * or dome the leg runs along the facet's plane and leaves the solid by about
+ * leg^2 / (2 R); that is no fault of the tool (it is cut off by the real
+ * surface and the chamfer plane simply meets it a little early), unlike a
+ * face that ends or a bumpy one. The surface must lie below the leg end `p`
+ * (measured along the face normal `n`) by no more than the sag the surface's
+ * own bend predicts, leg * sin(bend) / 2 (a circle: sag = leg * angle / 2),
+ * with some slack for facet noise, and the bend must be gentle (BEND_LIMIT):
+ * a face that just ends, or a step, bends much more or leaves nothing below.
+ * Only asked where the leg end is outside the solid; concave surfaces, whose
+ * leg stays in the material, never come here.
+ */
+const BEND_LIMIT = Math.sin((30 * Math.PI) / 180);
+function fallsAwayGently(solid: Manifold, p: V3, n: V3, leg: number, u: V3, length: number): boolean {
+  const range = Math.max(0.5, leg);
+  for (const shift of [0, 0.02, -0.02]) {
+    const q = add(p, u, shift * length);
+    const hits = solid.rayCast(add(q, n, range), add(q, n, -range));
+    if (hits.length === 0) continue;
+    const below = (h: (typeof hits)[number]) => (q[0] - h.position[0]) * n[0] + (q[1] - h.position[1]) * n[1] + (q[2] - h.position[2]) * n[2];
+    const h = hits.reduce((x, y) => (Math.abs(below(x)) <= Math.abs(below(y)) ? x : y));
+    const sin = Math.sqrt(Math.max(0, 1 - dot3(h.normal as V3, n) ** 2));
+    return below(h) >= 0 && sin <= BEND_LIMIT && below(h) <= 2.5 * (leg * sin) / 2 + 0.01;
   }
   return false;
+}
+
+/**
+ * Where a picked rim stops: end points where no picked segment carries on
+ * smoothly (a rim that runs into a crease or a cut plane, or into other picked
+ * edges at a corner). A face can pinch to nothing there (a slanted cut through
+ * a bent tube), so the tool leg reaches past it onto the bend. A closed loop,
+ * such as the rim of a hole, has none.
+ */
+function openEnds(segments: EdgeSegment[], key: (p: V3) => string): V3[] {
+  const seen = new Map<string, { p: V3; dirs: V3[] }>();
+  for (const s of segments) {
+    const f = edgeFrame(s);
+    for (const [p, d] of [[s.a, f.u], [s.b, [-f.u[0], -f.u[1], -f.u[2]]]] as [V3, V3][]) {
+      const k = key(p);
+      const known = seen.get(k);
+      if (known) known.dirs.push(d);
+      else seen.set(k, { p, dirs: [d] });
+    }
+  }
+  // Two segments leaving a point in nearly opposite directions are a smooth joint.
+  const smooth = (d: V3[]) => d.length === 2 && -dot3(d[0], d[1]) > Math.cos(CURVE_TURN);
+  return [...seen.values()].filter((e) => !smooth(e.dirs)).map((e) => e.p);
 }
 
 /**
@@ -121,11 +179,14 @@ function checkSizes(
   frames: ReturnType<typeof edgeFrame>[],
   legs: (number | null)[],
   key: (p: V3) => string,
-): void {
+): Set<EdgeSegment> {
+  /** Segments next to a rim end where a face bends away from the tool (see TOOL_MARGIN) */
+  const bent = new Set<EdgeSegment>();
   const box = solid.boundingBox();
   const reach = 2 * Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]) + 1;
   const inside = (p: V3) => pointInside(wasm, solid, p, reach);
   const near = 1e-3;
+  const ends = openEnds(segments, key);
   segments.forEach((s, i) => {
     const leg = legs[i];
     if (leg === null) return;
@@ -137,8 +198,20 @@ function checkSizes(
         const ok = s.convex
           ? inside(add(along, n, -near))
           : !inside(add(along, n, near)) && inside(add(along, n, -near));
-        if (!ok) throw new Error(TOO_LARGE);
-        if (s.convex && !surfaceFollows(solid, along, n, leg, f.u, f.length)) throw new Error(NOT_FLAT);
+        if (!ok) {
+          if (s.convex && fallsAwayGently(solid, along, n, leg, f.u, f.length)) continue;
+          throw new Error(TOO_LARGE);
+        }
+        if (s.convex) {
+          const off = surfaceOff(solid, along, n, leg, f.u, f.length);
+          if (off > Math.max(0.01, 0.03 * leg)) {
+            // Next to the end of an open rim a small, bounded bend is allowed (it only
+            // trims the last stretch); anywhere else, or a bigger one, makes teeth.
+            const close = ends.some((e) => Math.hypot(p[0] - e[0], p[1] - e[1], p[2] - e[2]) <= END_REACH * leg + 2 * f.length);
+            if (!close || off > END_BEND * leg) throw new Error(NOT_FLAT);
+            bent.add(s);
+          }
+        }
       }
     }
   });
@@ -159,6 +232,13 @@ function checkSizes(
     }
     return t.hull;
   };
+  const group = segments.map((_, i) => i);
+  const link = (i: number): number => (group[i] === i ? i : (group[i] = link(group[i])));
+  const meeting = new Map<string, number[]>();
+  segments.forEach((s, i) => { for (const p of [s.a, s.b]) { const k = key(p); meeting.set(k, [...(meeting.get(k) ?? []), i]); } });
+  for (const [, list] of meeting) {
+    if (list.length === 2 && Math.abs(dot3(frames[list[0]].u, frames[list[1]].u)) > Math.cos(CURVE_TURN)) group[link(list[0])] = link(list[1]);
+  }
   for (let i = 0; i < segments.length; i++) {
     const ti = plain[i];
     if (!ti) continue;
@@ -169,9 +249,13 @@ function checkSizes(
       if (ends.includes(key(segments[j].a)) || ends.includes(key(segments[j].b))) continue;
       if ([0, 1, 2].some((k) => ti.lo[k] >= tj.hi[k] - 1e-9 || tj.lo[k] >= ti.hi[k] - 1e-9)) continue;
       const both = keep(hullOf(ti).intersect(hullOf(tj)));
-      if (both.volume() > 1e-6 * Math.min(ti.volume, tj.volume)) throw new Error(TOO_LARGE);
+      // Along one smooth rim the tools of segments a few steps apart share a sliver where the
+      // facets are irregular; that cuts the same material twice, which is harmless.
+      const sliver = link(i) === link(j) ? 1e-3 : 1e-6;
+      if (both.volume() > sliver * Math.min(ti.volume, tj.volume)) throw new Error(TOO_LARGE);
     }
   }
+  return bent;
 }
 
 /** Rounded point key: the same point from two edges (or two meshes) gives the same text. */
@@ -204,18 +288,18 @@ export function edgeTreatment(
   return withCleanup((keep) => {
     const solid = keep(meshDataToManifold(wasm, item.mesh, item.matrix));
     const frames = segments.map(edgeFrame);
-    checkSizes(wasm, keep, solid, segments, frames, frames.map((f) => (f.angle < 0.35 || f.angle > Math.PI - 0.05 ? null : legOf(kind, size, f.angle))), key);
+    const bent = checkSizes(wasm, keep, solid, segments, frames, frames.map((f) => (f.angle < 0.35 || f.angle > Math.PI - 0.05 ? null : legOf(kind, size, f.angle))), key);
     const inside = segments.filter((s) => !s.convex);
     const outside = segments.filter((s) => s.convex);
     const ends = (s: EdgeSegment) => [key(s.a), key(s.b)];
     const meet = outside.some((o) => inside.some((i) => ends(o).some((k) => ends(i).includes(k))));
     let result: Manifold;
     if (!meet) {
-      result = treat(wasm, keep, solid, segments, kind, size);
+      result = treat(wasm, keep, solid, segments, kind, size, bent);
     } else {
-      const filled = treat(wasm, keep, solid, inside, kind, size);
+      const filled = treat(wasm, keep, solid, inside, kind, size, bent);
       const next = carryOver(solid, filled, outside);
-      result = next.length ? treat(wasm, keep, filled, next, kind, size) : filled;
+      result = next.length ? treat(wasm, keep, filled, next, kind, size, bent) : filled;
     }
     return toPiece(dropSlivers(wasm, keep, result, solid));
   });
@@ -275,6 +359,7 @@ function treat(
   segments: EdgeSegment[],
   kind: 'chamfer' | 'fillet',
   size: number,
+  bent: Set<EdgeSegment> = new Set(),
 ): Manifold {
   const { Manifold } = wasm;
   // Which picked segments meet at each point (to tell curve joints from corners).
@@ -376,7 +461,20 @@ function treat(
     const across = norm([f.t1[0] - f.t2[0], f.t1[1] - f.t2[1], f.t1[2] - f.t2[2]]);
     const onFace1 = (p: V3) => add(add(p, f.t1, leg), across, EPS_OFFSET * 4);
     const onFace2 = (p: V3) => add(add(p, f.t2, leg), across, -EPS_OFFSET * 4);
-    const pts: Vec3[] = [ridge(a), onFace1(a), onFace2(a), ridge(b), onFace1(b), onFace2(b)];
+    // Where a face bends away from the tool next to a rim end, the solid still
+    // stands out past the tool's side (a thin plate or a step beside the
+    // chamfer). The chamfer line is carried on past both legs, so the plane
+    // cuts through whatever is there and leaves no ledge: all of it lies
+    // beyond that plane. The ridge stays where it is.
+    const spread = bent.has(s) ? TOOL_MARGIN * leg : 0;
+    const carried = (p: V3, face: V3, other: V3) => {
+      if (spread === 0) return p;
+      const d = norm([p[0] - other[0], p[1] - other[1], p[2] - other[2]]);
+      return add(p, d, spread / Math.max(0.3, dot3(d, face)));
+    };
+    const ridgeA = ridge(a), ridgeB = ridge(b);
+    const [a1, a2, b1, b2] = [onFace1(a), onFace2(a), onFace1(b), onFace2(b)];
+    const pts: Vec3[] = [ridgeA, carried(a1, s.n1, a2), carried(a2, s.n2, a1), ridgeB, carried(b1, s.n1, b2), carried(b2, s.n2, b1)];
     let tool = keep(Manifold.hull(pts));
     prisms[i] = pts;
     reachPast[i] = { a: extA, b: extB };

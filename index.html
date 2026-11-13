@@ -118,6 +118,11 @@
         </div>
       </div>
 
+      <!-- Shown after Check only while the toolbar keeps its rows (toolbarFit.ts); the File menu has Settings too. -->
+      <div class="group">
+        <button data-action="settings-shortcut" class="fit-extra out-hidden" data-tip-title="Settings" data-tip="Units, colours, accent colour, snapping and more."><i data-lucide="settings"></i><span>Settings</span></button>
+      </div>
+
     </header>
 
     <main class="workspace">
@@ -154,7 +159,12 @@
         <div id="brand-overlay" aria-hidden="true"><i data-lucide="box"></i><span>3D Open Builder</span></div>
         <div id="messages">
           <div id="op-hint" role="status" hidden></div>
-          <button type="button" id="measure-stop" class="cancel" aria-label="Stop measuring">Stop measuring</button>
+          <div id="measure-quick" role="toolbar" aria-label="Measuring">
+            <button type="button" data-measure-quick="distance" aria-label="Distance" title="Distance"><i data-lucide="ruler"></i></button>
+            <button type="button" data-measure-quick="angle" aria-label="Angle" title="Angle"><i data-lucide="angle"></i></button>
+            <button type="button" data-measure-quick="circle" aria-label="Circle" title="Circle"><i data-lucide="circle-dashed"></i></button>
+            <button type="button" data-measure-quick="stop" class="stop" aria-label="Stop measuring" title="Stop measuring"><i data-lucide="x"></i></button>
+          </div>
           <div id="busy" role="status" hidden><span>Working…</span><button type="button" data-action="cancel-op" class="cancel" data-tip-title="Cancel" data-tip="Stop this calculation. Nothing in the drawing changes.">Cancel</button></div>
           <div id="toast" role="status" hidden></div>
         </div>
@@ -220,7 +230,7 @@
         <div id="overhang-bar" class="floating-bar top-bar" hidden>
           <span class="bar-title">Overhangs</span>
           <label class="bar-field" data-tip-title="Colour" data-tip="Colour of the surfaces that need support when printed.">
-            <input type="color" id="overhang-color" />
+            <button type="button" id="overhang-color" class="color-swatch" aria-label="Overhang colour"></button>
           </label>
           <label class="bar-field" data-tip-title="Angle" data-tip="Surfaces tilting down more than this from vertical are marked. 45° suits most printers.">
             <span class="muted">Steeper than</span>
@@ -283,7 +293,7 @@
             <button data-pop="plate" data-tip-title="Plate" data-tip="Show the build plate. Switching it on opens a slider for how see-through it is; the arrow in the tile opens it again."><i data-lucide="grid-3x3"></i><span>Plate</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-action="home" data-tip-title="Home view" data-shortcut="H" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
             <button data-view="rulers" data-pop="rulers" data-tip-title="Rulers" data-tip="Show the rulers and axis arrows next to the objects. Switching it on opens a slider for the size of the numbers; the arrow in the tile opens it again."><i data-lucide="ruler"></i><span>Rulers</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
-            <button data-view="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate."><i data-lucide="sun"></i><span>Shadows</span></button>
+            <button data-view="shadows" data-pop="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate. Switching it on opens sliders for shine, the direction of the light, how dark the shadow is and how much the shading shows the shape; the arrow in the tile opens them again."><i data-lucide="sun"></i><span>Shadows</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
             <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
             <button data-view="edges" data-pop="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge. Switching it on opens a slider for how strong the lines are; the arrow in the tile opens it again."><i data-lucide="square-dashed"></i><span>Edges</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
@@ -383,7 +393,7 @@
     <div id="color-popover" class="popover" hidden>
       <div class="swatches"></div>
       <div class="button-grid cols-1">
-        <label class="color-input" data-tip-title="Custom colour" data-tip="Pick any colour from the full colour picker."><input type="color" id="custom-color" /><span>Custom colour…</span></label>
+        <button id="custom-color-open" data-tip-title="Custom colour" data-tip="Pick any colour: drag in the square, or type a hex code."><span class="swatch-dot"></span><span>Custom colour…</span></button>
         <button data-action="eyedropper" data-tip-title="Copy from object" data-tip="Then click another object in the view to use its colour."><i data-lucide="pipette"></i><span>Copy from object</span></button>
         <button data-action="reset-color" data-tip-title="Reset to default" data-tip="Go back to the colour the object had when it was added."><i data-lucide="rotate-ccw"></i><span>Reset to default</span></button>
       </div>
@@ -414,7 +424,7 @@
             <label class="accent-swatch" data-accent="purple" title="Purple"><input type="radio" name="accent" value="purple" aria-label="Purple" /></label>
             <label class="accent-swatch" data-accent="pink" title="Pink"><input type="radio" name="accent" value="pink" aria-label="Pink" /></label>
             <label class="accent-swatch" data-accent="orange" title="Orange"><input type="radio" name="accent" value="orange" aria-label="Orange" /></label>
-            <label class="accent-swatch" data-accent="custom" title="Custom colour"><input type="radio" name="accent" value="custom" aria-label="Custom" /><input type="color" name="accentCustom" value="#2fb3a1" aria-label="Custom accent colour" /></label>
+            <label class="accent-swatch" data-accent="custom" title="Custom colour"><input type="radio" name="accent" value="custom" aria-label="Custom" /></label>
           </div>
         </fieldset>
         <fieldset>
@@ -425,6 +435,7 @@
         <fieldset>
           <legend>View</legend>
           <label id="intersections-label"><input type="checkbox" name="internalIntersections" /> Show internal intersections: dashed lines where objects overlap <span class="muted note" hidden>Needs Edges on in View.</span></label>
+          <label id="internal-edges-label" style="margin-left: 1.6em"><input type="checkbox" name="internalEdges" /> Also show internal edges: dashed edges of an object where they run inside another object</label>
         </fieldset>
         <fieldset>
           <legend>Keyboard</legend>
@@ -453,7 +464,7 @@
         <p class="muted">
           Bundled with the app from copies kept in its own repository; nothing is loaded from other sites.
           Each keeps its own licence (click it to read the text); all are listed in
-          <a href="https://github.com/covrig/3d-open-builder/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">THIRD-PARTY-NOTICES.md</a>.
+          <a href="https://github.com/covrig/3d-open-builder/blob/main/public/licenses/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">THIRD-PARTY-NOTICES.md</a>.
         </p>
         <table class="libraries">
           <thead><tr><th>Library</th><th>Version</th><th>Licence</th></tr></thead>

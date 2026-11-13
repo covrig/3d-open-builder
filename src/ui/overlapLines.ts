@@ -11,15 +11,24 @@ export interface OverlapFeatures extends EdgeFeatures {
 
 /**
  * Faint lines where the surfaces of overlapping objects cross (two cubes
- * pushed into each other). Drawn in the Edges view whatever the look (X-ray,
+ * pushed into each other), and optionally the edges of one object that run
+ * inside the other. Drawn in the Edges view whatever the look (X-ray,
  * wireframe), very faint in X-ray without Edges, and used as measuring snap
  * targets. They are worked out in the geometry worker once objects stop
  * changing; while they move, the old lines are hidden instead of hanging in
  * the air.
+ *
+ * Those inner edges lie exactly on the object's own solid edge line, whose
+ * unbroken stroke would hide the gaps between the dashes, so they are taken
+ * out of the solid lines while the dashes are shown (SceneDocument.clipEdgeLines).
  */
 export class OverlapLines {
   private readonly lines = new THREE.LineSegments(new THREE.BufferGeometry(), overlapMaterial);
+  /** Edges of an object where they run inside another object: same dashes, own setting. */
+  private readonly inner = new THREE.LineSegments(new THREE.BufferGeometry(), overlapMaterial);
   private found: OverlapFeatures | null = null;
+  /** The solid edge lines are clipped (so they must be restored on the next change). */
+  private clipped = false;
   private timer: number | undefined;
   /** Bumped on every change, so a calculation that is out of date is dropped. */
   private run = 0;
@@ -27,15 +36,18 @@ export class OverlapLines {
   constructor(
     private readonly viewport: Viewport,
     private readonly doc: SceneDocument,
-    /** How strongly to draw them (0: not at all), and whether to offer them to measuring. */
-    private readonly wanted: () => { opacity: number; snap: boolean },
+    /** How strongly to draw them (0: not at all), whether to include the inner edges, and whether to offer the crossings to measuring. */
+    private readonly wanted: () => { opacity: number; edges: boolean; snap: boolean },
     /** True while a tool with Apply/Cancel is open: its previews come first. */
     private readonly paused: () => boolean,
   ) {
     this.lines.raycast = () => {};
     this.lines.renderOrder = 1; // after the objects, so X-ray doesn't wash them out
     this.lines.visible = false;
-    viewport.scene.add(this.lines);
+    this.inner.raycast = () => {};
+    this.inner.renderOrder = 1;
+    this.inner.visible = false;
+    viewport.scene.add(this.lines, this.inner);
     for (const type of ['change', 'transform', 'history'] as const) doc.addEventListener(type, () => this.refresh());
   }
 
@@ -49,6 +61,11 @@ export class OverlapLines {
     this.run++;
     this.found = null;
     this.lines.visible = false;
+    this.inner.visible = false;
+    if (this.clipped) {
+      this.doc.clipEdgeLines(null); // the solid lines are whole again until the new dashes are known
+      this.clipped = false;
+    }
     clearTimeout(this.timer);
     this.timer = window.setTimeout(() => void this.compute(), 350);
     this.viewport.invalidate();
@@ -59,9 +76,10 @@ export class OverlapLines {
     const objs = this.doc.objects.filter((o) => !o.hidden);
     if ((!want.opacity && !want.snap) || objs.length < 2 || this.paused()) return;
     const run = this.run;
-    let segs: Float32Array;
+    const withInner = want.opacity > 0 && want.edges;
+    let segs: Float32Array, innerSegs: Float32Array;
     try {
-      segs = await runOp('overlaps', { items: objs.map((o) => this.doc.placed(o)) }, true);
+      ({ crossings: segs, inner: innerSegs } = await runOp('overlaps', { items: objs.map((o) => this.doc.placed(o)), inner: withInner }, true));
     } catch {
       return; // stopped (Cancel stops every calculation) or failed: no lines until the next change
     }
@@ -72,9 +90,18 @@ export class OverlapLines {
     this.lines.geometry = g;
     this.lines.computeLineDistances(); // the dashes need the length along each segment
     this.found = { segs, ...edgeFeatures(segs) };
-    const { opacity } = this.wanted();
-    overlapMaterial.opacity = opacity;
-    this.lines.visible = opacity > 0 && segs.length > 0;
+    const gi = new THREE.BufferGeometry();
+    gi.setAttribute('position', new THREE.BufferAttribute(innerSegs, 3));
+    this.inner.geometry.dispose();
+    this.inner.geometry = gi;
+    this.inner.computeLineDistances();
+    overlapMaterial.opacity = want.opacity;
+    this.lines.visible = want.opacity > 0 && segs.length > 0;
+    this.inner.visible = withInner && innerSegs.length > 0;
+    if (this.inner.visible) {
+      this.doc.clipEdgeLines(innerSegs);
+      this.clipped = true;
+    }
     this.viewport.invalidate();
   }
 }

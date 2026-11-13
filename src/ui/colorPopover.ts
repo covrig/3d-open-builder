@@ -1,4 +1,5 @@
 import type { SceneDocument, SceneObject } from '../scene/document';
+import { closeColorPicker, openColorPicker } from './colorPicker';
 import { beginTool, endTool } from './toolLock';
 
 // Mid-tones plus white and near-black; each stays visible on light and dark backgrounds.
@@ -14,7 +15,8 @@ const STANDARD_COLORS: [string, string][] = [
  */
 export class ColorPopover {
   private readonly el: HTMLElement;
-  private readonly custom: HTMLInputElement;
+  private readonly custom: HTMLButtonElement;
+  private readonly customDot: HTMLElement;
   private targets: SceneObject[] = [];
   /** Objects waiting for "Copy from object": the next object clicked in the view gives its colour. */
   pickingFor: SceneObject[] | null = null;
@@ -24,7 +26,8 @@ export class ColorPopover {
     private readonly onPickStart: (active: boolean) => void,
   ) {
     this.el = document.querySelector<HTMLElement>('#color-popover')!;
-    this.custom = this.el.querySelector<HTMLInputElement>('#custom-color')!;
+    this.custom = this.el.querySelector<HTMLButtonElement>('#custom-color-open')!;
+    this.customDot = this.custom.querySelector<HTMLElement>('.swatch-dot')!;
     const swatches = this.el.querySelector('.swatches')!;
     for (const [color, name] of STANDARD_COLORS) {
       const b = document.createElement('button');
@@ -36,7 +39,7 @@ export class ColorPopover {
       b.addEventListener('click', () => this.apply(color));
       swatches.append(b);
     }
-    this.custom.addEventListener('change', () => this.apply(this.custom.value));
+    this.custom.addEventListener('click', () => this.pickCustom());
     this.el.querySelector('[data-action="eyedropper"]')!.addEventListener('click', () => {
       beginTool('eyedropper', () => this.finishPick(undefined), false);
       this.pickingFor = this.targets;
@@ -50,7 +53,9 @@ export class ColorPopover {
       this.close();
     });
     document.addEventListener('pointerdown', (e) => {
-      if (!this.el.hidden && !this.el.contains(e.target as Node)) this.close();
+      // The in-app picker belongs to this popover: using it must not close it.
+      const t = e.target as HTMLElement;
+      if (!this.el.hidden && !this.el.contains(t) && !t.closest('#color-picker')) this.close();
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.close();
@@ -64,7 +69,7 @@ export class ColorPopover {
     for (const b of this.el.querySelectorAll<HTMLButtonElement>('.swatches button')) {
       b.classList.toggle('active', b.dataset.color === only);
     }
-    this.custom.value = only ?? obj.color;
+    this.customDot.style.background = only ?? obj.color;
     this.el.hidden = false;
     const r = anchor.getBoundingClientRect();
     const p = this.el.getBoundingClientRect();
@@ -74,7 +79,29 @@ export class ColorPopover {
   }
 
   close(): void {
+    closeColorPicker();
     this.el.hidden = true;
+  }
+
+  /** Custom colour: the colour changes live while the picker is dragged, as ONE undo step for the whole session. */
+  private pickCustom(): void {
+    const targets = this.targets;
+    const colors = new Set(targets.map((o) => o.color));
+    let started = false;
+    openColorPicker({
+      anchor: this.custom,
+      value: colors.size === 1 ? [...colors][0] : targets[0].color,
+      beside: true,
+      onInput: (hex) => {
+        // The checkpoint comes before the first change, so one undo restores the colours from before the picker opened.
+        if (!started) {
+          started = true;
+          this.doc.checkpoint();
+        }
+        this.doc.setColor(targets, hex);
+        this.customDot.style.background = hex;
+      },
+    });
   }
 
   private apply(color: string): void {

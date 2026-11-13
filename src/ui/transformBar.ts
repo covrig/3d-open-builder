@@ -10,7 +10,8 @@ const AXES = ['x', 'y', 'z'] as const;
 
 const LABELS: Record<GizmoMode, [string, string, string]> = {
   translate: ['X', 'Y', 'Z'],
-  rotate: ['Roll', 'Pitch', 'Yaw'],
+  // Rotating about X, Y and Z: the axis letter says which ring turns.
+  rotate: ['Roll X', 'Pitch Y', 'Yaw Z'],
   scale: ['X', 'Y', 'Z'],
 };
 
@@ -58,6 +59,10 @@ export class TransformBar {
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') input.blur();
       });
+      // The handle of the axis being typed in lights up in the view.
+      input.addEventListener('focus', () => this.gizmo.setFocusAxis(i));
+      input.addEventListener('input', () => this.gizmo.setFocusAxis(i));
+      input.addEventListener('blur', () => this.gizmo.setFocusAxis(null));
     });
     this.unitButton.addEventListener('click', () => {
       updateSettings({ unit: UNITS[(UNITS.indexOf(settings.unit) + 1) % UNITS.length] });

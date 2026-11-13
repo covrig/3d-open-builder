@@ -288,10 +288,8 @@ async function runChecks(b) {
   });
 
   await check('Shortcuts overlay from File menu', async () => {
-    // The panel starts shown; its own button hides it, the File menu shows it again.
-    if (!(await visible(page, '#shortcuts-panel'))) throw new Error('panel not shown at the start');
-    await clickSel(page, '#shortcuts-panel [data-action="shortcuts"]');
-    if (await visible(page, '#shortcuts-panel')) throw new Error('panel did not hide');
+    // The panel starts hidden on every load; the File menu shows it, its own button hides it again.
+    if (await visible(page, '#shortcuts-panel')) throw new Error('panel shown at the start');
     await clickSel(page, '[data-menu="file-menu"]');
     await clickSel(page, '#file-menu [data-action="shortcuts"]');
     if (!(await visible(page, '#shortcuts-panel'))) throw new Error('panel not shown from the menu');

@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { lookDefaults } from './document';
 import { Ground, type GroundColors } from './ground';
 import { GRID_NUMBER_HEIGHT, labelScale, labelWidth, makeLabel, ORIGIN_HEIGHT } from './labels';
 import { Reflection } from './reflection';
@@ -50,6 +52,9 @@ THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const HOME_POSITION = new THREE.Vector3(-170, -260, 210);
 const HOME_TARGET = new THREE.Vector3(0, 0, 20);
 /** The middle of the plate, shown when there is nothing else to look at. */
+/** The even fill light and the sun: their strengths in the look the app always had. */
+const SKY_LIGHT = 1.15;
+const SUN_LIGHT = 2.1;
 const HOME_AREA = new THREE.Box3(new THREE.Vector3(-60, -60, 0), new THREE.Vector3(60, 60, 20));
 
 export interface Palette extends GroundColors {
@@ -101,6 +106,10 @@ export class Viewport extends EventTarget {
   private readonly outline: OutlinePass;
   private readonly ground = new Ground();
   private readonly sun: THREE.DirectionalLight;
+  private readonly sky: THREE.HemisphereLight;
+  /** Degrees the light is turned from its usual place (Shadows tile); the sun follows the camera, see updateLightAndGround. */
+  private lightAngle = 0;
+  private environment: THREE.Texture | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly frameCallbacks: (() => void)[] = [];
   private readonly shadowFocus = new THREE.Sphere(new THREE.Vector3(), 100);
@@ -154,8 +163,9 @@ export class Viewport extends EventTarget {
 
     // A modest even light plus a strong directional one: enough contrast that
     // shallow detail (threads, holes, chamfers) reads clearly.
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x303844, 1.15));
-    this.sun = new THREE.DirectionalLight(0xffffff, 2.1);
+    this.sky = new THREE.HemisphereLight(0xffffff, 0x303844, SKY_LIGHT);
+    this.scene.add(this.sky);
+    this.sun = new THREE.DirectionalLight(0xffffff, SUN_LIGHT);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.camera.near = 1;
@@ -176,7 +186,10 @@ export class Viewport extends EventTarget {
       this.invalidate();
     });
     this.reflection = new Reflection(this.scene, this.objectRoot);
-    this.beforeFrame(() => this.reflection.sync());
+    this.beforeFrame(() => {
+      this.reflection.hideBelow(this.camera.position.z < 0);
+      this.reflection.sync();
+    });
 
     // Render through a composer so the selection gets a silhouette outline.
     // The multisampled target keeps edges smooth (the default one has no anti-aliasing).
@@ -341,7 +354,7 @@ export class Viewport extends EventTarget {
     }
     view.setZ(0);
     if (view.lengthSq() < 1e-6) view.set(0, -1, 0);
-    view.normalize().applyAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(35));
+    view.normalize().applyAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(35 + this.lightAngle));
     const c = this.shadowFocus.center;
     const r = this.shadowFocus.radius;
     this.sun.target.position.set(c.x, c.y, 0);
@@ -598,6 +611,36 @@ export class Viewport extends EventTarget {
 
   setShadows(enabled: boolean): void {
     this.sun.castShadow = enabled;
+    this.invalidate();
+  }
+
+  /**
+   * The Shadows tile's options. At the defaults (0, 0, 1, 0) nothing differs from the look the app always had.
+   * - shine: a soft highlight and a faint sky reflection (an environment map, built once, only while above 0);
+   * - lightAngle: turns the light around the scene (the shadow follows);
+   * - shadowStrength: how dark the cast shadow is;
+   * - contrast: less even fill light and a stronger sun, so faces turned away read darker.
+   */
+  setLook(look: { shine: number; lightAngle: number; shadowStrength: number; contrast: number }): void {
+    const { shine, lightAngle, shadowStrength, contrast } = look;
+    if (shine > 0 && !this.environment) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    }
+    this.scene.environment = shine > 0 ? this.environment : null;
+    this.scene.environmentIntensity = 0.9 * shine;
+    // Smoother surfaces catch the sun as a highlight too.
+    lookDefaults.roughness = 0.55 - 0.3 * shine;
+    for (const child of this.objectRoot.children) {
+      const material = (child as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (material && 'roughness' in material) material.roughness = lookDefaults.roughness;
+    }
+    this.lightAngle = lightAngle;
+    this.sun.shadow.intensity = shadowStrength;
+    this.sky.intensity = SKY_LIGHT * (1 - 0.6 * contrast);
+    this.sun.intensity = SUN_LIGHT * (1 + 0.25 * contrast);
+    this.updateLightAndGround();
     this.invalidate();
   }
 

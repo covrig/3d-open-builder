@@ -72,7 +72,9 @@ function featureEdges(mesh: THREE.Mesh, data: MeshData): FeatureEdges {
     return edges;
   };
   // The Edges view's lines, when drawn, are these same edges (same angle, the object's own coordinates).
-  const drawn = (mesh.userData.edges as THREE.LineSegments | undefined)?.geometry.getAttribute('position');
+  // (While parts of them are clipped away for the dashed internal lines, the full ones are kept aside.)
+  const lines = mesh.userData.edges as THREE.LineSegments | undefined;
+  const drawn = ((lines?.userData.full as THREE.BufferGeometry | undefined) ?? lines?.geometry)?.getAttribute('position');
   if (drawn) return keep(drawn.array as Float32Array);
   // A big mesh: the worker finds them; until then this object offers no edge snaps.
   if (data.indices.length / 3 > BIG_MESH) {

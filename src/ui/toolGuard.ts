@@ -9,7 +9,7 @@ import { isBusy, isLocked, onlyViewLocked, onToolChange } from './toolLock';
  * Copy, settings, export, and the tool's own bar.
  */
 export const LOCKED = [
-  '.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"])',
+  '.toolbar button:not([data-menu="file-menu"]):not([data-action="copy"]):not([data-action="settings-shortcut"])',
   '#file-menu [data-action="new"]',
   '#file-menu [data-action="open"]',
   '#file-menu [data-action="open-project"]',

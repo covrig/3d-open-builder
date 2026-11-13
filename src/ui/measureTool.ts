@@ -76,6 +76,20 @@ export class MeasureTool {
   private readonly options = settings.ui.measure;
   private readonly svg: SVGSVGElement;
   private readonly labels: HTMLElement;
+  /**
+   * The point under the cursor (marker, its dot and tag) lives in layers of its own: a mouse
+   * move redraws only these, without the 3D scene and without rebuilding the measurements.
+   */
+  private readonly hoverSvg: SVGSVGElement;
+  private readonly hoverTag: HTMLElement;
+  /** What the layers hold now, so unchanged content is not written (and laid out) again */
+  private svgHtml = '';
+  private hoverHtml = '';
+  private tagHtml = '';
+  private labelKey = '';
+  /** Mouse: the latest position, picked once per animation frame (a mouse reports faster than the screen refreshes) */
+  private moveAt: { x: number; y: number } | null = null;
+  private moveFrame = 0;
   /** Floating "Place / discard" chip next to the candidate point of a touch */
   private readonly chip: HTMLElement;
   /** True while the last pointer over the view was a finger */
@@ -107,6 +121,10 @@ export class MeasureTool {
     this.svg.classList.toggle('dotted', this.options.dotted);
     this.labels = document.createElement('div');
     this.labels.className = 'measure-labels';
+    this.hoverSvg = document.createElementNS(SVG_NS, 'svg');
+    this.hoverSvg.classList.add('measure');
+    this.hoverTag = document.createElement('div');
+    this.hoverTag.className = 'measure-labels';
     this.chip = document.createElement('div');
     this.chip.className = 'm-chip';
     this.chip.hidden = true;
@@ -130,7 +148,7 @@ export class MeasureTool {
     this.loupeSnap.className = 'loupe-snap';
     this.loupeSnap.hidden = true;
     this.loupe.append(this.loupeCanvas, this.loupeSnap);
-    viewport.element.append(this.svg, this.labels, this.chip, this.loupe);
+    viewport.element.append(this.svg, this.labels, this.hoverSvg, this.hoverTag, this.chip, this.loupe);
     viewport.onFrame(() => this.draw());
 
     // Which kind of pointer is over the view (main.ts passes plain coordinates), so a
@@ -149,6 +167,7 @@ export class MeasureTool {
         if (this.fingers.size > 1) {
           // A second finger: pinch or two-finger pan of the camera, nothing is aimed.
           this.gesture = true;
+          this.cancelMove();
           this.hover = null;
           this.hoverSnap = null;
           this.finger = null;
@@ -201,8 +220,14 @@ export class MeasureTool {
       });
     }
     panel.querySelector('[data-action="measure-clear"]')!.addEventListener('click', () => this.clear());
-    // Touch screens: a button under the hint stops the tool while the panel is open (see the stylesheet).
-    document.querySelector('#measure-stop')?.addEventListener('click', () => this.setKind(null));
+    // Touch screens: icon buttons under the hint change the measuring type or stop it while the panel is closed (see the stylesheet).
+    for (const b of document.querySelectorAll<HTMLButtonElement>('[data-measure-quick]')) {
+      b.addEventListener('click', () => {
+        const what = b.dataset.measureQuick!;
+        if (what !== 'stop' && this.kind === what) return;
+        this.setKind(what === 'stop' ? null : (what as MeasureKind));
+      });
+    }
   }
 
   get active(): boolean {
@@ -224,6 +249,7 @@ export class MeasureTool {
       Object.assign(touches, this.savedTouches);
       this.savedTouches = null;
     }
+    this.cancelMove();
     this.fingers.clear();
     this.gesture = false;
     this.finger = null;
@@ -233,6 +259,9 @@ export class MeasureTool {
     this.candidate = null;
     for (const b of document.querySelectorAll<HTMLButtonElement>('[data-measure]')) {
       b.classList.toggle('active', b.dataset.measure === kind);
+    }
+    for (const b of document.querySelectorAll<HTMLButtonElement>('[data-measure-quick]')) {
+      b.classList.toggle('active', b.dataset.measureQuick === kind);
     }
     this.viewport.element.classList.toggle('measuring', kind !== null);
     if (kind) showHint('measure', HINTS[kind]);
@@ -260,6 +289,7 @@ export class MeasureTool {
   private place(p: MeasurePoint): void {
     if (!this.kind) return;
     this.candidate = null;
+    this.cancelMove();
     this.pending.push(p);
     // Placed: the point goes back to its normal look until the mouse moves again.
     this.hover = null;
@@ -280,11 +310,48 @@ export class MeasureTool {
 
   move(clientX: number, clientY: number): void {
     if (!this.kind || this.gesture) return;
-    const picked = this.pickPoint(clientX, clientY);
+    if (this.touchPointer) {
+      // The loupe copies the WebGL canvas, which needs a fresh 3D frame (see drawLoupe).
+      this.cancelMove();
+      this.setHover(this.pickPoint(clientX, clientY));
+      this.viewport.invalidate();
+      return;
+    }
+    // A mouse reports more often than the screen refreshes: pick once per frame, at the latest position.
+    this.moveAt = { x: clientX, y: clientY };
+    if (this.moveFrame) return;
+    this.moveFrame = requestAnimationFrame(() => {
+      this.moveFrame = 0;
+      const at = this.moveAt;
+      this.moveAt = null;
+      if (!at || !this.kind || this.gesture) return;
+      this.setHover(this.pickPoint(at.x, at.y));
+      // Nothing in the 3D view changes when the cursor moves, so no new frame is drawn:
+      // only the overlay. With points pending, the line to the cursor (and its label) must follow too.
+      if (this.pending.length === 0 && !this.candidate) this.drawHover();
+      else this.draw();
+    });
+  }
+
+  private setHover(picked: Picked | null): void {
     this.hover = picked?.point ?? null;
     this.hoverSnap = picked?.snap ?? null;
     this.hoverHidden = picked?.hidden ?? false;
-    this.viewport.invalidate();
+  }
+
+  /** Forget a mouse move that is waiting for its frame (the state it would apply to has changed). */
+  private cancelMove(): void {
+    if (this.moveFrame) cancelAnimationFrame(this.moveFrame);
+    this.moveFrame = 0;
+    this.moveAt = null;
+  }
+
+  /** What the cursor (or, for touch, the waiting candidate) points at, if anything. */
+  private aimed(): { point: MeasurePoint; snap: SnapKind | null; hidden: boolean } | null {
+    if (!this.kind) return null;
+    if (this.hover) return { point: this.hover, snap: this.hoverSnap, hidden: this.hoverHidden };
+    const c = this.candidate;
+    return c ? { point: c.point, snap: c.snap, hidden: c.hidden } : null;
   }
 
   /** World position of a point, or null if its object no longer exists. Older files may hold points on the plate (no object). */
@@ -311,8 +378,6 @@ export class MeasureTool {
   private draw(): void {
     const svg: string[] = [];
     const specs: LabelSpec[] = [];
-    let snapTag = '';
-    let loupeText = '';
     const P = (v: THREE.Vector3) => this.viewport.project(v);
     const num = (mm: number) => (Math.round(toUnit(mm) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const unit = settings.unit;
@@ -404,47 +469,39 @@ export class MeasureTool {
     // A touch candidate whose object is gone is dropped.
     if (this.candidate && !this.world(this.candidate.point)) this.candidate = null;
     let chipAt: THREE.Vector2 | null = null;
-    // The snap marker takes the cursor's place, so the crosshair is hidden while a point is hovered.
-    // Set here, which every reset of the hover (and stopping) redraws through, so it can't get stuck.
-    this.viewport.element.classList.toggle('snapped', this.kind !== null && this.hover !== null);
     if (this.kind) {
-      // The candidate of a touch counts as the aimed point while no finger is moving one.
-      const aimed = this.hover ?? this.candidate?.point ?? null;
-      const aimedSnap = this.hover ? this.hoverSnap : this.candidate?.snap ?? null;
-      const aimedHidden = this.hover ? this.hoverHidden : this.candidate?.hidden ?? false;
-      const pending = [...this.pending, ...(aimed ? [aimed] : [])]
+      // The aimed point with no points pending is drawn by drawHover (it is all that changes while the mouse moves).
+      const aimed = this.aimed();
+      const pending = [...this.pending, ...(aimed && this.pending.length ? [aimed.point] : [])]
         .map((p) => this.world(p))
         .filter((p) => p !== null);
       render(this.kind, pending);
-      const h = aimed ? this.world(aimed) : null;
-      if (h) {
-        const p = P(h);
-        // A snapped point lights up and says what it caught, so a point that only
-        // looks right from this angle isn't placed by mistake.
-        const marker = hoverMarker(p, aimedSnap, aimedHidden);
-        svg.push(marker.svg);
-        // While a finger is aiming, the words go in the loupe instead (the finger covers the point).
-        if (this.touchPointer && this.finger) loupeText = marker.tag.replace(/<[^>]*>/g, '');
-        else snapTag = marker.tag;
-        if (!this.hover) chipAt = p;
-      }
+      const h = aimed && !this.hover ? this.world(aimed.point) : null;
+      if (h) chipAt = P(h);
     }
-    this.loupeSnap.textContent = loupeText;
-    this.loupeSnap.hidden = !loupeText;
-    this.svg.innerHTML = svg.join('');
+    const html = svg.join('');
+    if (html !== this.svgHtml) {
+      this.svgHtml = html;
+      this.svg.innerHTML = html;
+    }
+    this.drawHover();
     this.drawLoupe();
 
-    // Labels: put them in, measure them, then move any that would cover another.
-    this.labels.innerHTML =
-      specs
+    // Labels: put them in, measure them, then move any that would cover another. Only when
+    // they changed: this reads sizes back, which makes the browser lay out the page.
+    const key = specs.map((s) => `${s.x}|${s.y}|${s.main}|${s.sub ?? ''}|${s.dir.x}|${s.dir.y}|${s.slide}`).join('\n');
+    if (key !== this.labelKey) {
+      this.labelKey = key;
+      this.labels.innerHTML = specs
         .map(
           (s, i) =>
             `<div class="m-label" data-i="${i}"><div class="m-main">${escapeHtml(s.main)}</div>${
               s.sub ? `<div class="m-sub">${escapeHtml(s.sub)}</div>` : ''
             }</div>`,
         )
-        .join('') + snapTag;
-    if (specs.length) this.placeLabels(specs);
+        .join('');
+      if (specs.length) this.placeLabels(specs);
+    }
 
     // The place / discard chip above the candidate (above, because the finger is below it).
     this.chip.hidden = !chipAt;
@@ -453,6 +510,42 @@ export class MeasureTool {
       const x = Math.min(Math.max(chipAt.x, w / 2 + 4), Math.max(w / 2 + 4, this.viewport.element.clientWidth - w / 2 - 4));
       this.chip.style.left = `${x}px`;
       this.chip.style.top = `${Math.max(chipAt.y - 34, h + 4)}px`;
+    }
+  }
+
+  /**
+   * The marker of the point under the cursor with its tag, in their own layers. The snap
+   * marker takes the cursor's place, so the crosshair is hidden only while the point under it snapped.
+   * Set here, which every reset of the hover (and stopping) redraws through, so it can't get stuck.
+   */
+  private drawHover(): void {
+    this.viewport.element.classList.toggle('snapped', this.kind !== null && this.hoverSnap !== null);
+    let marker = '';
+    let tag = '';
+    let loupeText = '';
+    const aimed = this.aimed();
+    const at = aimed ? this.world(aimed.point) : null;
+    if (aimed && at) {
+      const p = this.viewport.project(at);
+      // A snapped point lights up and says what it caught, so a point that only
+      // looks right from this angle isn't placed by mistake.
+      const m = hoverMarker(p, aimed.snap, aimed.hidden);
+      // With points pending the aimed point is one of them, drawn with them by draw().
+      const dot = this.pending.length ? '' : `<circle class="point" cx="${p.x}" cy="${p.y}" r="4.5" stroke="${POINT_COLORS[0]}"/>`;
+      marker = dot + m.svg;
+      // While a finger is aiming, the words go in the loupe instead (the finger covers the point).
+      if (this.touchPointer && this.finger) loupeText = m.tag.replace(/<[^>]*>/g, '');
+      else tag = m.tag;
+    }
+    this.loupeSnap.textContent = loupeText;
+    this.loupeSnap.hidden = !loupeText;
+    if (marker !== this.hoverHtml) {
+      this.hoverHtml = marker;
+      this.hoverSvg.innerHTML = marker;
+    }
+    if (tag !== this.tagHtml) {
+      this.tagHtml = tag;
+      this.hoverTag.innerHTML = tag;
     }
   }
 

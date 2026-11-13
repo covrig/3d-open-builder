@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { settings } from '../settings';
 import type { SceneDocument } from './document';
 import { isAxisAligned, stretchMatrix, stretchWorld } from './resize';
@@ -144,6 +147,11 @@ export class Gizmo {
       ring.raycast = () => {};
       this.rings.add(ring);
     });
+    // A thick copy of one ring, shown for the axis whose field is being typed in (setFocusAxis).
+    this.focusRing = new LineSegments2(new LineSegmentsGeometry(), new LineMaterial({ linewidth: 4, transparent: true, opacity: 0.95 }));
+    this.focusRing.raycast = () => {};
+    this.focusRing.visible = false;
+    this.rings.add(this.focusRing);
     this.rings.visible = false;
     viewport.scene.add(this.rings);
     this.build();
@@ -162,6 +170,36 @@ export class Gizmo {
   }
 
   private readonly rings = new THREE.Group();
+  private readonly focusRing: LineSegments2;
+  /** The axis (0 X, 1 Y, 2 Z) whose number is being typed: its handle is highlighted. */
+  private focusAxis: number | null = null;
+
+  /**
+   * Highlight the handle(s) of an axis (null: none): the Move arrow, the Rotate arrow and its ring,
+   * or the Size arrows of that axis. Set while its number field in the transform bar is used.
+   */
+  setFocusAxis(axis: number | null): void {
+    this.focusAxis = axis;
+    this.applyFocus();
+    this.viewport.invalidate();
+  }
+
+  private applyFocus(): void {
+    for (const h of this.handles) h.el.classList.toggle('focus', h.kind !== 'corner' && h.axis === this.focusAxis);
+    const ring = this.mode === 'rotate' && this.focusAxis !== null;
+    this.focusRing.visible = ring;
+    if (!ring) return;
+    const a = this.focusAxis!;
+    const e1 = AXES[(a + 1) % 3], e2 = AXES[(a + 2) % 3];
+    const pos: number[] = [];
+    const point = (i: number) => {
+      const t = (i / 128) * Math.PI * 2;
+      return e1.clone().multiplyScalar(Math.cos(t)).addScaledVector(e2, Math.sin(t));
+    };
+    for (let i = 0; i < 128; i++) pos.push(...point(i).toArray(), ...point(i + 1).toArray());
+    this.focusRing.geometry.setPositions(pos);
+    this.focusRing.material.color.set(AXIS_COLORS[a]);
+  }
 
   private targetMeshes(): THREE.Object3D[] {
     return this.doc.selection.map((o) => o.mesh);
@@ -180,6 +218,7 @@ export class Gizmo {
     const targets = this.targetMeshes();
     this.rings.visible = this.mode === 'rotate' && this.enabled && targets.length > 0;
     if (!this.rings.visible) return;
+    this.focusRing.material.resolution.set(this.viewport.width, this.viewport.height);
     const turning = this.drag?.handle.kind === 'rotate';
     const box = turning ? this.drag!.box : this.targetBox();
     const center = turning ? this.drag!.center : box.getCenter(new THREE.Vector3());
@@ -256,6 +295,7 @@ export class Gizmo {
         }
         break;
     }
+    this.applyFocus();
   }
 
   // --- Per-frame layout ---------------------------------------------------

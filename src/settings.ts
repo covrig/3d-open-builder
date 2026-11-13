@@ -38,8 +38,15 @@ export interface UiState {
   rulerTextScale: number;
   /** Opacity of the edge lines in the Edges view (1 = solid) */
   edgeStrength: number;
+  /** Light and shadow options (the Shadows tile's sliders); the defaults are the look the app always had */
+  shine: number; // 0..1, 0 = matt as always
+  lightAngle: number; // degrees the light is turned from its usual place, -180..180
+  shadowStrength: number; // 0..1, 1 = as always
+  surfaceContrast: number; // 0..1, 0 = as always
   /** Dashed lines where objects overlap, in the Edges view */
   internalIntersections: boolean;
+  /** With those: also the edges of an object where they run inside another object */
+  internalEdges: boolean;
   /** Mirror image of the objects in the plate: how strong, and how deep (mm) before it fades out */
   reflection: { on: boolean; strength: number; depth: number };
   /** Overhang view: surfaces steeper than ngle degrees from vertical get color */
@@ -99,7 +106,12 @@ const DEFAULTS: Settings = {
     plateTextScale: 1,
     rulerTextScale: 1,
     edgeStrength: 1,
+    shine: 0,
+    lightAngle: 0,
+    shadowStrength: 1,
+    surfaceContrast: 0,
     internalIntersections: true,
+    internalEdges: true,
     reflection: { on: false, strength: 0.3, depth: 60 },
     overhang: { angle: 45, color: '#e5484d' },
     importUnit: 'mm',
@@ -152,12 +164,17 @@ function load(): Settings {
   s.ui.measure.deltas = s.ui.measure.deltas === true;
   s.ui.gridLineOpacity = clamp01(s.ui.gridLineOpacity, 1);
   s.ui.edgeStrength = clamp01(s.ui.edgeStrength, 1);
+  s.ui.shine = clamp01(s.ui.shine, 0);
+  s.ui.lightAngle = inRange(s.ui.lightAngle, -180, 180, 0);
+  s.ui.shadowStrength = inRange(s.ui.shadowStrength, 0.1, 1, 1);
+  s.ui.surfaceContrast = clamp01(s.ui.surfaceContrast, 0);
   s.ui.gridValues = s.ui.gridValues === true;
   s.ui.plateTextScale = inRange(s.ui.plateTextScale, 0.5, 2, DEFAULTS.ui.plateTextScale);
   s.ui.rulerTextScale = inRange(s.ui.rulerTextScale, 0.5, 2, DEFAULTS.ui.rulerTextScale);
   s.ui.importSeparate = s.ui.importSeparate === true;
   s.ui.exportHidden = s.ui.exportHidden === true;
   s.ui.internalIntersections = s.ui.internalIntersections !== false;
+  s.ui.internalEdges = s.ui.internalEdges !== false;
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
   s.ui.measure.snap = true;
   return s;

@@ -8,7 +8,7 @@ other sites.
 The respective copyright holders retain all rights to their software and fonts.
 The licences below apply to the corresponding third-party components, not to
 the application as a whole. 3D Open Builder itself is under the MIT licence
-(see [LICENSE](LICENSE)).
+(see [LICENSE](../../LICENSE)).
 
 The full licence text of each component is in this repository at the path
 given below, and in the app under Menu → About and libraries (click a licence
@@ -24,7 +24,7 @@ Reads and writes the zip container of 3MF files.
 - Licence: MIT
 - Copyright: © 2026 Arjun Barrett
 - Project: https://github.com/101arrowz/fflate
-- Licence text: [`public/licenses/fflate.txt`](public/licenses/fflate.txt)
+- Licence text: [`public/licenses/fflate.txt`](fflate.txt)
 
 ---
 
@@ -36,7 +36,7 @@ The icons.
 - Licence: ISC
 - Copyright: © 2026 Lucide Icons and Contributors; © 2013-present Cole Bemis
 - Project: https://github.com/lucide-icons/lucide
-- Licence text: [`public/licenses/lucide.txt`](public/licenses/lucide.txt)
+- Licence text: [`public/licenses/lucide.txt`](lucide.txt)
 
 ---
 
@@ -48,7 +48,7 @@ The solid geometry engine (merge, subtract, intersect, split and more).
 - Licence: Apache License 2.0
 - Copyright: the Manifold authors (see the project)
 - Project: https://github.com/elalish/manifold
-- Licence text: [`public/licenses/manifold-3d.txt`](public/licenses/manifold-3d.txt)
+- Licence text: [`public/licenses/manifold-3d.txt`](manifold-3d.txt)
 
 The package includes no NOTICE file.
 
@@ -62,7 +62,7 @@ Reads the fonts for raised and cut-in text.
 - Licence: MIT
 - Copyright: © 2020 Frederik De Bleser
 - Project: https://github.com/opentypejs/opentype.js
-- Licence text: [`public/licenses/opentype.js.txt`](public/licenses/opentype.js.txt)
+- Licence text: [`public/licenses/opentype.js.txt`](opentype.js.txt)
 
 ---
 
@@ -74,7 +74,7 @@ Draws the 3D view.
 - Licence: MIT
 - Copyright: © 2010-2026 three.js authors
 - Project: https://github.com/mrdoob/three.js
-- Licence text: [`public/licenses/three.txt`](public/licenses/three.txt)
+- Licence text: [`public/licenses/three.txt`](three.txt)
 
 ---
 
@@ -86,7 +86,7 @@ Finds what is under the pointer quickly on objects with many triangles.
 - Licence: MIT
 - Copyright: © 2018 Garrett Johnson
 - Project: https://github.com/gkjohnson/three-mesh-bvh
-- Licence text: [`public/licenses/three-mesh-bvh.txt`](public/licenses/three-mesh-bvh.txt)
+- Licence text: [`public/licenses/three-mesh-bvh.txt`](three-mesh-bvh.txt)
 
 ---
 
@@ -97,7 +97,7 @@ The "Sans" font for text on faces (Roboto Bold).
 - Licence: SIL Open Font License 1.1 (OFL-1.1)
 - Copyright: © 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)
 - Project: https://fonts.google.com/specimen/Roboto
-- Licence text: [`public/fonts/Roboto-LICENSE.txt`](public/fonts/Roboto-LICENSE.txt)
+- Licence text: [`public/fonts/Roboto-LICENSE.txt`](../fonts/Roboto-LICENSE.txt)
 
 ---
 
@@ -108,7 +108,7 @@ The "Serif" font for text on faces (Roboto Slab Bold).
 - Licence: Apache License 2.0
 - Copyright: the Roboto Slab authors (see the project)
 - Project: https://fonts.google.com/specimen/Roboto+Slab
-- Licence text: [`public/fonts/RobotoSlab-LICENSE.txt`](public/fonts/RobotoSlab-LICENSE.txt)
+- Licence text: [`public/fonts/RobotoSlab-LICENSE.txt`](../fonts/RobotoSlab-LICENSE.txt)
 
 ---
 
@@ -119,7 +119,7 @@ The "Mono" font for text on faces (Roboto Mono Bold).
 - Licence: SIL Open Font License 1.1 (OFL-1.1)
 - Copyright: © 2015 The Roboto Mono Project Authors (https://github.com/googlefonts/robotomono)
 - Project: https://fonts.google.com/specimen/Roboto+Mono
-- Licence text: [`public/fonts/RobotoMono-LICENSE.txt`](public/fonts/RobotoMono-LICENSE.txt)
+- Licence text: [`public/fonts/RobotoMono-LICENSE.txt`](../fonts/RobotoMono-LICENSE.txt)
 
 ---
 

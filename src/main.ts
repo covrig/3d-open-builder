@@ -91,6 +91,8 @@ const { updateDetails, volumeOf } = setupDetailsPanel({ doc, wasm });
 const gizmo = new Gizmo(viewport, doc);
 new TransformBar($('#transform-bar'), gizmo, doc);
 setupSettingsDialog($('[data-action="settings"]'));
+// The toolbar's Settings button (when it fits) does what the File menu item does.
+$('[data-action="settings-shortcut"]').addEventListener('click', () => $('#file-menu [data-action="settings"]').click());
 setupAbout();
 setupPrivacy();
 setupShortcutsPanel();
@@ -194,6 +196,7 @@ const overlaps = new OverlapLines(
   viewport, doc,
   () => ({
     opacity: settings.ui.view.edges ? (settings.ui.internalIntersections ? 0.45 : 0) : settings.ui.view.xray ? 0.05 : 0,
+    edges: settings.ui.internalEdges,
     snap: measure.active,
   }),
   () => isLocked() && !onlyViewLocked(),
@@ -201,7 +204,8 @@ const overlaps = new OverlapLines(
 measure.overlaps = overlaps;
 onToolChange(() => overlaps.refresh());
 $('#settings-dialog').addEventListener('change', (e) => {
-  if ((e.target as HTMLInputElement).name === 'internalIntersections') overlaps.refresh();
+  const name = (e.target as HTMLInputElement).name;
+  if (name === 'internalIntersections' || name === 'internalEdges') overlaps.refresh();
 });
 for (const b of $$('[data-view="edges"], [data-view="xray"]')) b.addEventListener('click', () => overlaps.refresh());
 setupViewCube(viewport);

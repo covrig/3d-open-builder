@@ -71,6 +71,25 @@ export function distinctColors(count: number): string[] {
   return colors;
 }
 
+/**
+ * The order the list shows: by name (Cube 2 before Cube 10), with the members of a group right
+ * next to each other, the group standing where its first member (by name) would. Only the list is
+ * sorted: the order of the objects in the drawing (and so in undo, export and stacking) is untouched.
+ */
+function listOrder(objects: SceneObject[]): SceneObject[] {
+  const byName = [...objects].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  const out: SceneObject[] = [];
+  const done = new Set<SceneObject>();
+  for (const obj of byName) {
+    if (done.has(obj)) continue;
+    for (const o of obj.groupId === undefined ? [obj] : byName.filter((x) => x.groupId === obj.groupId)) {
+      out.push(o);
+      done.add(o);
+    }
+  }
+  return out;
+}
+
 /** Sidebar "Objects" section: selection buttons and the list of objects. */
 export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: ColorPopover, actions: RowActions): void {
   const list = el.querySelector<HTMLUListElement>('.items')!;
@@ -144,7 +163,7 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
       return;
     }
     list.replaceChildren(
-      ...doc.objects.map((obj) => {
+      ...listOrder(doc.objects).map((obj) => {
         const li = document.createElement('li');
         const box = document.createElement('button');
         box.className = 'color-box';

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { meshId, type MeshData } from '../geometry/meshData';
+import { subtractChords } from '../geometry/subtractSegments';
 import { runOp } from '../geometry/workerClient';
 import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
@@ -121,12 +122,16 @@ export interface ViewMode {
 const EDGE_ANGLE = 25;
 /** Meshes with more triangles than this get their edge lines worked out in the geometry worker. */
 const EDGE_WORKER_TRIANGLES = 50_000;
+/** How far (mm) an overlap line may be off an edge line and still count as lying on it. */
+const EDGE_CLIP_TOLERANCE = 1e-3;
 /** Look of objects faded out while a tool works on others */
 const FADED_OPACITY = 0.08;
 const FADED_COLOR = 0x8f98a3;
 /** Sharp-edge lines (Edges view); the cross-section draws its cut outline with it too. */
 export const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xe6edf5 });
 /** Fainter, dotted lines where the surfaces of overlapping objects cross (see OverlapLines). Dash sizes are mm, so the geometry needs computeLineDistances(). */
+/** How rough object surfaces are: 0.55 is the matt look the app always had; the Shine slider lowers it (see Viewport.setLook). */
+export const lookDefaults = { roughness: 0.55 };
 export const overlapMaterial = new THREE.LineDashedMaterial({ color: 0xe6edf5, transparent: true, opacity: 0.45, dashSize: 1.5, gapSize: 1 });
 
 /** How solid the edge lines are (Edges tile's Strength slider; 1 = fully solid, as before). */
@@ -246,7 +251,7 @@ export class SceneDocument extends EventTarget {
   private create(state: ObjectState): SceneObject {
     const material = new THREE.MeshStandardMaterial({
       color: state.color,
-      roughness: 0.55,
+      roughness: lookDefaults.roughness,
       metalness: 0,
       // Faces of different objects in exactly the same plane (e.g. two 40 mm
       // tall shapes side by side) would flicker as the GPU can't decide which
@@ -299,7 +304,7 @@ export class SceneDocument extends EventTarget {
       this.faded.delete(obj);
       this.root.remove(obj.mesh);
       delete obj.mesh.userData.edgesPending;
-      (obj.mesh.userData.edges as THREE.LineSegments | undefined)?.geometry.dispose();
+      this.disposeEdgeGeometries(obj);
       obj.mesh.geometry.dispose();
       obj.mesh.material.dispose();
     }
@@ -325,7 +330,7 @@ export class SceneDocument extends EventTarget {
     const edges = obj.mesh.userData.edges as THREE.LineSegments | undefined;
     if (edges) {
       obj.mesh.remove(edges);
-      edges.geometry.dispose();
+      this.disposeEdgeGeometries(obj);
       delete obj.mesh.userData.edges;
     }
     if (this.view.edges) this.applyView(obj);
@@ -485,7 +490,7 @@ export class SceneDocument extends EventTarget {
       delete obj.mesh.userData.edgesPending; // a late answer from the worker is not wanted any more
       if (existing) {
         obj.mesh.remove(existing);
-        existing.geometry.dispose();
+        this.disposeEdgeGeometries(obj);
         delete obj.mesh.userData.edges;
       }
     }
@@ -508,6 +513,63 @@ export class SceneDocument extends EventTarget {
     lines.raycast = () => {}; // never picked
     obj.mesh.add(lines);
     obj.mesh.userData.edges = lines;
+    this.clipEdgeLinesOf(obj);
+  }
+
+  /** The edge lines' geometries (the drawn one, and the full one while the drawn one is clipped). */
+  private disposeEdgeGeometries(obj: SceneObject): void {
+    const lines = obj.mesh.userData.edges as THREE.LineSegments | undefined;
+    lines?.geometry.dispose();
+    (lines?.userData.full as THREE.BufferGeometry | undefined)?.dispose();
+  }
+
+  /** World-space pieces of edges that run inside another object, taken out of the solid lines (see clipEdgeLines). */
+  private innerChords: Float32Array | null = null;
+
+  /**
+   * Draw each object's solid edge lines without the stretches that run inside
+   * another object (`chords`, world space, 6 numbers per segment): there the
+   * dashed internal lines are drawn instead, and a solid line under them would
+   * hide their gaps. The full geometry stays in `lines.userData.full` (the one
+   * measuring snaps read) and comes back with null.
+   */
+  clipEdgeLines(chords: Float32Array | null): void {
+    this.innerChords = chords && chords.length ? chords : null;
+    for (const o of this.objects) this.clipEdgeLinesOf(o);
+  }
+
+  private clipEdgeLinesOf(obj: SceneObject): void {
+    const lines = obj.mesh.userData.edges as THREE.LineSegments | undefined;
+    if (!lines) return;
+    const full = (lines.userData.full as THREE.BufferGeometry | undefined) ?? lines.geometry;
+    let clipped: Float32Array | null = null;
+    const chords = this.innerChords;
+    if (chords) {
+      obj.mesh.updateMatrixWorld();
+      const back = obj.mesh.matrixWorld.clone().invert();
+      const box = full.boundingBox ?? (full.computeBoundingBox(), full.boundingBox!);
+      const near = box.clone().expandByScalar(EDGE_CLIP_TOLERANCE);
+      // Only the chords inside this object's box can lie on its edges, in its own coordinates.
+      const local: number[] = [];
+      const p = new THREE.Vector3(), q = new THREE.Vector3();
+      for (let i = 0; i < chords.length; i += 6) {
+        p.set(chords[i], chords[i + 1], chords[i + 2]).applyMatrix4(back);
+        q.set(chords[i + 3], chords[i + 4], chords[i + 5]).applyMatrix4(back);
+        if (near.containsPoint(p) && near.containsPoint(q)) local.push(p.x, p.y, p.z, q.x, q.y, q.z);
+      }
+      if (local.length) clipped = subtractChords(full.getAttribute('position').array, local, EDGE_CLIP_TOLERANCE);
+    }
+    if (clipped) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(clipped, 3));
+      if (lines.userData.full) lines.geometry.dispose();
+      lines.userData.full = full;
+      lines.geometry = g;
+    } else if (lines.userData.full) {
+      lines.geometry.dispose();
+      lines.geometry = full;
+      delete lines.userData.full;
+    }
   }
 
   /**

@@ -8,7 +8,7 @@ import {
   Move, PanelBottom, PanelRightOpen, PencilRuler, Pipette, Plus, Pyramid, Redo2, RefreshCw, Rotate3d,
   RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
   SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, SquareRoundCorner, Sun, Torus, Trash2, Triangle,
-  TriangleRight, Type, Undo2, Ungroup, Wrench,
+  TriangleRight, Type, Undo2, Ungroup, Wrench, X,
   createElement, createIcons, type IconNode,
 } from 'lucide';
 
@@ -30,7 +30,7 @@ const ICONS: Record<string, IconNode> = {
   RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
   SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, SquareRoundCorner, Sun, Torus, Trash2, Triangle,
   TriangleRight, Type, Undo2, Ungroup, Wrench,
-  Bevel, TriangleLeft,
+  Bevel, TriangleLeft, X,
 };
 
 /** A fresh SVG element for an icon (for elements created in code). */

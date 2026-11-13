@@ -48,7 +48,7 @@ export const ops = {
     edges.dispose();
     return lines;
   },
-  overlaps: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => overlapLines(wasm, a.items),
+  overlaps: (wasm: ManifoldToplevel, a: { items: PlacedMesh[]; inner: boolean }) => overlapLines(wasm, a.items, a.inner),
   // Volume of the mesh as a solid (in its own space), or null if it isn't a closed solid. Also keeps the solid for later jobs.
   volume: (wasm: ManifoldToplevel, a: { mesh: MeshData }): number | null => {
     try {
