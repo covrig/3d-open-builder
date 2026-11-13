@@ -2,7 +2,6 @@ import type { Manifold, ManifoldToplevel, Vec3 } from 'manifold-3d';
 import { analyze, fillHoles, gentleWeld, hasInsideOutShell, meshProblem, orient, type MeshReport } from './meshCheck';
 import { bakeMesh, manifoldToMeshData, meshDataToManifold, type MeshData, type PlacedMesh } from './meshData';
 import { solidPieces } from './pieces';
-import { wallDistance } from './thickness';
 import { hullFaces, triangleNormal } from './triangles';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail';
@@ -138,8 +137,13 @@ function wallThickness(m: Manifold, mesh: MeshData, minWall: number): { thinArea
     const py = p[a + 1] + u * (p[b + 1] - p[a + 1]) + w * (p[c + 1] - p[a + 1]);
     const pz = p[a + 2] + u * (p[b + 2] - p[a + 2]) + w * (p[c + 2] - p[a + 2]);
     sampled++;
-    const d = wallDistance(m, px, py, pz, nx, ny, nz, reach);
-    if (d === null) continue;
+    const start: Vec3 = [px - nx * 1e-3, py - ny * 1e-3, pz - nz * 1e-3];
+    const end: Vec3 = [px - nx * reach, py - ny * reach, pz - nz * reach];
+    const hit = m.rayCast(start, end).find((r) => r.distance > 1e-3);
+    if (!hit) continue;
+    const n = hit.normal;
+    if (nx * n[0] + ny * n[1] + nz * n[2] > -0.85) continue;
+    const d = Math.hypot(hit.position[0] - px, hit.position[1] - py, hit.position[2] - pz);
     thinnest = Math.min(thinnest, d);
     if (d < minWall) thin++;
     if (d < minWall / 2) half++;

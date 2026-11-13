@@ -25,7 +25,6 @@ import { ExtrudeTool } from './ui/extrudeTool';
 import { setupLookSettings } from './ui/lookSettings';
 import { setupViewPopovers } from './ui/viewPopovers';
 import { OverhangTool } from './ui/overhangTool';
-import { ThicknessTool } from './ui/thicknessTool';
 import { setupViewCube } from './ui/viewCube';
 import { renderIcons } from './ui/icons';
 import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
@@ -191,8 +190,6 @@ const crossSection = new CrossSection(viewport, doc, gizmo);
 measure.section = crossSection;
 // Show overhangs (Check menu): a view tool like the cross-section.
 const overhangs = new OverhangTool(viewport, gizmo);
-// Wall thickness (Check menu): a heat map of the walls, also a view tool.
-const thickness = new ThicknessTool(viewport, doc, gizmo, toast);
 // Faint lines where overlapping objects cross: 45% in the Edges view, 5% in X-ray
 // without it, and snap targets while measuring.
 const overlaps = new OverlapLines(
@@ -485,7 +482,7 @@ updateHistory();
 
 // --- Keyboard -------------------------------------------------------------
 
-setupKeyboard({ doc, gizmo, featureBar, splitTool, crossSection, overhangs, thickness, actions, toast, saveNow, fitView, homeView });
+setupKeyboard({ doc, gizmo, featureBar, splitTool, crossSection, overhangs, actions, toast, saveNow, fitView, homeView });
 
 // --- Clicking in the view -------------------------------------------------
 
@@ -571,4 +568,4 @@ updateShadows();
 void offerRestore();
 
 // Exposed for debugging in the browser console. The browser checks (scripts/browser-check.mjs) rely on these keys.
-Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection, overhangs, thickness, overlaps } });
+Object.assign(window, { app: { doc, viewport, gizmo, wasm, openFiles, autosave, measure, crossSection, overhangs, overlaps } });

@@ -1,7 +1,7 @@
 import {
   AlignEndHorizontal, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart,
   AlignHorizontalSpaceAround, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart,
-  AlignVerticalSpaceAround, Angle, ArrowDownFromLine, ArrowLeftRight, ArrowDownToLine, Axis3d, Bolt, Box, ChevronDown,
+  AlignVerticalSpaceAround, Angle, ArrowDownFromLine, ArrowDownToLine, Axis3d, Bolt, Box, ChevronDown,
   ChevronRight, ChevronUp, Circle, CircleDashed, CircleDot, ClipboardPaste, Cone, Copy, CopyPlus, Cylinder,
   Dices, Dome, Download, Eraser, Eye, EyeOff, FilePlus, FlipHorizontal2, FlipVertical2, Focus, FolderOpen, Ghost, Globe, Grid3x3, Group, Hexagon,
   House, Image, Info, Keyboard, LayoutDashboard, LayoutGrid, ListChecks, LocateFixed, Lock, LockOpen, Menu,
@@ -22,7 +22,7 @@ const TriangleLeft: IconNode = [['path', { d: 'M2 18a2 2 0 0 0 2 2h17c1.1 0 1.3-
 const ICONS: Record<string, IconNode> = {
   AlignEndHorizontal, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart,
   AlignHorizontalSpaceAround, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart,
-  AlignVerticalSpaceAround, Angle, ArrowDownFromLine, ArrowLeftRight, ArrowDownToLine, Axis3d, Bolt, Box, ChevronDown,
+  AlignVerticalSpaceAround, Angle, ArrowDownFromLine, ArrowDownToLine, Axis3d, Bolt, Box, ChevronDown,
   ChevronRight, ChevronUp, Circle, CircleDashed, CircleDot, ClipboardPaste, Cone, Copy, CopyPlus, Cylinder,
   Dices, Dome, Download, Eraser, Eye, EyeOff, FilePlus, FlipHorizontal2, FlipVertical2, Focus, FolderOpen, Ghost, Globe, Grid3x3, Group, Hexagon,
   House, Image, Info, Keyboard, LayoutDashboard, LayoutGrid, ListChecks, LocateFixed, Lock, LockOpen, Menu,

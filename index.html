@@ -114,7 +114,6 @@
         <div id="check-menu" class="menu compact" role="menu" hidden>
           <button data-action="check" role="menuitem"><i data-lucide="shield-check"></i>Check and repair</button>
           <button data-action="overhangs" role="menuitemcheckbox" aria-checked="false"><i data-lucide="square-dashed-bottom"></i>Show overhangs</button>
-          <button data-action="thickness" role="menuitemcheckbox" aria-checked="false"><i data-lucide="arrow-left-right"></i>Wall thickness</button>
           <button data-action="orient" role="menuitem"><i data-lucide="rotate-3d"></i>Best print orientation</button>
         </div>
       </div>
@@ -240,23 +239,6 @@
           </label>
           <div class="bar-actions">
             <button data-overhang="close" data-tip-title="Close" data-tip="Stop marking overhangs.">Close</button>
-          </div>
-        </div>
-
-        <div id="thickness-bar" class="floating-bar top-bar" hidden>
-          <span class="bar-title">Wall thickness</span>
-          <label class="bar-field" data-tip-title="Minimum wall" data-tip="Walls thinner than this are red, up to 1.5 times it orange, thicker green. Use about twice your nozzle width (0.8 mm for a 0.4 mm nozzle). The same setting as in Check and Repair.">
-            <span class="muted">Thinner than</span>
-            <input type="text" inputmode="decimal" data-number id="thickness-min" data-step="0.1" />
-            <span class="unit" id="thickness-unit">mm</span>
-          </label>
-          <span class="bar-field thickness-legend">
-            <span class="legend-swatch" data-tip-title="Too thin" data-tip="Thinner than the minimum wall."></span><span class="muted">too thin</span>
-            <span class="legend-swatch" data-tip-title="Thin" data-tip="Up to 1.5 times the minimum wall."></span><span class="muted">thin</span>
-            <span class="legend-swatch" data-tip-title="Fine" data-tip="Thicker than that."></span><span class="muted">fine</span>          </span>
-          <span id="thickness-summary" class="muted" aria-live="polite"></span>
-          <div class="bar-actions">
-            <button data-thickness="close" data-tip-title="Close" data-tip="Stop showing wall thickness.">Close</button>
           </div>
         </div>
 

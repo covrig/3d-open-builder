@@ -32,7 +32,7 @@ export function hideHint(owner: string): void {
 export function watchTopBars(): void {
   const messages = document.querySelector<HTMLElement>('#messages')!;
   // In this order from the top: a tool's bar, then the view panels' bars.
-  const bars = ['#split-bar', '#feature-bar', '#section-bar', '#overhang-bar', '#thickness-bar']
+  const bars = ['#split-bar', '#feature-bar', '#section-bar', '#overhang-bar']
     .map((s) => document.querySelector<HTMLElement>(s))
     .filter((b): b is HTMLElement => b !== null);
   const place = () => {

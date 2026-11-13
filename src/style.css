@@ -1179,18 +1179,6 @@ body.tool-locked .toolbar button.tool-current {
 #overhang-bar input[data-number] {
   width: 60px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px; font: inherit; text-align: center;
 }
-/* Wall thickness bar (like the overhangs'). */
-#thickness-bar { top: 12px; align-items: center; gap: 6px 8px; padding: 6px 10px; flex-wrap: wrap; }
-#thickness-bar .bar-title { font-weight: 600; }
-#thickness-bar .bar-field { display: flex; align-items: center; gap: 6px; }
-#thickness-bar .unit { color: var(--muted); }
-#thickness-bar input[data-number] {
-  width: 60px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 5px; font: inherit; text-align: center;
-}
-#thickness-bar .legend-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); }
-#thickness-bar .thickness-legend { gap: 4px; }
-#thickness-bar .thickness-legend .muted + .legend-swatch { margin-left: 6px; }
-#thickness-summary { flex-basis: 100%; }
 #overhang-bar input[type='color'] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
 
 /* Tools that need two or more objects while the drawing has only one (NEEDS_TWO in src/ui/toolGuard.ts). */

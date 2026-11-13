@@ -10,7 +10,7 @@ const STATUS_ICON = { pass: '✓', warn: '!', fail: '✕' } as const;
 const NOTHING = 'Nothing needed repairing';
 
 /** A length (mm) in the unit, with up to 2 decimals (3 for inches): "0.8 mm", "0.031 in". */
-export function lengthText(mm: number, unit: Unit): string {
+function lengthText(mm: number, unit: Unit): string {
   const v = mm / MM_PER_UNIT[unit];
   return `${+v.toFixed(unit === 'in' ? 3 : 2)} ${unit}`;
 }
@@ -106,8 +106,6 @@ export class CheckTools {
   private async open(): Promise<void> {
     if (this.doc.selection.length === 0) return this.toast('Select the objects to check');
     this.objs = [...this.doc.selection];
-    // The Wall thickness view shares this setting and may have changed it.
-    this.dialog.querySelector<HTMLInputElement>('#check-min-wall')!.value = String(settings.ui.minWall);
     this.log.replaceChildren();
     this.log.hidden = true;
     this.undoButton.hidden = true;
