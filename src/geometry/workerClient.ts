@@ -21,8 +21,26 @@ export const CANCELLED = 'Stopped. Nothing was changed.';
 
 export interface RunOptions {
   quiet?: boolean;
+  /**
+   * Work nobody waits for (the overlap lines): runs on its own second worker, so
+   * it never delays a user's operation, never shows "Working…", and is replaced
+   * by a newer background request (the older one is rejected with CANCELLED).
+   */
+  background?: boolean;
   /** Abort to say the result is no longer wanted (e.g. a newer preview replaced it). */
   signal?: AbortSignal;
+}
+
+/** One worker with the jobs waiting for it. The worker gets one job at a time, so the client always knows which one runs. */
+interface Lane {
+  worker?: WorkerLike;
+  /**
+   * Ids of the meshes this lane's worker has been sent in full. Later jobs send
+   * just the id. A new worker (after Cancel or a crash) starts with none.
+   */
+  sent: Set<number>;
+  queue: Job[];
+  running?: Job;
 }
 
 interface Job {
@@ -30,6 +48,7 @@ interface Job {
   op: OpName;
   args: unknown;
   quiet: boolean;
+  lane: Lane;
   resolve: (v: unknown) => void;
   reject: (e: Error) => void;
   signal?: AbortSignal;
@@ -49,89 +68,86 @@ export function setWorkerFactory(f: (() => WorkerLike) | null): void {
   factory = f ?? defaultFactory;
 }
 
-let worker: WorkerLike | undefined;
+const newLane = (): Lane => ({ sent: new Set(), queue: [] });
+/** The worker for what the user asked for. */
+const userLane = newLane();
+/** A second worker, made on first use, for background work only: it can never hold up the user's. */
+const backgroundLane = newLane();
 let nextId = 1;
-/** Jobs waiting their turn. The worker gets one job at a time, so the client always knows which one runs. */
-let queue: Job[] = [];
-let running: Job | undefined;
 const listeners = new Set<(busy: boolean) => void>();
-/**
- * Ids of the meshes the current worker has been sent in full. Later jobs send
- * just the id. A new worker (after Cancel or a crash) starts with none.
- */
-let sent = new Set<number>();
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 function notify(): void {
-  // Quiet work (e.g. the overlap lines) never shows "Working…"; nor does a job nobody waits for.
+  // Only the user's work counts: quiet jobs (e.g. edge lines) and background work never show "Working…"; nor does a job nobody waits for.
+  const { queue, running } = userLane;
   const busy = queue.some((j) => !j.quiet) || (running !== undefined && !running.quiet && !running.dropped);
   for (const l of listeners) l(busy);
 }
 
 /** Send a job: meshes the worker has already by id only (see meshTransfer), unless `full`. */
-function post(job: Job, full = false): void {
-  const w = getWorker();
+function post(lane: Lane, job: Job, full = false): void {
+  const w = getWorker(lane);
   if (full) {
     w.postMessage({ id: job.id, op: job.op, args: job.args });
     return;
   }
   const fresh = new Set<number>();
-  w.postMessage({ id: job.id, op: job.op, args: slim(job.args, sent, fresh) });
-  for (const f of fresh) sent.add(f);
+  w.postMessage({ id: job.id, op: job.op, args: slim(job.args, lane.sent, fresh) });
+  for (const f of fresh) lane.sent.add(f);
 }
 
-function dropWorker(): void {
-  worker?.terminate();
-  worker = undefined;
-  sent = new Set();
+function dropWorker(lane: Lane): void {
+  lane.worker?.terminate();
+  lane.worker = undefined;
+  lane.sent = new Set();
 }
 
 function release(job: Job): void {
   if (job.signal && job.onAbort) job.signal.removeEventListener('abort', job.onAbort);
 }
 
-/** Give the worker the next waiting job, if it is idle. */
-function pump(): void {
-  if (running || queue.length === 0) return;
-  const job = queue.shift()!;
-  running = job;
+/** Give the lane's worker the next waiting job, if it is idle. */
+function pump(lane: Lane): void {
+  if (lane.running || lane.queue.length === 0) return;
+  const job = lane.queue.shift()!;
+  lane.running = job;
   job.startedAt = now();
-  post(job);
+  post(lane, job);
 }
 
-function getWorker(): WorkerLike {
-  if (worker) return worker;
-  sent = new Set();
+function getWorker(lane: Lane): WorkerLike {
+  if (lane.worker) return lane.worker;
+  lane.sent = new Set();
   const w = factory();
-  worker = w;
+  lane.worker = w;
   w.onmessage = (e) => {
-    const job = running;
-    if (worker !== w || !job || e.data.id !== job.id) return;
+    const job = lane.running;
+    if (lane.worker !== w || !job || e.data.id !== job.id) return;
     // The worker no longer keeps a mesh this job named by id: send the job again in full.
     if (e.data.missing && !job.dropped) {
-      post(job, true);
+      post(lane, job, true);
       return;
     }
-    running = undefined;
+    lane.running = undefined;
     release(job);
     // The geometry engine is broken (e.g. out of memory): start a fresh worker for what comes next.
-    if (e.data.fatal) dropWorker();
+    if (e.data.fatal) dropWorker(lane);
     if (!job.dropped && !e.data.missing) {
       if (e.data.error !== undefined) job.reject(new Error(e.data.error));
       else job.resolve(e.data.result);
     }
     notify();
-    pump();
+    pump(lane);
   };
   // If the worker itself crashes (e.g. out of memory), fail everything waiting
   // and start a fresh worker for the next operation.
   w.onerror = (e) => {
     e.preventDefault();
-    const jobs = [...(running ? [running] : []), ...queue];
-    running = undefined;
-    queue = [];
-    if (worker === w) dropWorker();
+    const jobs = [...(lane.running ? [lane.running] : []), ...lane.queue];
+    lane.running = undefined;
+    lane.queue = [];
+    if (lane.worker === w) dropWorker(lane);
     else w.terminate();
     for (const j of jobs) {
       release(j);
@@ -143,9 +159,10 @@ function getWorker(): WorkerLike {
 }
 
 /**
- * Run a heavy geometry operation in the background worker. `options` is `quiet`
- * (true: don't show "Working…") or `{ quiet, signal }`. Aborting the signal
+ * Run a heavy geometry operation in a worker. `options` is `quiet` (true:
+ * don't show "Working…") or `{ quiet, background, signal }`. Aborting the signal
  * rejects the job with CANCELLED; a job that has run for a while is stopped too.
+ * A background job runs on the second worker, and a newer one replaces it.
  */
 export function runOp<K extends OpName>(op: K, args: OpArgs<K>, options: boolean | RunOptions = false): Promise<OpResult<K>> {
   const opts: RunOptions = typeof options === 'boolean' ? { quiet: options } : options;
@@ -155,38 +172,42 @@ export function runOp<K extends OpName>(op: K, args: OpArgs<K>, options: boolean
       reject(new Error(CANCELLED));
       return;
     }
+    const lane = opts.background ? backgroundLane : userLane;
     const job: Job = {
-      id: nextId++, op, args, quiet: opts.quiet ?? false,
+      id: nextId++, op, args, quiet: opts.quiet ?? !!opts.background, lane,
       resolve: resolve as (v: unknown) => void, reject, signal, startedAt: 0, dropped: false,
     };
     if (signal) {
       job.onAbort = () => abortJob(job);
       signal.addEventListener('abort', job.onAbort, { once: true });
     }
-    queue.push(job);
+    // Only the newest background request is wanted: stop the one running and the one waiting.
+    if (lane === backgroundLane) for (const old of [...lane.queue, ...(lane.running ? [lane.running] : [])]) abortJob(old);
+    lane.queue.push(job);
     notify();
-    pump();
+    pump(lane);
   });
 }
 
 function abortJob(job: Job): void {
-  const i = queue.indexOf(job);
+  const lane = job.lane;
+  const i = lane.queue.indexOf(job);
   if (i >= 0) {
-    queue.splice(i, 1);
+    lane.queue.splice(i, 1);
     job.reject(new Error(CANCELLED));
     release(job);
     notify();
     return;
   }
-  if (running !== job || job.dropped) return;
+  if (lane.running !== job || job.dropped) return;
   job.reject(new Error(CANCELLED));
   release(job);
   if (now() - job.startedAt > SUPERSEDE_AFTER_MS) {
     // Long enough that stopping it pays: shut the worker down and carry on with the rest on a new one.
-    running = undefined;
-    dropWorker();
+    lane.running = undefined;
+    dropWorker(lane);
     notify();
-    pump();
+    pump(lane);
     return;
   }
   // Nearly done: let it finish, and throw the result away when it arrives.
@@ -195,16 +216,20 @@ function abortJob(job: Job): void {
 }
 
 /**
- * Stop whatever is running. A worker busy inside a geometry operation can't
- * read messages until it finishes, so it is shut down; the next operation
- * starts a fresh one (loading the geometry engine again takes a moment).
+ * Stop whatever is running, on both workers. A worker busy inside a geometry
+ * operation can't read messages until it finishes, so it is shut down; the next
+ * operation starts a fresh one (loading the geometry engine again takes a moment).
  */
 export function cancelAll(): void {
-  if (!running && queue.length === 0) return;
-  const jobs = [...(running ? [running] : []), ...queue];
-  if (running) dropWorker();
-  running = undefined;
-  queue = [];
+  const jobs: Job[] = [];
+  for (const lane of [userLane, backgroundLane]) {
+    if (!lane.running && lane.queue.length === 0) continue;
+    jobs.push(...(lane.running ? [lane.running] : []), ...lane.queue);
+    if (lane.running) dropWorker(lane);
+    lane.running = undefined;
+    lane.queue = [];
+  }
+  if (!jobs.length) return;
   for (const j of jobs) {
     release(j);
     if (!j.dropped) j.reject(new Error(CANCELLED));
@@ -217,13 +242,15 @@ export function onBusyChange(listener: (busy: boolean) => void): void {
   listeners.add(listener);
 }
 
-/** Forget every job, the worker and the busy listeners (tests only). */
+/** Forget every job, the workers and the busy listeners (tests only). */
 export function resetWorkerClientForTests(): void {
-  worker?.terminate();
-  worker = undefined;
-  sent = new Set();
-  queue = [];
-  running = undefined;
+  for (const lane of [userLane, backgroundLane]) {
+    lane.worker?.terminate();
+    lane.worker = undefined;
+    lane.sent = new Set();
+    lane.queue = [];
+    lane.running = undefined;
+  }
   listeners.clear();
   nextId = 1;
 }

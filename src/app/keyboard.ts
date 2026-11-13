@@ -7,6 +7,7 @@ import type { FeatureBar } from '../ui/featureBar';
 import { viewClicks } from '../ui/interaction';
 import type { OverhangTool } from '../ui/overhangTool';
 import type { SplitTool } from '../ui/splitTool';
+import type { ThicknessTool } from '../ui/thicknessTool';
 import { isBusy, isLocked, isToolOpen, stopActiveTool } from '../ui/toolLock';
 import { BUSY_MESSAGE, LOCKED_MESSAGE } from '../ui/toolGuard';
 import type { EditActions } from './clipboard';
@@ -19,6 +20,7 @@ export interface KeyboardContext {
   splitTool: SplitTool;
   crossSection: CrossSection;
   overhangs: OverhangTool;
+  thickness: ThicknessTool;
   actions: EditActions['actions'];
   toast: (message: string) => void;
   saveNow: () => void;
@@ -50,7 +52,7 @@ const targetElement = (e: Event): HTMLElement => (e.target instanceof HTMLElemen
 
 /** Keyboard shortcuts: Esc, Enter, copy and paste, undo, nudging, and the single-key tool shortcuts. */
 export function setupKeyboard(ctx: KeyboardContext): void {
-  const { doc, gizmo, featureBar, splitTool, crossSection, overhangs, actions, toast } = ctx;
+  const { doc, gizmo, featureBar, splitTool, crossSection, overhangs, thickness, actions, toast } = ctx;
 
   // --- Repeat the last tool (R) ------------------------------------------------
 
@@ -93,12 +95,12 @@ export function setupKeyboard(ctx: KeyboardContext): void {
 
   // Esc always closes the open tool, whatever has the keyboard focus (a tool
   // bar's field included) and whether shortcuts are on or not: a dropdown menu
-  // closes first, then the tool, then a view panel (cross-section, overhangs);
+  // closes first, then the tool, then a view panel (cross-section, overhangs, wall thickness);
   // else the selection clears. Dialogs close themselves.
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
     if (document.querySelector('.menu:not([hidden]), .select-list, .view-popover:not([hidden])')) return; // the menu, list or popover closes itself
-    if (stopActiveTool() || crossSection.close() || overhangs.close()) {
+    if (stopActiveTool() || crossSection.close() || overhangs.close() || thickness.close()) {
       e.preventDefault();
       e.stopPropagation();
       return;

@@ -21,6 +21,25 @@ export interface DetailsPanel {
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const fmt = (v: number, digits = 1) => v.toLocaleString(undefined, { maximumFractionDigits: digits });
 
+/** Standard filament: 1.75 mm across. */
+const FILAMENT_DIAMETER_MM = 1.75;
+/** What a typical print uses compared with a completely solid one (walls plus light infill): a rough figure. */
+const TYPICAL_PRINT_SHARE = 0.25;
+
+/** Length of filament (mm) that holds this volume (mm³), the filament being a solid rod. */
+export function filamentLengthMm(volumeMm3: number): number {
+  return volumeMm3 / (Math.PI * (FILAMENT_DIAMETER_MM / 2) ** 2);
+}
+
+/** A filament length in the unit setting's family: metres or millimetres for mm and cm, feet or inches for in. */
+export function formatFilament(lengthMm: number, imperial: boolean): string {
+  if (imperial) {
+    const inches = lengthMm / MM_PER_UNIT.in;
+    return inches >= 12 ? `${fmt(inches / 12, 1)} ft` : `${fmt(inches, 1)} in`;
+  }
+  return lengthMm >= 1000 ? `${fmt(lengthMm / 1000, 2)} m` : `${fmt(lengthMm, 0)} mm`;
+}
+
 /** Above this many triangles, building the solid here would hold up the page. */
 const BIG_MESH = 50_000;
 
@@ -68,7 +87,7 @@ export function setupDetailsPanel(ctx: DetailsContext): DetailsPanel {
     const objs = doc.selection.length ? doc.selection : doc.objects;
     $('#details-scope').textContent = doc.selection.length ? 'Selection' : 'Whole scene';
     if (objs.length === 0) {
-      for (const id of ['#detail-size', '#detail-tris', '#detail-volume']) $(id).textContent = '–';
+      for (const id of ['#detail-size', '#detail-tris', '#detail-volume', '#detail-filament-solid', '#detail-filament-typical']) $(id).textContent = '–';
       return;
     }
     const size = doc.worldBox(objs).getSize(new THREE.Vector3());
@@ -88,6 +107,11 @@ export function setupDetailsPanel(ctx: DetailsContext): DetailsPanel {
         : imperial
         ? `${fmt(volume / MM_PER_UNIT.in ** 3, 2)} in³`
         : `${fmt(volume / 1000, 2)} cm³`;
+    // Filament follows the volume: nothing to show for an open mesh or while it is being worked out.
+    const known = !open && !waiting;
+    const solid = known ? filamentLengthMm(volume) : null;
+    $('#detail-filament-solid').textContent = solid === null ? '–' : formatFilament(solid, imperial);
+    $('#detail-filament-typical').textContent = solid === null ? '–' : `~${formatFilament(solid * TYPICAL_PRINT_SHARE, imperial)}`;
   }
 
   return { updateDetails, volumeOf };

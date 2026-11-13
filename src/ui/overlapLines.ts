@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { edgeFeatures, type EdgeFeatures } from '../geometry/edgeMiddles';
+import { matrixKey } from '../geometry/meshData';
 import { runOp } from '../geometry/workerClient';
 import { overlapMaterial, type SceneDocument } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
@@ -32,6 +33,8 @@ export class OverlapLines {
   private timer: number | undefined;
   /** Bumped on every change, so a calculation that is out of date is dropped. */
   private run = 0;
+  /** What was worked out last, and for which placements: the same placements again need no new job. */
+  private last: { key: string; segs: Float32Array; innerSegs: Float32Array; found: EdgeFeatures } | null = null;
 
   constructor(
     private readonly viewport: Viewport,
@@ -77,19 +80,31 @@ export class OverlapLines {
     if ((!want.opacity && !want.snap) || objs.length < 2 || this.paused()) return;
     const run = this.run;
     const withInner = want.opacity > 0 && want.edges;
-    let segs: Float32Array, innerSegs: Float32Array;
-    try {
-      ({ crossings: segs, inner: innerSegs } = await runOp('overlaps', { items: objs.map((o) => this.doc.placed(o)), inner: withInner }, true));
-    } catch {
-      return; // stopped (Cancel stops every calculation) or failed: no lines until the next change
+    const items = objs.map((o) => this.doc.placed(o));
+    // Which meshes where (null when one has no id: then nothing is recognised again).
+    const key = items.every((it) => it.mesh.id !== undefined)
+      ? `${withInner}|${items.map((it) => `${it.mesh.id}:${matrixKey(it.matrix)}`).join('|')}`
+      : null;
+    let segs: Float32Array, innerSegs: Float32Array, found: EdgeFeatures;
+    if (key !== null && this.last?.key === key) {
+      ({ segs, innerSegs, found } = this.last);
+    } else {
+      try {
+        // Background: its own worker, so a preview the user starts never waits for this, and a newer request replaces it.
+        ({ crossings: segs, inner: innerSegs } = await runOp('overlaps', { items, inner: withInner }, { background: true }));
+      } catch {
+        return; // stopped (Cancel stops every calculation), replaced or failed: no lines until the next change
+      }
+      if (run !== this.run) return;
+      found = edgeFeatures(segs);
+      this.last = key === null ? null : { key, segs, innerSegs, found };
     }
-    if (run !== this.run) return;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(segs, 3));
     this.lines.geometry.dispose();
     this.lines.geometry = g;
     this.lines.computeLineDistances(); // the dashes need the length along each segment
-    this.found = { segs, ...edgeFeatures(segs) };
+    this.found = { segs, ...found };
     const gi = new THREE.BufferGeometry();
     gi.setAttribute('position', new THREE.BufferAttribute(innerSegs, 3));
     this.inner.geometry.dispose();
@@ -99,6 +114,7 @@ export class OverlapLines {
     this.lines.visible = want.opacity > 0 && segs.length > 0;
     this.inner.visible = withInner && innerSegs.length > 0;
     if (this.inner.visible) {
+      // Gives up (leaves the solid lines whole) when it would take too long, see SceneDocument.clipEdgeLines.
       this.doc.clipEdgeLines(innerSegs);
       this.clipped = true;
     }

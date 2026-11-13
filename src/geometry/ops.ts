@@ -9,6 +9,7 @@ import { findEdgesPlaced, type EdgeSegment } from './edges';
 import { edgeTreatment, gusset, shell, textOnFace } from './features';
 import { overlapLines } from './overlaps';
 import { makeThreaded, type ThreadInfo } from './threads';
+import { measureThickness } from './thickness';
 
 /**
  * The heavy geometry operations, all plain data in and out (MeshData, numbers)
@@ -49,6 +50,8 @@ export const ops = {
     return lines;
   },
   overlaps: (wasm: ManifoldToplevel, a: { items: PlacedMesh[]; inner: boolean }) => overlapLines(wasm, a.items, a.inner),
+  // Wall thickness at the centre of every triangle (the Wall thickness view); refuses what is not a closed solid.
+  thickness: (wasm: ManifoldToplevel, a: { item: PlacedMesh; minWall: number }) => measureThickness(wasm, a.item, a.minWall),
   // Volume of the mesh as a solid (in its own space), or null if it isn't a closed solid. Also keeps the solid for later jobs.
   volume: (wasm: ManifoldToplevel, a: { mesh: MeshData }): number | null => {
     try {

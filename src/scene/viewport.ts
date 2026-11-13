@@ -135,10 +135,14 @@ export class Viewport extends EventTarget {
   constructor(container: HTMLElement) {
     super();
     this.element = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // No antialiasing on the canvas itself: everything is drawn into the composer's
+    // multisampled target, and the last pass (OutputPass) copies it 1:1 to the canvas.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // The shadow map is redrawn only when something that shapes it changed (see shadowChanged).
+    this.renderer.shadowMap.autoUpdate = false;
     // Clipping planes per material (Split's preview, the cross-section).
     this.renderer.localClippingEnabled = true;
     container.prepend(this.renderer.domElement);
@@ -293,14 +297,96 @@ export class Viewport extends EventTarget {
     if (this.frameRequested) return;
     this.frameRequested = true;
     requestAnimationFrame(() => {
+      const t0 = performance.now();
       this.frameRequested = false;
       for (const cb of this.beforeCallbacks) cb();
       this.updateLightAndGround();
+      // The renderer refreshes world matrices only while drawing, after this point;
+      // the shadow check needs them current.
+      this.scene.updateMatrixWorld();
+      if (this.shadowChanged()) {
+        this.renderer.shadowMap.needsUpdate = true;
+        this.stats.shadowUpdates++;
+      }
       // The selection outline costs several extra passes; skip them when nothing is selected.
       this.outline.enabled = this.outline.selectedObjects.length > 0;
       this.composer.render();
       for (const cb of this.frameCallbacks) cb();
+      this.stats.frames++;
+      this.stats.lastMs = performance.now() - t0;
     });
+  }
+
+  /**
+   * Frame counters for checking the render cost in the browser console
+   * (window.app.viewport.stats). lastMs is the CPU time of the last frame's
+   * drawing calls, not the GPU time; shadowUpdates counts shadow map redraws asked for.
+   */
+  readonly stats = { frames: 0, lastMs: 0, shadowUpdates: 0 };
+
+  /** Set when something the signature cannot see may have changed the shadow (also true for the first frame). */
+  private shadowDirty = true;
+  private shadowSig: number[] = [];
+  private shadowSigNext: number[] = [];
+
+  /**
+   * Whether the shadow map must be redrawn: true when anything that shapes it
+   * differs from the last time this returned true or false. Camera moves alone
+   * do not matter (the map only depends on the light and the shadow casters),
+   * so zooming, panning and redraws from hover or selection reuse the map.
+   * The signature lists everything that could matter; when in doubt a field is
+   * included, because an extra redraw only costs time while a missed one shows
+   * a wrong shadow.
+   */
+  private shadowChanged(): boolean {
+    const s = this.shadowSigNext;
+    s.length = 0;
+    const q = (v: number) => Math.round(v * 1e4); // far below one shadow texel; absorbs float noise
+    const light = this.sun;
+    const sh = light.shadow;
+    const cam = sh.camera;
+    s.push(light.castShadow ? 1 : 0, light.visible ? 1 : 0,
+      q(light.position.x), q(light.position.y), q(light.position.z),
+      q(light.target.position.x), q(light.target.position.y), q(light.target.position.z),
+      cam.left, cam.right, cam.top, cam.bottom, cam.near, cam.far,
+      sh.bias, sh.normalBias, sh.radius, sh.intensity, sh.mapSize.x, sh.mapSize.y);
+    // Only visible objects cast (the shadow pass skips hidden ones and their children, as does this walk).
+    // The sun has castShadow too, but it is covered above (rounded); its raw matrix shifts by float noise whenever the camera moves.
+    this.scene.traverseVisible((o) => {
+      if (!o.castShadow || (o as THREE.Light).isLight) return;
+      s.push(o.id);
+      const e = o.matrixWorld.elements;
+      for (let i = 0; i < 16; i++) s.push(e[i]);
+      const mesh = o as THREE.Mesh;
+      const g = mesh.geometry as THREE.BufferGeometry | undefined;
+      if (g) {
+        const p = g.getAttribute('position');
+        s.push(g.id, p ? ((p as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute ? (p as THREE.InterleavedBufferAttribute).data.version : (p as THREE.BufferAttribute).version) : -1, p ? p.count : -1, g.index ? g.index.version : -1, g.drawRange.start, g.drawRange.count);
+      }
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        if (!m) continue;
+        s.push(m.id, m.version, m.visible ? 1 : 0, m.side, m.shadowSide ?? -1, m.transparent ? 1 : 0, m.opacity, m.alphaTest, m.clipShadows ? 1 : 0,
+          (m as THREE.MeshStandardMaterial).wireframe ? 1 : 0);
+        const planes = m.clippingPlanes;
+        s.push(planes ? planes.length : -1);
+        if (planes) for (const pl of planes) s.push(pl.normal.x, pl.normal.y, pl.normal.z, pl.constant);
+      }
+    });
+    let changed = this.shadowDirty || s.length !== this.shadowSig.length;
+    if (!changed) {
+      const prev = this.shadowSig;
+      for (let i = 0; i < s.length; i++) {
+        if (s[i] !== prev[i]) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    this.shadowSigNext = this.shadowSig;
+    this.shadowSig = s;
+    this.shadowDirty = false;
+    return changed;
   }
 
   private readonly beforeCallbacks: (() => void)[] = [];
@@ -318,6 +404,7 @@ export class Viewport extends EventTarget {
   private resize(): void {
     const { clientWidth: w, clientHeight: h } = this.element;
     if (w === 0 || h === 0) return;
+    this.shadowDirty = true;
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
@@ -374,6 +461,7 @@ export class Viewport extends EventTarget {
     const snapped = new THREE.Vector3(Math.round(c.x / grid) * grid, Math.round(c.y / grid) * grid, 0);
     if (snapped.equals(this.shadowFocus.center) && radius === this.shadowFocus.radius) return;
     this.shadowFocus.set(snapped, radius);
+    this.shadowDirty = true;
     // Room for the shadow to fall beside the objects (and for the snapping).
     const r = radius * 2.5;
     const s = this.sun.shadow.camera;
@@ -445,6 +533,7 @@ export class Viewport extends EventTarget {
 
   setTheme(dark: boolean): void {
     this.palette = dark ? DARK : LIGHT;
+    this.shadowDirty = true;
     this.scene.background = new THREE.Color(this.palette.background);
     this.ground.setColors({ ...this.palette, fillOpacity: this.plateOpacity ?? this.palette.fillOpacity });
     this.placeOriginLabel();
@@ -611,6 +700,7 @@ export class Viewport extends EventTarget {
 
   setShadows(enabled: boolean): void {
     this.sun.castShadow = enabled;
+    this.shadowDirty = true;
     this.invalidate();
   }
 
@@ -628,6 +718,7 @@ export class Viewport extends EventTarget {
       this.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       pmrem.dispose();
     }
+    this.shadowDirty = true;
     this.scene.environment = shine > 0 ? this.environment : null;
     this.scene.environmentIntensity = 0.9 * shine;
     // Smoother surfaces catch the sun as a highlight too.

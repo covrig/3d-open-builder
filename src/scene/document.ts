@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { meshId, type MeshData } from '../geometry/meshData';
-import { subtractChords } from '../geometry/subtractSegments';
+import { CLIP_BUDGET_MS, subtractChords } from '../geometry/subtractSegments';
 import { runOp } from '../geometry/workerClient';
 import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
@@ -535,10 +535,12 @@ export class SceneDocument extends EventTarget {
    */
   clipEdgeLines(chords: Float32Array | null): void {
     this.innerChords = chords && chords.length ? chords : null;
-    for (const o of this.objects) this.clipEdgeLinesOf(o);
+    // One time budget for all objects: past it the rest keep their whole solid lines (dashes drawn over them).
+    const deadline = performance.now() + CLIP_BUDGET_MS;
+    for (const o of this.objects) this.clipEdgeLinesOf(o, deadline);
   }
 
-  private clipEdgeLinesOf(obj: SceneObject): void {
+  private clipEdgeLinesOf(obj: SceneObject, deadline = performance.now() + CLIP_BUDGET_MS): void {
     const lines = obj.mesh.userData.edges as THREE.LineSegments | undefined;
     if (!lines) return;
     const full = (lines.userData.full as THREE.BufferGeometry | undefined) ?? lines.geometry;
@@ -557,7 +559,7 @@ export class SceneDocument extends EventTarget {
         q.set(chords[i + 3], chords[i + 4], chords[i + 5]).applyMatrix4(back);
         if (near.containsPoint(p) && near.containsPoint(q)) local.push(p.x, p.y, p.z, q.x, q.y, q.z);
       }
-      if (local.length) clipped = subtractChords(full.getAttribute('position').array, local, EDGE_CLIP_TOLERANCE);
+      if (local.length) clipped = subtractChords(full.getAttribute('position').array, local, EDGE_CLIP_TOLERANCE, deadline);
     }
     if (clipped) {
       const g = new THREE.BufferGeometry();

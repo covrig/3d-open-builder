@@ -9,7 +9,7 @@ How tools start, end and share the app. The code follows this table
 |---|---|---|
 | Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Intersect, Add shape (cube, cylinder…), Add bolt/nut/thread, reference picture Calibrate/Straighten | Yes |
 | Light | Measuring, colour picking (Copy from object) | No |
-| View tools | Section, Show overhangs | Yes, except measuring |
+| View tools | Section, Show overhangs, Wall thickness | Yes, except measuring |
 
 Only one tool (exclusive or light) is open at a time: opening one closes the
 other. View tools have a slot of their own: one at a time (opening one closes
