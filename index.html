@@ -95,7 +95,8 @@
         <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle-left"></i><span>Brace</span></button>
         <button data-action="rotate90" class="more-out" data-tip-title="Rotate" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like, check the orange preview, then Apply."><i data-lucide="rotate-cw"></i><span>Rotate</span></button>
         <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cut the view open across X, Y or Z to see inside. Only the view changes; measuring works on the cut."><i data-lucide="scan-line"></i><span>Section</span></button>
-        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
+        <button data-modify="soften" class="more-out" data-tip-title="Soften" data-tip="Round all the straight outer edges of a box in one go. A hollow box works too: only the outside is rounded."><i data-lucide="soften"></i><span>Soften</span></button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, soften, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
@@ -107,6 +108,7 @@
           <button data-modify="gusset" role="menuitem"><i data-lucide="triangle-left"></i>Brace</button>
           <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate</button>
           <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Section</button>
+          <button data-modify="soften" role="menuitem" data-tip-title="Soften" data-tip="Round all the straight outer edges of a box in one go. A hollow box works too: only the outside is rounded."><i data-lucide="soften"></i>Soften</button>
         </div>
       </div>
 
@@ -471,7 +473,7 @@
         <p class="muted">
           Bundled with the app from copies kept in its own repository; nothing is loaded from other sites.
           Each keeps its own licence (click it to read the text); all are listed in
-          <a href="https://github.com/covrig/3d-open-builder/blob/main/public/licenses/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener">THIRD-PARTY-NOTICES.md</a>.
+          <a href="https://github.com/covrig/3d-open-builder/blob/main/public/licenses/third_party_notices.md" target="_blank" rel="noopener">third_party_notices.md</a>.
         </p>
         <table class="libraries">
           <thead><tr><th>Library</th><th>Version</th><th>Licence</th></tr></thead>

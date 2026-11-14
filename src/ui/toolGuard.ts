@@ -46,7 +46,7 @@ export function lockedNow(el: Element): boolean {
  * selected they are unavailable (docs/tool-rules.md lists every operation).
  */
 export const SINGLE_ONLY = [
-  '[data-modify="chamfer"]', '[data-modify="fillet"]', '[data-modify="shell"]',
+  '[data-modify="chamfer"]', '[data-modify="fillet"]', '[data-modify="shell"]', '[data-modify="soften"]',
   '[data-modify="gusset"]', '[data-modify="text"]', '[data-action="orient"]',
 ].join(', ');
 export const SINGLE_ONLY_MESSAGE = 'Works on one object at a time. For a group, Merge it into one object first (or Ungroup and select one part).';

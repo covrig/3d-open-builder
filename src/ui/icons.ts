@@ -18,6 +18,9 @@ const Bevel: IconNode = [['path', { d: 'M3 5a2 2 0 0 1 2-2h9l7 7v9a2 2 0 0 1-2 2
 /** lucide's triangle-right turned the other way (this lucide version has no triangle-left). */
 const TriangleLeft: IconNode = [['path', { d: 'M2 18a2 2 0 0 0 2 2h17c1.1 0 1.3-.6.4-1.3L3.6 4.3c-.9-.7-1.6-.4-1.6.7Z' }]];
 
+/** A box with all its corners rounded (Soften). */
+const Soften: IconNode = [['rect', { width: 18, height: 18, x: 3, y: 3, rx: 7 }]];
+
 // Only the icons we use are imported, so the bundle stays small.
 const ICONS: Record<string, IconNode> = {
   AlignEndHorizontal, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart,
@@ -30,7 +33,7 @@ const ICONS: Record<string, IconNode> = {
   RotateCcw, RotateCw, ScanLine, SquareDashedBottom, ArrowUpDown, Ruler, Save, Scan, Scissors, ScissorsLineDashed, Settings, Shield, ShieldCheck,
   SquareDashed, SquaresIntersect, SquaresSubtract, SquaresUnite, SquareRoundCorner, Sun, Torus, Trash2, Triangle,
   TriangleRight, Type, Undo2, Ungroup, Wrench,
-  Bevel, TriangleLeft, X,
+  Bevel, Soften, TriangleLeft, X,
 };
 
 /** A fresh SVG element for an icon (for elements created in code). */

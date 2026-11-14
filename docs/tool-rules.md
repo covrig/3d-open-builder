@@ -7,7 +7,7 @@ How tools start, end and share the app. The code follows this table
 
 | Kind | Tools | Locks the rest? |
 |---|---|---|
-| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Brace, Shell, Intersect, Add shape (cube, cylinder…), Add bolt/nut/thread, reference picture Calibrate/Straighten | Yes |
+| Exclusive (has Apply/Cancel) | Split, Extrude, Pattern, Text, Bevel, Round, Soften, Brace, Shell, Intersect, Add shape (cube, cylinder…), Add bolt/nut/thread, reference picture Calibrate/Straighten | Yes |
 | Light | Measuring, colour picking (Copy from object) | No |
 | View tools | Section, Show overhangs | Yes, except measuring |
 
@@ -87,7 +87,7 @@ Selecting a part of a group selects the whole group.
 | Intersect | Yes | Clicking a part puts the whole group in the role |
 | Check and Repair | Yes | Each part is checked and repaired |
 | Colour | Yes | All parts, when the group is selected (a part's colour box in the list recolours just that part otherwise) |
-| Bevel, round, brace, shell, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
+| Bevel, round, soften, brace, shell, text | No | Dimmed; "works on one object at a time": Merge the group first, or Ungroup and pick one part |
 | Best print orientation | No | Same: the orientation is worked out for one object |
 
 ## Rotate
@@ -146,7 +146,7 @@ slow and builds large meshes.
 
 The Repeat button (after Redo) and R run the last repeatable command again; a new one replaces it.
 Repeatable: the toolbar tools and their menus (add, combine, duplicate, mirror, rotate, split, extrude down,
-pattern, text, bevel, round, shell, brace, threaded parts), measuring (distance, angle, circle), the align
+pattern, text, bevel, round, soften, shell, brace, threaded parts), measuring (distance, angle, circle), the align
 commands, the other Arrange commands (place on plate, lay flat, center, pack, space evenly), the section view and the Check menu (check and repair, overhangs, best print orientation).
 Not repeatable: the View options and Look sliders, Undo, Redo, Copy, Cut, Paste, Delete, Fit and Home. The section and overhangs views are switched on again, never off. Like the other toolbar
 buttons, Repeat is refused while a tool is open or a calculation runs.

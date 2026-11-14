@@ -268,6 +268,26 @@ function checkSizes(
 const key = (p: V3) => p.map((v) => Math.round(v * 1e4)).join(',');
 
 /**
+ * Can these edges take a chamfer or fillet of this size together? The same checks
+ * as the real operation (each edge's faces long enough and flat enough, no two
+ * tools cutting the same material), without cutting anything. False when they
+ * cannot; folds that are too sharp or too flat for a tool count as false too.
+ */
+export function edgesFit(wasm: ManifoldToplevel, solid: Manifold, edges: EdgeSegment[], kind: 'chamfer' | 'fillet', size: number): boolean {
+  const frames = edges.map(edgeFrame);
+  if (frames.some((f) => f.angle < 0.35 || f.angle > Math.PI - 0.05)) return false;
+  return withCleanup((keep) => {
+    try {
+      checkSizes(wasm, keep, solid, edges, frames, frames.map((f) => legOf(kind, size, f.angle)), key);
+      return true;
+    } catch (e) {
+      if (e instanceof Error && (e.message === TOO_LARGE || e.message === NOT_FLAT)) return false;
+      throw e;
+    }
+  });
+}
+
+/**
  * Chamfer or fillet along edges (world space). For each edge a tool shape is
  * built in the corner between its two faces: a triangular prism (chamfer) or
  * that prism minus a cylinder tangent to both faces (fillet). Tools on

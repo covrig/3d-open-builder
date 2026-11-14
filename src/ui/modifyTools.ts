@@ -36,6 +36,7 @@ export class ModifyTools {
       chamfer: () => this.edgeTool('chamfer'),
       fillet: () => this.edgeTool('fillet'),
       shell: () => this.shell(),
+      soften: () => this.soften(),
       gusset: () => this.gusset(),
       pattern: () => this.pattern(),
     };
@@ -118,6 +119,29 @@ export class ModifyTools {
       onClose: () => this.edges.stop(),
     });
     this.edges.start(set, { onChange: () => this.bar.refresh(50) });
+  }
+
+  // --- Soften -----------------------------------------------------------------
+
+  /** Round all the straight outer edges at once (a box, also a hollow one): no edges to pick. */
+  private soften(): void {
+    const obj = this.one();
+    if (!obj) return;
+    interface Rounded { piece: Piece; skipped: number }
+    this.bar.open<Rounded>({
+      title: 'Soften',
+      hint: 'Soften: rounds all the straight outer edges (a hollow box too: only the outside). Set the radius, check the orange preview, then Apply.',
+      fields: [
+        { key: 'radius', label: 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm', tip: 'Radius of the rounding. Edges too small for it are left sharp.' },
+      ],
+      hide: [obj],
+      show: (r) => [previewMesh(r.piece.mesh, r.piece.center)],
+      apply: (r) => {
+        this.replace(obj, r.piece);
+        if (r.skipped > 0) this.toast(`${r.skipped} small edge${r.skipped > 1 ? 's were' : ' was'} left sharp`);
+      },
+      compute: (v, signal) => runOp('roundBox', { item: this.doc.placed(obj), radius: Number(v.radius) }, { signal }),
+    });
   }
 
   // --- Brace (gusset) ----------------------------------------------------------
