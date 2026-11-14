@@ -234,6 +234,17 @@ export function updateSettings(patch: Partial<Omit<Settings, 'ui'>>): void {
   settingsEvents.dispatchEvent(new Event('change'));
 }
 
+/** Fires when the proportion lock (size fields, size handles, typed distances) is switched. */
+export const lockEvents = new EventTarget();
+
+/** Switch the proportion lock; every control that shows it follows (see lockEvents). */
+export function setKeepProportions(on: boolean): void {
+  if (settings.ui.keepProportions === on) return;
+  settings.ui.keepProportions = on;
+  save();
+  lockEvents.dispatchEvent(new Event('change'));
+}
+
 /** Remember a UI choice (view toggles, measure options...). Doesn't trigger a settings refresh. */
 export function updateUi(change: (ui: UiState) => void): void {
   change(settings.ui);

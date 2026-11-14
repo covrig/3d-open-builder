@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Gizmo, GizmoMode } from '../scene/gizmo';
 import type { SceneDocument, SceneObject } from '../scene/document';
-import { fromUnit, settings, settingsEvents, toUnit, UNITS, updateSettings, updateUi } from '../settings';
-import { stretchWorld } from '../scene/resize';
+import { fromUnit, lockEvents, setKeepProportions, settings, settingsEvents, toUnit, UNITS, updateSettings } from '../settings';
+import { scaleObjects } from '../scene/resize';
 import { setIcon } from './icons';
 import { parseNumber } from './numberInputs';
 
@@ -26,7 +26,6 @@ function fmt(v: number): string {
  */
 export class TransformBar {
   private mode: GizmoMode = 'translate';
-  private keepProportions = settings.ui.keepProportions;
   private readonly modeButtons: Record<GizmoMode, HTMLButtonElement>;
   private readonly labels: HTMLElement[];
   private readonly inputs: HTMLInputElement[];
@@ -68,16 +67,17 @@ export class TransformBar {
       updateSettings({ unit: UNITS[(UNITS.indexOf(settings.unit) + 1) % UNITS.length] });
     });
     const showLock = () => {
-      this.gizmo.keepProportions = this.keepProportions;
-      this.lockButton.classList.toggle('active', this.keepProportions);
-      setIcon(this.lockButton, this.keepProportions ? 'lock' : 'lock-open');
+      const keep = settings.ui.keepProportions;
+      this.gizmo.keepProportions = keep;
+      this.lockButton.classList.toggle('active', keep);
+      setIcon(this.lockButton, keep ? 'lock' : 'lock-open');
     };
     showLock();
     this.lockButton.addEventListener('click', () => {
-      this.keepProportions = !this.keepProportions;
-      updateUi((ui) => (ui.keepProportions = this.keepProportions));
-      showLock();
+      setKeepProportions(!settings.ui.keepProportions);
     });
+    // Also switched from the box that types a measured distance.
+    lockEvents.addEventListener('change', showLock);
     this.resetButton.addEventListener('click', () => {
       const objs = this.doc.selection;
       if (objs.length === 0) return;
@@ -114,7 +114,7 @@ export class TransformBar {
   /**
    * Size of the selection's box along the world axes, in mm: the same X, Y and
    * Z as the rulers, the Details panel and the Size handles, also for a turned
-   * object (a typed size stretches along these axes, see scaleBy).
+   * object (a typed size stretches along these axes, see scaleObjects).
    */
   private size(): THREE.Vector3 {
     return this.doc.worldBox(this.targets).getSize(new THREE.Vector3());
@@ -171,33 +171,11 @@ export class TransformBar {
           break;
         case 'scale': {
           const factor = fromUnit(value) / this.size()[axis];
-          this.scaleBy(objs, this.keepProportions ? new THREE.Vector3().setScalar(factor) : new THREE.Vector3(1, 1, 1).setComponent(axisIndex, factor));
+          scaleObjects(this.doc, objs, settings.ui.keepProportions ? new THREE.Vector3().setScalar(factor) : new THREE.Vector3(1, 1, 1).setComponent(axisIndex, factor));
           break;
         }
       }
       this.doc.emit('transform');
     });
-  }
-
-  /**
-   * Stretch objects by per-axis factors along the world axes. The bottom of the
-   * selection stays where it is and the middle of its footprint stays put.
-   * A turned object gets its mesh changed (see stretchWorld).
-   */
-  private scaleBy(objs: SceneObject[], f: THREE.Vector3): void {
-    const box = this.doc.worldBox(objs);
-    const anchor: [number, number, number] = [(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.min.z];
-    for (const o of objs) {
-      const m = o.mesh;
-      const r = stretchWorld(
-        { data: o.data, position: m.position.toArray(), quaternion: m.quaternion.toArray() as [number, number, number, number], scale: m.scale.toArray() },
-        [f.x, f.y, f.z],
-        anchor,
-      );
-      if (r.data !== o.data) this.doc.setData(o, r.data);
-      m.position.set(...r.position);
-      m.quaternion.set(...r.quaternion);
-      m.scale.set(...r.scale);
-    }
   }
 }

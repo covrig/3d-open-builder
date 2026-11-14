@@ -4,6 +4,7 @@ import type { Viewport } from '../scene/viewport';
 import { settings, toUnit, updateUi } from '../settings';
 import { hideHint, showHint } from './hint';
 import { beginTool, endTool } from './toolLock';
+import { DistanceEditor } from './measureEdit';
 import { hoverMarker, SNAP_PX, SnapPicker, type Picked, type SnapKind } from './snapPicker';
 
 const POINTS_NEEDED: Record<MeasureKind, number> = { distance: 2, angle: 3, circle: 3 };
@@ -53,6 +54,8 @@ interface LabelSpec {
   /** Unit direction (screen) the label may slide along, and how far (px) */
   dir: THREE.Vector2;
   slide: number;
+  /** The stored distance this label belongs to (its number can be clicked to type a new distance) */
+  edit?: number;
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -92,6 +95,8 @@ export class MeasureTool {
   private moveFrame = 0;
   /** Floating "Place / discard" chip next to the candidate point of a touch */
   private readonly chip: HTMLElement;
+  /** The box that opens on a distance label to type a new distance */
+  private readonly editor: DistanceEditor;
   /** True while the last pointer over the view was a finger */
   private touchPointer = false;
   /** Touch: the aimed point waiting for the tick (the finger has lifted) */
@@ -150,6 +155,13 @@ export class MeasureTool {
     this.loupe.append(this.loupeCanvas, this.loupeSnap);
     viewport.element.append(this.svg, this.labels, this.hoverSvg, this.hoverTag, this.chip, this.loupe);
     viewport.onFrame(() => this.draw());
+    this.editor = new DistanceEditor(viewport.element, doc, (p) => this.world(p), toast);
+    // A click on a distance's number: type the distance it should be (resizes or moves the objects).
+    this.labels.addEventListener('click', (e) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>('.m-label[data-m]');
+      const m = el && this.doc.measurements[Number(el.dataset.m)];
+      if (el && m) this.editor.open(m, el.getBoundingClientRect());
+    });
 
     // Which kind of pointer is over the view (main.ts passes plain coordinates), so a
     // finger can aim above itself. These run before main.ts's own handlers.
@@ -390,11 +402,11 @@ export class MeasureTool {
       svg.push(`<circle class="point" cx="${p.x}" cy="${p.y}" r="4.5" stroke="${POINT_COLORS[i % 3]}"/>`);
     };
     /** A label at a screen point; `dir` and `slide` say where it may move to if it would cover another label. */
-    const label = (at: THREE.Vector2, dir: THREE.Vector2, slide: number, main: string, sub?: string) => {
-      specs.push({ x: at.x, y: at.y, main, sub, dir, slide });
+    const label = (at: THREE.Vector2, dir: THREE.Vector2, slide: number, main: string, sub?: string, edit?: number) => {
+      specs.push({ x: at.x, y: at.y, main, sub, dir, slide, edit });
     };
 
-    const render = (kind: MeasureKind, pts: THREE.Vector3[]) => {
+    const render = (kind: MeasureKind, pts: THREE.Vector3[], index?: number) => {
       if (kind === 'distance' && pts.length === 2) {
         line(pts[0], pts[1]);
         const d = pts[1].clone().sub(pts[0]);
@@ -408,6 +420,7 @@ export class MeasureTool {
           `${num(d.length())} ${unit}`,
           // Sizes along each axis: always positive, whichever point was picked first.
           this.options.deltas ? `ΔX ${num(Math.abs(d.x))}   ΔY ${num(Math.abs(d.y))}   ΔZ ${num(Math.abs(d.z))}` : undefined,
+          index,
         );
       }
       if (kind === 'angle') {
@@ -455,17 +468,17 @@ export class MeasureTool {
           // disagree, e.g. Ø 10.01 with R 5.01): up to one more decimal.
           const d = Math.round(toUnit(c.radius * 2) * 100) / 100;
           const half = (d / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
-          label(P(c.center), new THREE.Vector2(0, -1), 60, `Ø ${num(c.radius * 2)} ${unit}  ·  R ${half} ${unit}`);
+          label(P(c.center), new THREE.Vector2(0, -1), 60, `Ø ${num(c.radius * 2)} ${unit}  ·  R ${half} ${unit}`, undefined, index);
         }
       }
       pts.forEach(dot);
     };
 
     // Measurements on a deleted object are hidden (undo brings both back).
-    for (const m of this.doc.measurements) {
+    this.doc.measurements.forEach((m, i) => {
       const pts = m.points.map((p) => this.world(p));
-      if (pts.every((p) => p !== null)) render(m.kind, pts);
-    }
+      if (pts.every((p) => p !== null)) render(m.kind, pts, i);
+    });
     // A touch candidate whose object is gone is dropped.
     if (this.candidate && !this.world(this.candidate.point)) this.candidate = null;
     let chipAt: THREE.Vector2 | null = null;
@@ -489,13 +502,13 @@ export class MeasureTool {
 
     // Labels: put them in, measure them, then move any that would cover another. Only when
     // they changed: this reads sizes back, which makes the browser lay out the page.
-    const key = specs.map((s) => `${s.x}|${s.y}|${s.main}|${s.sub ?? ''}|${s.dir.x}|${s.dir.y}|${s.slide}`).join('\n');
+    const key = specs.map((s) => `${s.x}|${s.y}|${s.main}|${s.sub ?? ''}|${s.dir.x}|${s.dir.y}|${s.slide}|${s.edit ?? ''}`).join('\n');
     if (key !== this.labelKey) {
       this.labelKey = key;
       this.labels.innerHTML = specs
         .map(
           (s, i) =>
-            `<div class="m-label" data-i="${i}"><div class="m-main">${escapeHtml(s.main)}</div>${
+            `<div class="m-label" data-i="${i}"${s.edit === undefined ? '' : ` data-m="${s.edit}" title="Click to type the distance you want"`}><div class="m-main">${escapeHtml(s.main)}</div>${
               s.sub ? `<div class="m-sub">${escapeHtml(s.sub)}</div>` : ''
             }</div>`,
         )

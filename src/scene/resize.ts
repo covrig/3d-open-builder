@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { bakeMesh, type MeshData } from '../geometry/meshData';
 import { recenter } from '../geometry/meshOps';
+import type { SceneDocument, SceneObject } from './document';
 
 type V3 = [number, number, number];
 type Q4 = [number, number, number, number];
@@ -67,4 +68,27 @@ export function stretchMatrix(f: V3, anchor: V3): THREE.Matrix4 {
     .makeTranslation(anchor[0], anchor[1], anchor[2])
     .multiply(new THREE.Matrix4().makeScale(f[0], f[1], f[2]))
     .multiply(new THREE.Matrix4().makeTranslation(-anchor[0], -anchor[1], -anchor[2]));
+}
+
+/**
+ * Stretch objects by per-axis factors along the world axes. The bottom of the
+ * selection stays where it is and the middle of its footprint stays put.
+ * A turned object gets its mesh changed (see stretchWorld). Used by the size
+ * fields and by typing a measured distance.
+ */
+export function scaleObjects(doc: Pick<SceneDocument, 'worldBox' | 'setData'>, objs: SceneObject[], f: THREE.Vector3): void {
+  const box = doc.worldBox(objs);
+  const anchor: V3 = [(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.min.z];
+  for (const o of objs) {
+    const m = o.mesh;
+    const r = stretchWorld(
+      { data: o.data, position: m.position.toArray(), quaternion: m.quaternion.toArray() as Q4, scale: m.scale.toArray() },
+      [f.x, f.y, f.z],
+      anchor,
+    );
+    if (r.data !== o.data) doc.setData(o, r.data);
+    m.position.set(...r.position);
+    m.quaternion.set(...r.quaternion);
+    m.scale.set(...r.scale);
+  }
 }

@@ -49,6 +49,7 @@ the other), and measuring works beside them.
 | Side panel open/close, Settings, Export, About, Privacy, keyboard shortcuts panel | Yes | Nothing in the drawing changes |
 | Copy (button, Ctrl+C) | Yes | Reads only |
 | Measuring tools, Clear measurements | No | Opening another tool would end this one |
+| Typing a measured distance or diameter (click its number) | No | It resizes or moves the objects the measurement is on |
 | Undo, redo | No | They rebuild the objects the tool works on |
 | Repeat (button, R) | No | It starts another tool or change |
 | Cut, paste, delete, duplicate, select all/none/invert, group, ungroup, the object list | No | They change or remove what the tool works on |
