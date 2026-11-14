@@ -60,7 +60,8 @@ export function makeLabel(text: string, color: string, height: number, options: 
     const { texture, aspect } = textTexture(text, color);
     entry = {
       geometry: new THREE.PlaneGeometry(aspect, 1),
-      material: new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }),
+      // Pulled a hair toward the camera like the plate's grid, so numbers lying in an object's bottom plane stay readable.
+      material: new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -16 }),
       aspect,
     };
     labelCache.set(key, entry);
@@ -70,6 +71,16 @@ export function makeLabel(text: string, color: string, height: number, options: 
   mesh.renderOrder = 1;
   mesh.userData.labelWidth = entry.aspect * height;
   return mesh;
+}
+
+/**
+ * Lay a label (see makeLabel) on the camera's side of the plate: facing up when seen from above, facing
+ * down (turned over, so the text still reads left to right) when seen from below. `rotZ` is the turn of the
+ * text in the plate's plane, as seen from above; the label's height above or below the plate is kept.
+ */
+export function orient(label: THREE.Object3D, below: boolean, rotZ = 0): void {
+  label.rotation.set(below ? Math.PI : 0, 0, below ? -rotZ : rotZ);
+  label.position.z = below ? -Math.abs(label.position.z) : Math.abs(label.position.z);
 }
 
 /** A label's width in mm (see makeLabel). */

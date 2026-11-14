@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fromUnit, settings, toUnit } from '../settings';
-import { GRID_NUMBER_HEIGHT, makeLabel, makeSprite } from './labels';
+import { GRID_NUMBER_HEIGHT, makeLabel, makeSprite, orient } from './labels';
 import type { Palette } from './viewport';
 
 /** 1, 2 or 5 times a power of ten, close to `rough`. */
@@ -25,10 +25,12 @@ interface Facing {
   /** The X ruler's text reads towards +x (true) or -x; same for the Y ruler and y */
   xForward: boolean;
   yForward: boolean;
+  /** The camera is under the plate: the numbers lie face down */
+  below: boolean;
 }
 
 const sameFacing = (a: Facing | null, b: Facing) =>
-  a !== null && a.xFar === b.xFar && a.yFar === b.yFar && a.xForward === b.xForward && a.yForward === b.yForward;
+  a !== null && a.below === b.below && a.xFar === b.xFar && a.yFar === b.yFar && a.xForward === b.xForward && a.yForward === b.yForward;
 
 /**
  * Rulers on the ground along two sides of the objects' footprint (the sides
@@ -73,6 +75,7 @@ export class Ruler {
       yFar: camera.position.x > centre.x,
       xForward: right.x >= 0,
       yForward: right.y >= 0,
+      below: camera.position.z < 0,
     };
   }
 
@@ -138,7 +141,7 @@ export class Ruler {
       const put = (text: string, t: number, h = textHeight) => {
         const label = makeLabel(text, p.label, h);
         label.position.copy(at(t, labelOff));
-        label.rotation.z = rotation;
+        orient(label, f.below, rotation);
         this.labels.add(label);
       };
       // Leave room before the final "40 mm" label, which is wider than the others.

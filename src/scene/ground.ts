@@ -77,6 +77,9 @@ export interface GroundColors {
 export class Ground {
   readonly group = new THREE.Group();
   private readonly material: THREE.ShaderMaterial;
+  private readonly shadow: THREE.Mesh;
+  private fillOpacity = 0.3;
+  private below = false;
 
   constructor() {
     this.material = new THREE.ShaderMaterial({
@@ -85,6 +88,11 @@ export class Ground {
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
+      // The bottom face of an object resting on the plate lies in the very same plane. Pulled a hair toward the
+      // camera, the grid and axes always win it, instead of vanishing from some angles when seen from below.
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -16,
       uniforms: {
         uMinor: { value: new THREE.Color() },
         uMajor: { value: new THREE.Color() },
@@ -110,6 +118,18 @@ export class Ground {
     shadow.receiveShadow = true;
     shadow.position.z = 0.01;
     this.group.add(shadow);
+    this.shadow = shadow;
+  }
+
+  /**
+   * Seen from underneath, drop the plate's fill and the shadow layer (they sat right under the
+   * bottom faces of objects resting on the plate and fought them for the pixels); the grid lines,
+   * the axes and the rulers stay.
+   */
+  setBelow(below: boolean): void {
+    this.below = below;
+    this.material.uniforms.uFillOpacity.value = below ? 0 : this.fillOpacity;
+    this.shadow.visible = !below;
   }
 
   setColors(c: GroundColors): void {
@@ -117,7 +137,8 @@ export class Ground {
     (u.uMinor.value as THREE.Color).setHex(c.minor);
     (u.uMajor.value as THREE.Color).setHex(c.major);
     (u.uFill.value as THREE.Color).setHex(c.fill);
-    u.uFillOpacity.value = c.fillOpacity;
+    this.fillOpacity = c.fillOpacity;
+    u.uFillOpacity.value = this.below ? 0 : c.fillOpacity;
   }
 
   /** How strongly the minor and major grid lines show (1: as designed; the axis lines and the fill are not affected). */

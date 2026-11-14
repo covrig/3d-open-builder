@@ -7,7 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { lookDefaults } from './document';
 import { Ground, type GroundColors } from './ground';
-import { GRID_NUMBER_HEIGHT, labelScale, labelWidth, makeLabel, ORIGIN_HEIGHT } from './labels';
+import { GRID_NUMBER_HEIGHT, labelScale, labelWidth, makeLabel, ORIGIN_HEIGHT, orient } from './labels';
 import { Reflection } from './reflection';
 import { MM_PER_UNIT, settings, settingsEvents, type Unit } from '../settings';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
@@ -115,6 +115,8 @@ export class Viewport extends EventTarget {
   private readonly shadowFocus = new THREE.Sphere(new THREE.Vector3(), 100);
   private frameRequested = false;
   private originLabel?: THREE.Mesh;
+  /** The camera is under the plate (the numbers on it lie face down then) */
+  private below = false;
   /**
    * How much bigger than in the home view the labels on the plate are drawn
    * (see labelScale): they keep their size on screen at any zoom. A
@@ -157,6 +159,10 @@ export class Viewport extends EventTarget {
     this.orbit.target.copy(HOME_TARGET);
     this.orbit.update();
     this.orbit.addEventListener('change', () => this.invalidate());
+    // Zoom stays between "almost touching" and far beyond any model (the plate is 200 m wide, the fade is long gone by then).
+    this.orbit.minDistance = 2;
+    this.orbit.maxDistance = 50000;
+    this.guardTouches();
     // Dragging the view stops a running turn to a view cube side.
     this.orbit.addEventListener('start', () => this.cameraRun++);
     // The controls set an inline "cursor: auto" on the canvas, which would beat
@@ -191,7 +197,15 @@ export class Viewport extends EventTarget {
     });
     this.reflection = new Reflection(this.scene, this.objectRoot);
     this.beforeFrame(() => {
-      this.reflection.hideBelow(this.camera.position.z < 0);
+      const below = this.camera.position.z < 0;
+      if (below !== this.below) {
+        this.below = below;
+        // The numbers on the plate turn over so they stay readable (and visible) from underneath.
+        if (this.originLabel) orient(this.originLabel, below);
+        for (const label of this.gridLabels?.group.children ?? []) orient(label, below);
+      }
+      this.ground.setBelow(below);
+      this.reflection.hideBelow(below);
       this.reflection.sync();
     });
 
@@ -208,6 +222,32 @@ export class Viewport extends EventTarget {
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+  }
+
+  /**
+   * The orbit controls follow `pointermove` and `pointerup` on the whole document without checking whose
+   * finger it is, so a second finger dragging a gizmo handle (or any control) while one finger holds the
+   * canvas steered the camera: it jumped or spun. While the controls track fingers, touches that did not
+   * start on the canvas are kept from them (the handle or control still gets its own events).
+   */
+  private guardTouches(): void {
+    const canvas = this.renderer.domElement;
+    const mine = new Set<number>();
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') mine.add(e.pointerId);
+    });
+    const guard = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      if (mine.has(e.pointerId)) {
+        if (e.type !== 'pointermove') mine.delete(e.pointerId);
+        return;
+      }
+      // Not tracking any finger: the controls have no document listeners to keep this from.
+      const tracking = (this.orbit as unknown as { _pointers: number[] })._pointers.length > 0;
+      if (tracking) e.stopImmediatePropagation();
+    };
+    // Registered now, before the controls add their own listeners, so these run first.
+    for (const type of ['pointermove', 'pointerup', 'pointercancel'] as const) document.addEventListener(type, guard);
   }
 
   /**
@@ -550,6 +590,7 @@ export class Viewport extends EventTarget {
     const s = this.labelFactor * this.gridTextScale;
     this.originLabel = makeLabel('0', this.palette.label, ORIGIN_HEIGHT * s);
     this.originLabel.position.set(-3.5 * s, -4 * s, 0.05);
+    orient(this.originLabel, this.below);
     this.ground.group.add(this.originLabel);
   }
 
@@ -642,6 +683,7 @@ export class Viewport extends EventTarget {
       const w = labelWidth(label);
       // Under the X axis line, left of the Y axis line; clear of the "0" at the origin.
       label.position.set(alongX ? x : -w / 2 - height * 0.2, alongX ? -height * 0.8 : y, 0.05);
+      orient(label, this.below);
       const d = Math.hypot(x - target.x, y - target.y) / fadeAt;
       const fade = 1 - THREE.MathUtils.smoothstep(d, 0.35, 1);
       (label.material as THREE.MeshBasicMaterial).opacity = fade;

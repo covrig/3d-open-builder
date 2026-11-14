@@ -103,8 +103,9 @@ export function setupTooltips(): void {
     }, 500);
   });
   const cancelPress = () => clearTimeout(pressTimer);
-  document.addEventListener('pointerup', cancelPress);
-  document.addEventListener('pointercancel', cancelPress);
+  // Capture: runs before the camera's finger guard can hold the event back while another finger turns the view.
+  document.addEventListener('pointerup', cancelPress, true);
+  document.addEventListener('pointercancel', cancelPress, true);
   document.addEventListener('click', (e) => {
     if (!suppressClick) return;
     suppressClick = false;
