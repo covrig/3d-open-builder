@@ -70,4 +70,9 @@ export function setupLookSettings(): void {
     applyClipboard();
   });
   applyClipboard();
+
+  // Lower resolution while the view moves, on slow computers (off by default; the viewport reads the setting).
+  const smooth = input('smoothTurning');
+  smooth.checked = settings.ui.smoothTurning;
+  smooth.addEventListener('change', () => updateUi((ui) => (ui.smoothTurning = smooth.checked)));
 }

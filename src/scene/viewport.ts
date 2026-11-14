@@ -56,6 +56,12 @@ const HOME_TARGET = new THREE.Vector3(0, 0, 20);
 /** Shadow map size (px), and the smaller one used while the camera turns (a quarter of the pixels). */
 const SHADOW_SIZE = 2048;
 const SHADOW_SIZE_TURNING = 1024;
+/** Smoother turning (Settings): the share of the normal pixels the 3D picture is drawn with, per level. */
+const RENDER_SCALES = [1, 0.75, 0.5];
+/** While the camera moves, frames slower than this (ms, on average) make the next level down be tried. */
+const SLOW_FRAME_MS = 30;
+/** The picture is drawn sharp again when the camera has been still for this long (ms). */
+const SETTLE_MS = 250;
 const SKY_LIGHT = 1.15;
 const SUN_LIGHT = 2.1;
 const HOME_AREA = new THREE.Box3(new THREE.Vector3(-60, -60, 0), new THREE.Vector3(60, 60, 20));
@@ -161,7 +167,10 @@ export class Viewport extends EventTarget {
     this.orbit = new OrbitControls(this.camera, this.renderer.domElement);
     this.orbit.target.copy(HOME_TARGET);
     this.orbit.update();
-    this.orbit.addEventListener('change', () => this.invalidate());
+    this.orbit.addEventListener('change', () => {
+      this.invalidate();
+      this.cameraMoved();
+    });
     // Zoom stays between "almost touching" and far beyond any model (the plate is 200 m wide, the fade is long gone by then).
     this.orbit.minDistance = 2;
     this.orbit.maxDistance = 50000;
@@ -174,6 +183,7 @@ export class Viewport extends EventTarget {
     this.orbit.addEventListener('end', () => {
       this.turning = false;
       this.setShadowResolution(SHADOW_SIZE);
+      this.cameraMoved();
     });
     // The controls set an inline "cursor: auto" on the canvas, which would beat
     // every cursor in the stylesheet (turning, panning, zooming, measuring…).
@@ -203,6 +213,7 @@ export class Viewport extends EventTarget {
     this.applyGridUnit();
     settingsEvents.addEventListener('change', () => {
       this.applyGridUnit();
+      if (!settings.ui.smoothTurning) this.setRenderScale(0);
       this.invalidate();
     });
     this.reflection = new Reflection(this.scene, this.objectRoot);
@@ -342,11 +353,59 @@ export class Viewport extends EventTarget {
     this.invalidate();
   }
 
+  // --- Smoother turning (Settings): fewer pixels while the camera moves on a slow computer ---
+
+  private renderLevel = 0;
+  private frameGaps: number[] = [];
+  private lastFrameAt = 0;
+  private settleTimer: number | undefined;
+
+  /** Draw the 3D picture with a share of the normal pixels (level 0: all of them). The canvas and the page overlays keep their size. */
+  private setRenderScale(level: number): void {
+    if (level === this.renderLevel) return;
+    this.renderLevel = level;
+    this.stats.renderScale = level;
+    this.frameGaps.length = 0;
+    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * RENDER_SCALES[level]);
+    this.invalidate();
+  }
+
+  /** The camera moved or was let go: bring the sharp picture back once it has been still for a moment (and is no longer held). */
+  private cameraMoved(): void {
+    if (!settings.ui.smoothTurning) {
+      if (this.renderLevel) this.setRenderScale(0); // switched off meanwhile
+      return;
+    }
+    clearTimeout(this.settleTimer);
+    this.settleTimer = window.setTimeout(() => {
+      if (!this.turning) this.setRenderScale(0);
+    }, SETTLE_MS);
+  }
+
+  /** While the camera is moved by hand: if the frames come slowly, draw the next ones with fewer pixels. It only goes back up when the camera is still. */
+  private watchFrameRate(now: number): void {
+    const gap = now - this.lastFrameAt;
+    this.lastFrameAt = now;
+    if (!settings.ui.smoothTurning) {
+      if (this.renderLevel) this.setRenderScale(0); // switched off meanwhile
+      return;
+    }
+    if (!this.turning || this.renderLevel >= RENDER_SCALES.length - 1) return;
+    if (gap > 400) {
+      this.frameGaps.length = 0; // a pause, not a slow frame
+      return;
+    }
+    this.frameGaps.push(gap);
+    if (this.frameGaps.length > 4) this.frameGaps.shift();
+    if (this.frameGaps.length === 4 && this.frameGaps.reduce((a, b) => a + b, 0) / 4 > SLOW_FRAME_MS) this.setRenderScale(this.renderLevel + 1);
+  }
+
   /** Ask for one redraw on the next animation frame. Cheap to call often. */
   invalidate(): void {
     if (this.frameRequested) return;
     this.frameRequested = true;
-    requestAnimationFrame(() => {
+    requestAnimationFrame((now) => {
+      this.watchFrameRate(now);
       const t0 = performance.now();
       this.frameRequested = false;
       for (const cb of this.beforeCallbacks) cb();
@@ -376,7 +435,7 @@ export class Viewport extends EventTarget {
    * (window.app.viewport.stats). lastMs is the CPU time of the last frame's
    * drawing calls, not the GPU time; shadowUpdates counts shadow map redraws asked for.
    */
-  readonly stats = { frames: 0, lastMs: 0, shadowUpdates: 0 };
+  readonly stats = { frames: 0, lastMs: 0, shadowUpdates: 0, renderScale: 0 };
 
   /** The camera is being turned, panned or zoomed by hand */
   private turning = false;

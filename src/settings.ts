@@ -57,6 +57,8 @@ export interface UiState {
   importSeparate: boolean;
   /** Export: hidden objects are written too */
   exportHidden: boolean;
+  /** While the view is turned, panned or zoomed: draw the 3D picture at a lower resolution when the computer cannot keep up (off by default) */
+  smoothTurning: boolean;
 }
 
 export const PANELS = [
@@ -123,6 +125,7 @@ const DEFAULTS: Settings = {
     importUnit: 'mm',
     importSeparate: false,
     exportHidden: false,
+    smoothTurning: false,
   },
 };
 
@@ -208,6 +211,7 @@ function load(): Settings {
   s.ui.rulerTextScale = inRange(s.ui.rulerTextScale, 0.5, 2, DEFAULTS.ui.rulerTextScale);
   s.ui.importSeparate = s.ui.importSeparate === true;
   s.ui.exportHidden = s.ui.exportHidden === true;
+  s.ui.smoothTurning = s.ui.smoothTurning === true;
   s.ui.internalIntersections = s.ui.internalIntersections !== false;
   s.ui.internalEdges = s.ui.internalEdges !== false;
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
