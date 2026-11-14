@@ -290,7 +290,7 @@ export class ReferenceImage {
     const points: [number, number][] = [];
     this.bar.open<[number, number][]>({
       title: 'Calibrate picture',
-      hint: 'Calibrate: click two points on the picture whose real distance you know, enter it, then Apply.',
+      hint: 'Click two points on the picture whose real distance you know, then enter it.',
       fields: [{ key: 'distance', label: 'Real distance', type: 'number', value: 100, min: 0.1, step: 1, unit: 'mm', tip: 'The true distance between the two points you click.' }],
       compute: async () => (points.length === 2 ? [...points] : null),
       show: () => [],
@@ -327,7 +327,7 @@ export class ReferenceImage {
     const points: [number, number][] = [];
     this.bar.open<[number, number][]>({
       title: 'Straighten picture',
-      hint: 'Straighten: click the four corners of a rectangle in the picture, in order around it, enter its real size, then Apply.',
+      hint: 'Click the four corners of a rectangle in the picture, in order around it, then enter its real size.',
       fields: [
         { key: 'width', label: 'Width (1st→2nd)', type: 'number', value: 100, min: 0.1, step: 1, unit: 'mm', tip: 'Real length from the first corner to the second.' },
         { key: 'height', label: 'Height (2nd→3rd)', type: 'number', value: 100, min: 0.1, step: 1, unit: 'mm', tip: 'Real length from the second corner to the third.' },

@@ -65,6 +65,52 @@ export function watchTopBars(): void {
   place();
 }
 
+/** Everything that can lie over the app name and the view cube (they sit below these in the stacking order). */
+const COVERERS = '#tooltip:not([hidden]), #split-bar:not([hidden]), #feature-bar:not([hidden]), #section-bar:not([hidden]), '
+  + '#overhang-bar:not([hidden]), #messages > :not([hidden])';
+
+/**
+ * The app name and the view cube step aside (class "covered": invisible) while a tooltip, a tool bar, a hint, a
+ * message or the measuring buttons lie over them, even partly. Their boxes are tested as laid out right now:
+ * the cube's box is 80 px square but the cube itself is smaller, so it is tested a little inset.
+ */
+export function updateCovers(): void {
+  const over = [...document.querySelectorAll<HTMLElement>(COVERERS)]
+    .map((e) => e.getBoundingClientRect())
+    .filter((r) => r.width > 0 && r.height > 0);
+  for (const [id, inset] of [['view-cube', 10], ['brand-overlay', 0]] as const) {
+    const e = document.getElementById(id);
+    if (!e) continue;
+    const r = e.getBoundingClientRect();
+    const covered = r.width > 0 && over.some((o) => o.left < r.right - inset && o.right > r.left + inset && o.top < r.bottom - inset && o.bottom > r.top + inset);
+    e.classList.toggle('covered', covered);
+  }
+}
+
+/** Check the covers again whenever a bar, a hint or a message appears, goes, moves or changes size. */
+export function watchCovers(): void {
+  let frame = 0;
+  const schedule = () => {
+    if (frame) return;
+    // One frame later: the bars' own placement (watchTopBars) has run by then.
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      updateCovers();
+    });
+  };
+  const view = document.querySelector<HTMLElement>('#viewport')!;
+  const watched = [...document.querySelectorAll<HTMLElement>('#split-bar, #feature-bar, #section-bar, #overhang-bar, #messages')];
+  const changes = new MutationObserver(schedule);
+  const sizes = new ResizeObserver(schedule);
+  for (const w of watched) {
+    changes.observe(w, { attributes: true, attributeFilter: ['hidden', 'style', 'class'], childList: true, subtree: true, characterData: true });
+    sizes.observe(w);
+  }
+  sizes.observe(view);
+  window.addEventListener('resize', schedule);
+  schedule();
+}
+
 /**
  * The floating buttons at the bottom right: level with the transform bar
  * when they fit beside it, otherwise stacked just above it.

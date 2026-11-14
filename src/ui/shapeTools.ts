@@ -15,7 +15,7 @@ const D = defaultDims();
 /** The fields each shape asks for (defaults are the standard 40 mm shapes), and a line telling what to do. */
 const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
   cube: {
-    hint: 'Cube: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [
       mm('width', 'Width', D.width, 'Size from left to right (X).'),
       mm('depth', 'Depth', D.depth, 'Size from front to back (Y).'),
@@ -23,15 +23,15 @@ const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
     ],
   },
   cylinder: {
-    hint: 'Cylinder: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [mm('diameter', 'Diameter', D.diameter, 'Width of the round part.'), mm('height', 'Height', D.height, 'Size from bottom to top.')],
   },
   sphere: {
-    hint: 'Sphere: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [mm('diameter', 'Diameter', D.diameter, 'Width of the ball.')],
   },
   cone: {
-    hint: 'Cone: set the size, then Apply. A top diameter above 0 cuts the point off.',
+    hint: 'Set the size. A top diameter above 0 cuts the point off.',
     fields: [
       mm('diameter', 'Bottom diameter', D.diameter, 'Width at the bottom.'),
       mm('topDiameter', 'Top diameter', D.topDiameter, '0 makes a point; more makes a truncated cone with a flat top.', 0),
@@ -39,7 +39,7 @@ const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
     ],
   },
   pyramid: {
-    hint: 'Pyramid: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [
       mm('width', 'Width', D.width, 'Size of the base from left to right (X).'),
       mm('depth', 'Depth', D.depth, 'Size of the base from front to back (Y).'),
@@ -47,7 +47,7 @@ const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
     ],
   },
   wedge: {
-    hint: 'Wedge: give the three sides of the triangle, and how deep to make it, then Apply.',
+    hint: 'Give the three sides of the triangle, and how deep to make it.',
     fields: [
       mm('sideA', 'Side a', D.sideA, 'The base, along the left-right direction (X).'),
       mm('sideB', 'Side b', D.sideB, 'From the start of the base up to the top corner.'),
@@ -56,7 +56,7 @@ const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
     ],
   },
   tube: {
-    hint: 'Tube: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [
       mm('diameter', 'Outer diameter', D.diameter, 'Width across the outside.'),
       mm('innerDiameter', 'Inner diameter', D.innerDiameter, 'Width of the hole. Must be smaller than the outer diameter.'),
@@ -64,25 +64,25 @@ const SHAPES: Record<PrimitiveKind, { hint: string; fields: Field[] }> = {
     ],
   },
   torus: {
-    hint: 'Torus: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [
       mm('diameter', 'Diameter', D.diameter, 'Width across the whole ring, outside.'),
       mm('thickness', 'Thickness', D.thickness, 'Width of the ring itself. Must be less than half the diameter.'),
     ],
   },
   hexagon: {
-    hint: 'Hexagon: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [
       mm('width', 'Width', 40, 'Width across the flat sides.'),
       mm('height', 'Height', D.height, 'Size from bottom to top.'),
     ],
   },
   dome: {
-    hint: 'Dome: set the size, then Apply.',
+    hint: 'Set the size.',
     fields: [mm('diameter', 'Diameter', D.diameter, 'Width across the flat bottom. The dome is half a ball.')],
   },
   tetrahedron: {
-    hint: 'Tetrahedron: set the edge length, then Apply.',
+    hint: 'Set the edge length.',
     fields: [mm('edge', 'Edge', D.edge, 'Length of every edge. It rests on one of its four triangular faces.')],
   },
 };

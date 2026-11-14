@@ -1048,6 +1048,10 @@ body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orien
 #measure-quick button svg { width: 18px; height: 18px; }
 #measure-quick button.active { background: color-mix(in srgb, var(--accent) 25%, var(--overlay)); border-color: var(--accent); }
 #measure-quick button.stop svg { color: #e5484d; }
+/* The Turn view icon is orange, like the Panel button's. */
+#measure-quick button[data-measure-turn] svg { color: #f08c00; }
+/* While Turn view is on, the other measuring buttons are grey and do nothing. */
+#measure-quick button:disabled { filter: grayscale(1); opacity: 0.45; cursor: default; }
 :root[data-theme='light'] #measure-quick button.stop svg { color: #b42318; }
 @media (pointer: coarse) {
   body.panel-closed #viewport.measuring #measure-quick { display: flex; }
@@ -1153,8 +1157,8 @@ svg.gizmo .corner-touch { r: 16px; }
 
 /* View cube in the top right corner. */
 #view-cube { position: absolute; top: 10px; right: 12px; width: 80px; height: 80px; z-index: 2; }
-/* Out of the way while a tooltip lies over it (see tooltip.ts), like the app name. */
-#view-cube.under-tip, #brand-overlay.under-tip { visibility: hidden; }
+/* Out of the way while a tooltip, a tool bar, a hint or a message lies over the view cube or the app name (see updateCovers in hint.ts). */
+#view-cube.covered, #brand-overlay.covered { visibility: hidden; }
 #view-cube .vc-stage { position: absolute; left: 50%; top: 50%; }
 #view-cube .vc-cube { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
 #view-cube .vc-face {

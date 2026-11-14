@@ -1,4 +1,5 @@
 import { settings } from '../settings';
+import { updateCovers } from './hint';
 import { blockReason } from './toolGuard';
 
 /**
@@ -26,13 +27,11 @@ export function setupTooltips(): void {
   let current: HTMLElement | undefined;
   let timer: number | undefined;
 
-  // The app name and the view cube step aside while the tooltip lies over them.
-  const corners = () => document.querySelectorAll<HTMLElement>('#view-cube, #brand-overlay');
   const hide = () => {
     clearTimeout(timer);
     tip.hidden = true;
     current = undefined;
-    for (const c of corners()) c.classList.remove('under-tip');
+    updateCovers(); // the app name and the view cube come back if only the tooltip hid them
   };
 
   const show = (el: HTMLElement) => {
@@ -77,12 +76,7 @@ export function setupTooltips(): void {
     y = Math.max(gap, Math.min(y, window.innerHeight - t.height - gap));
     tip.style.left = `${x}px`;
     tip.style.top = `${y}px`;
-    for (const c of corners()) {
-      // Their own box (the cube's turning sides reach a little outside it, which does not matter).
-      c.classList.remove('under-tip');
-      const b = c.getBoundingClientRect();
-      c.classList.toggle('under-tip', b.width > 0 && x < b.right && x + t.width > b.left && y < b.bottom && y + t.height > b.top);
-    }
+    updateCovers(); // the app name and the view cube step aside if the tooltip lies over them
   };
 
   document.addEventListener('pointerover', (e) => {

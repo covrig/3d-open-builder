@@ -73,7 +73,7 @@ export class TurnTools {
     const doc = this.doc;
     const bar = this.bar;
     const name = copy ? 'Duplicate' : 'Mirror';
-    const axisHint = copy ? 'Duplicate: pick the axis to place the copy along. Apply to add it.' : 'Mirror: pick the axis to flip along. Apply to flip the selection.';
+    const axisHint = copy ? 'Pick the axis to place the copy along.' : 'Pick the axis to flip along.';
     const picker = this.points;
     const camera = bar.viewport.camera;
     /** `shift` is how far a Duplicate copy lies from its original */
@@ -96,10 +96,10 @@ export class TurnTools {
     const askNext = () => {
       if (picked.length >= needed()) {
         return showHint('feature', plane
-          ? `${name}: Apply to ${copy ? 'add the copy' : 'flip the selection'}, or Pick again to choose other points.`
-          : `${name}: those points do not define a plane (they lie in a line). Click Pick again.`);
+          ? 'Click Pick again to choose other points.'
+          : 'Those points do not define a plane (they lie in a line). Click Pick again.');
       }
-      showHint('feature', `${name}: click point ${picked.length + 1} of 2 for the line (corners, edge middles and face centres snap). Esc stops picking.`);
+      showHint('feature', `Click point ${picked.length + 1} of 2 for the line (corners, edge middles and face centres snap). Esc stops picking.`);
       picker.start({
         extraPoints: () => picked,
         onPick: (at) => {
@@ -258,7 +258,7 @@ export class TurnTools {
         return out;
       },
       apply: (r) => {
-        if (!r.ready) return this.toast(`${name}: pick the points first`);
+        if (!r.ready) return this.toast('Pick the points first');
         if (!r.flipped.every((f) => doc.objects.includes(f.obj))) return;
         doc.transact(() => {
           if (copy) {
@@ -313,8 +313,8 @@ export class TurnTools {
       const t = total();
       if (title) title.textContent = t ? `Rotate: ${t}` : 'Rotate';
       showHint('feature', t
-        ? `Rotate: total ${t}. Click X, Y or Z to turn further, Reset to start again, Apply to turn the selection.`
-        : 'Rotate: click X, Y or Z for a quarter turn clockwise (as often as you like), then Apply.');
+        ? `Total ${t}. Click X, Y or Z to turn further, or Reset to start again.`
+        : 'Click X, Y or Z for a quarter turn clockwise (as often as you like).');
     };
 
     /** The placements after all the turns, worked out on the real objects and put back. */

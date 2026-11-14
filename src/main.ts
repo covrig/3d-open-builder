@@ -30,7 +30,7 @@ import { renderIcons } from './ui/icons';
 import { multiSelect, setupAbout, setupMultiSelect, setupPanelOrder, setupPanelToggle, setupPrivacy, setupShortcutsPanel, setupViewToggles } from './ui/chrome';
 import { restrictNumberInputs } from './ui/numberInputs';
 import { setupArrange, units } from './ui/arrange';
-import { hideHint, showHint, watchCorner, watchTopBars } from './ui/hint';
+import { hideHint, showHint, watchCorner, watchCovers, watchTopBars } from './ui/hint';
 import { setupDetailsPanel } from './ui/detailsPanel';
 import { setupItemsPanel } from './ui/itemsPanel';
 import { MeasureTool } from './ui/measureTool';
@@ -97,6 +97,7 @@ setupAbout();
 setupPrivacy();
 setupShortcutsPanel();
 watchTopBars();
+watchCovers();
 watchCorner();
 setupArrange(doc, (msg) => toast(msg));
 setupPanelToggle();
@@ -213,7 +214,7 @@ setupLookSettings();
 setupViewPopovers(viewport);
 const colors = new ColorPopover(doc, (picking) => {
   $('#viewport').classList.toggle('picking', picking);
-  if (picking) showHint('eyedropper', 'Copy colour: click the object whose colour you want.');
+  if (picking) showHint('eyedropper', 'Click the object whose colour you want.');
   else hideHint('eyedropper');
 });
 setupItemsPanel($('#sidebar'), doc, colors, {

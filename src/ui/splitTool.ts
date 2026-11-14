@@ -140,7 +140,7 @@ export class SplitTool {
     this.doc.setFaded(this.doc.objects.filter((o) => !this.targets.includes(o) && !o.hidden));
     this.bar.hidden = false;
     this.plane.visible = true;
-    showHint('split', 'Split: slide or drag the orange plane, choose what to keep, then Apply.');
+    showHint('split', 'Slide or drag the orange plane, and choose what to keep.');
     this.setKeep('both');
     this.setAxis(this.axis);
   }

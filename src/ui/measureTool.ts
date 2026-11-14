@@ -8,11 +8,13 @@ import { DistanceEditor } from './measureEdit';
 import { hoverMarker, SNAP_PX, SnapPicker, type Picked, type SnapKind } from './snapPicker';
 
 const POINTS_NEEDED: Record<MeasureKind, number> = { distance: 2, angle: 3, circle: 3 };
-const HINTS: Record<MeasureKind, string> = {
-  distance: 'Distance: click two points on the model. With X-ray on, hidden corners and edges can be picked too. Click Distance again to stop.',
-  angle: 'Angle: click the start, the corner, then the end, all on the model. With X-ray on, hidden corners and edges can be picked too. Click Angle again to stop.',
-  circle: 'Circle: click three points on the model, on the edge of a circle or hole. With X-ray on, hidden corners and edges can be picked too. Click Circle again to stop.',
+/** What to do, as shown with the sidebar's measuring buttons (`full`) and with the small buttons of touch screens (`quick`, which have a Stop button). */
+const HINTS: Record<MeasureKind, { full: string; quick: string; stop: string }> = {
+  distance: { full: 'Click two points on the model.', quick: 'Click two points on the model.', stop: 'Click Distance again to stop.' },
+  angle: { full: 'Click the start, the corner, then the end, on the model.', quick: 'Click the start, the corner, then the end, on the model.', stop: 'Click Angle again to stop.' },
+  circle: { full: 'Click three points on the model, on the edge of a circle or hole.', quick: 'Click three points on the model.', stop: 'Click Circle again to stop.' },
 };
+const XRAY_HINT = 'With X-ray on, hidden corners and edges can be picked too.';
 const TURN_HINT = 'One finger turns the view, two fingers pan and zoom it. Tap Turn view again to pick points.';
 /** Colours of the 1st, 2nd and 3rd point. */
 const POINT_COLORS = ['#4cb8ff', '#7ed321', '#c77dff'];
@@ -269,6 +271,8 @@ export class MeasureTool {
     }
     // Touch screens: "Turn view" lets one finger turn the camera (it cannot while a finger aims the points).
     document.querySelector('[data-measure-turn]')?.addEventListener('click', () => this.setTurning(!this.turning));
+    // Opening or closing the side panel shows or hides the small buttons: the hint follows.
+    new MutationObserver(() => { if (this.kind && !this.turning) this.showMeasureHint(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   }
 
   get active(): boolean {
@@ -312,7 +316,16 @@ export class MeasureTool {
   /** The hint of the measuring kind, or (touch, "Turn view" on) the one that says one finger turns the view. */
   private showMeasureHint(): void {
     if (!this.kind) return hideHint('measure');
-    showHint('measure', this.turning ? TURN_HINT : HINTS[this.kind]);
+    const h = HINTS[this.kind];
+    // The small buttons (touch, side panel closed) have a Stop button: no "click again to stop" then.
+    const quick = this.quickButtonsShown();
+    showHint('measure', this.turning ? TURN_HINT : `${quick ? h.quick : h.full} ${XRAY_HINT}${quick ? '' : ` ${h.stop}`}`);
+  }
+
+  /** Are the small measuring buttons under the hint on screen now? */
+  private quickButtonsShown(): boolean {
+    const q = document.querySelector<HTMLElement>('#measure-quick');
+    return !!q && getComputedStyle(q).display !== 'none';
   }
 
   /** One finger aims the point while measuring; with "Turn view" on it turns the camera instead. The mouse is not affected. */
@@ -322,6 +335,8 @@ export class MeasureTool {
       turn.classList.toggle('active', this.turning);
       turn.setAttribute('aria-pressed', String(this.turning));
     }
+    // While one finger turns the view the other measuring buttons are grey and do nothing (Stop still works).
+    for (const b of document.querySelectorAll<HTMLButtonElement>('[data-measure-quick]:not(.stop)')) b.disabled = this.turning;
     const saved = this.savedTouches;
     if (saved) this.viewport.orbit.touches.ONE = this.turning ? saved.ONE : null;
   }

@@ -92,7 +92,7 @@ export class ExtrudeTool {
 
     this.bar.open<(Piece[] | null)[]>({
       title: 'Extrude down',
-      hint: 'Extrude down: drag the blue arrow or type a height. Tilt the plane if you like. Below the plane, each object becomes its shape at the plane, extended straight down to the plate. Apply when the orange result looks right.',
+      hint: 'Drag the blue arrow or type a height. Tilt the plane if you like. Below the plane, each object becomes its shape at the plane, extended straight down to the plate.',
       fields: [
         {
           key: 'height', label: 'Plane height', type: 'number', value: round(start), min: 0, step: 0.5, unit: 'mm',

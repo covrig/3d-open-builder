@@ -139,8 +139,8 @@ export class PartsTools {
       focusFirst: true,
       title: `Add ${KIND_NAMES[kind]}`,
       hint: kind === 'rod'
-        ? 'Thread: choose the size and length, then Apply. To make a threaded hole, tick "For a hole", place the thread where the hole should go, select it and press Subtract.'
-        : `${KIND_NAMES[kind][0].toUpperCase()}${KIND_NAMES[kind].slice(1)}: choose the size${kind === 'nut' ? '' : ' and length'}, then Apply.`,
+        ? 'Choose the size and length. To make a threaded hole, tick "For a hole", place the thread where the hole should go, select it and press Subtract.'
+        : `Choose the size${kind === 'nut' ? '' : ' and length'}.`,
       fields: [
         { key: 'size', label: 'Size', type: 'select', value: 'M6', options: SIZES, tip: 'Metric (M6 = 6 mm) or imperial UNC (1/4″-20 = ¼ inch, 20 threads per inch).' },
         ...(kind !== 'nut' ? [{
@@ -203,7 +203,7 @@ export class PartsTools {
     let reported = '';
     this.bar.open<Piece & { letters: MeshData }>({
       title: 'Text on a face',
-      hint: 'Text: click the face where the text should go. Arrow keys move it; Apply when it looks right.',
+      hint: 'Click the face where the text should go. Arrow keys move it.',
       fields: [
         { key: 'text', label: 'Text', type: 'text', value: 'Text', maxLength: 200, prominent: true, tip: 'The letters to add (up to 200).' },
         { key: 'font', label: 'Font', type: 'select', value: 'sans', options: fonts, tip: 'Typeface (bold, for clean printing).' },

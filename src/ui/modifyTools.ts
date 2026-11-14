@@ -100,7 +100,7 @@ export class ModifyTools {
     const name = kind === 'chamfer' ? 'Bevel' : 'Round';
     this.bar.open<Piece>({
       title: name,
-      hint: `${name}: click edges to pick them (blue; click again to drop). The result shows in orange.`,
+      hint: 'Click edges to pick them (blue; click again to drop). The result shows in orange.',
       // The same warning as the tool's tooltip (which touch screens never show).
       hintNote: `Apply to all edges of a corner in one go. ${kind === 'chamfer' ? 'Bevelling' : 'Rounding'} in several steps may result in bad geometry.`,
       fields: [
@@ -130,7 +130,7 @@ export class ModifyTools {
     interface Rounded { piece: Piece; skipped: number }
     this.bar.open<Rounded>({
       title: 'Soften',
-      hint: 'Soften: rounds all the straight outer edges (a hollow box too: only the outside). Set the radius, check the orange preview, then Apply.',
+      hint: 'Round all the straight outer edges (a hollow box too: only the outside). Set the radius and check the orange preview.',
       fields: [
         { key: 'radius', label: 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm', tip: 'Radius of the rounding. Edges too small for it are left sharp.' },
       ],
@@ -155,7 +155,7 @@ export class ModifyTools {
     if (!set.segments.some(inside)) return this.toast(`${obj.name} has no inside corner where two walls meet`);
     this.bar.open<Piece>({
       title: 'Brace',
-      hint: 'Brace: click the inside corner where two walls meet.',
+      hint: 'Click the inside corner where two walls meet.',
       fields: [
         { key: 'leg1', label: 'Leg 1', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far the brace reaches up the first wall.' },
         { key: 'leg2', label: 'Leg 2', type: 'number', value: 10, min: 0.5, step: 1, unit: 'mm', tip: 'How far it reaches along the second wall.' },
@@ -189,7 +189,7 @@ export class ModifyTools {
     if (!obj) return;
     this.bar.open<Piece>({
       title: 'Shell',
-      hint: 'Shell: hollow the object, keeping walls of the given thickness. Apply when the preview looks right.',
+      hint: 'Hollow the object, keeping walls of the given thickness.',
       fields: [
         { key: 'thickness', label: 'Wall', type: 'number', value: 2, min: 0.2, step: 0.2, unit: 'mm', tip: 'Thickness of the walls that remain.' },
       ],
@@ -273,7 +273,7 @@ export class ModifyTools {
     const centred = (v: Values) => v.type === 'linear' && v.centreOn === 'on';
     this.bar.open<ReturnType<typeof transforms>>({
       title: 'Pattern',
-      hint: 'Pattern: repeat the selection in a row or around an axis. Pick a point on the model to centre it there. Apply to add the copies.',
+      hint: 'Repeat the selection in a row or around an axis. Pick a point on the model to centre it there.',
       fields: [
         { key: 'type', label: 'Type', type: 'select', value: 'linear', options: [['linear', 'Linear'], ['circular', 'Circular']], tip: 'Copies in a straight row, or around an axis.' },
         { key: 'count', label: 'Count', type: 'number', value: 4, min: 2, max: 200, step: 1, tip: 'Total number, including the original.' },

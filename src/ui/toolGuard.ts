@@ -26,7 +26,7 @@ export const LOCKED = [
   '#view-corner [data-action="delete-selection"]',
 ].join(', ');
 
-export const LOCKED_MESSAGE = 'Finish or cancel the current tool first (Apply or Cancel)';
+export const LOCKED_MESSAGE = 'Finish or cancel the current tool first';
 export const BUSY_MESSAGE = 'Still working on the previous operation…';
 
 /** With only a view tool open (cross-section, overhangs), measuring still works. */
