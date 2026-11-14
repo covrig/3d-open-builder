@@ -135,14 +135,15 @@ function patch(material: THREE.MeshStandardMaterial, u: SurfaceUniforms): void {
 export function applyTexture(material: THREE.MeshStandardMaterial, texture: ObjectTexture | undefined, ready: () => void): void {
   const info = texture ? textureInfo(texture.id) : undefined;
   if (!texture || !info) {
-    if (uniformsOf(material)) {
-      delete material.userData[UNIFORMS];
-      delete material.userData.surfaceMetal;
+    // Taking the texture off only switches it off. The material keeps its patched shader: going back to a shader
+    // program the renderer built earlier would use the uniforms of the program built last (which has none of ours).
+    delete material.userData.surfaceWanted;
+    delete material.userData.surfaceMetal;
+    const off = uniformsOf(material);
+    if (off) {
+      off.uSurfaceOn.value = 0;
       material.metalness = 0;
-      material.envMap = null;
-      material.onBeforeCompile = () => {};
-      material.customProgramCacheKey = () => '';
-      material.needsUpdate = true;
+      material.envMapIntensity = 0;
     }
     return;
   }
@@ -154,6 +155,7 @@ export function applyTexture(material: THREE.MeshStandardMaterial, texture: Obje
   }
   u.uSurfaceSize.value = texture.size;
   u.uSurfaceRough.value = info.roughness;
+  material.userData.surfaceWanted = info.id;
   // Metals take their colour from the picture and reflect the room; the others stay plain.
   material.userData.surfaceMetal = info.metalness;
   material.metalness = material.userData.surfaceHidden ? 0 : info.metalness;
@@ -165,7 +167,7 @@ export function applyTexture(material: THREE.MeshStandardMaterial, texture: Obje
   material.envMapIntensity = material.userData.surfaceHidden ? 0 : METAL_REFLECTION;
   const mine = u;
   void load(info).then((t) => {
-    if (uniformsOf(material) !== mine || !t) return; // taken off meanwhile, or the picture is missing: stays a plain colour
+    if (material.userData.surfaceWanted !== info.id || !t) return; // taken off or changed meanwhile, or the picture is missing: stays a plain colour
     mine.uSurfaceMap.value = t;
     mine.uSurfaceOn.value = material.userData.surfaceHidden ? 0 : 1;
     ready();
@@ -176,9 +178,10 @@ export function applyTexture(material: THREE.MeshStandardMaterial, texture: Obje
 export function showTexture(material: THREE.MeshStandardMaterial, shown: boolean): void {
   const u = uniformsOf(material);
   material.userData.surfaceHidden = !shown;
-  if (u && u.uSurfaceMap.value) u.uSurfaceOn.value = shown ? 1 : 0;
+  const wanted = material.userData.surfaceWanted !== undefined;
+  if (u && u.uSurfaceMap.value) u.uSurfaceOn.value = shown && wanted ? 1 : 0;
   if (u) {
-    material.metalness = shown ? (material.userData.surfaceMetal as number) ?? 0 : 0;
-    material.envMapIntensity = shown ? METAL_REFLECTION : 0;
+    material.metalness = shown && wanted ? (material.userData.surfaceMetal as number) ?? 0 : 0;
+    material.envMapIntensity = shown && wanted ? METAL_REFLECTION : 0;
   }
 }
