@@ -6,7 +6,6 @@ import { runOp } from '../geometry/workerClient';
 import type { ThreadInfo } from '../geometry/threads';
 import type { ColoredPlacedMesh } from '../io/threemf';
 import { overhangLayer, overhangMaterial } from './overhang';
-import { applyTexture, cleanTexture, showTexture, type ObjectTexture } from './surfaceTextures';
 
 /**
  * Colours given to new objects in turn. Mid-tone and fairly saturated so they
@@ -52,8 +51,6 @@ export interface SceneObject {
   color: string;
   /** The colour the object got when it was created; "Reset" returns to it. */
   defaultColor: string;
-  /** A picture (wood, metal ...) drawn on the object instead of the colour; on screen only. */
-  texture?: ObjectTexture;
   /** Objects sharing a group id are selected and moved together. */
   groupId?: number;
   /** Set on bolts, nuts and rods from Add object; dropped when the shape changes. */
@@ -70,7 +67,6 @@ export interface ObjectState {
   data: MeshData;
   color: string;
   defaultColor?: string;
-  texture?: ObjectTexture;
   groupId?: number;
   thread?: ThreadInfo;
   hidden?: boolean;
@@ -282,7 +278,6 @@ export class SceneDocument extends EventTarget {
       data: state.data,
       color: state.color,
       defaultColor: state.defaultColor ?? state.color,
-      texture: cleanTexture(state.texture),
       groupId: state.groupId,
       thread: state.thread,
       hidden: state.hidden,
@@ -290,7 +285,6 @@ export class SceneDocument extends EventTarget {
     };
     if (state.groupId !== undefined) this.nextGroupId = Math.max(this.nextGroupId, state.groupId + 1);
     this.nextId = Math.max(this.nextId, state.id + 1);
-    applyTexture(material, obj.texture, () => this.emit('change'));
     this.applyView(obj);
     this.root.add(mesh);
     this.objects.push(obj);
@@ -359,15 +353,6 @@ export class SceneDocument extends EventTarget {
     this.emit('change');
   }
 
-  /** Put a texture on objects (undefined: back to the plain colour). */
-  setTexture(objs: SceneObject[], texture: ObjectTexture | undefined): void {
-    for (const obj of objs) {
-      obj.texture = texture ? { ...texture } : undefined;
-      applyTexture(obj.mesh.material, obj.texture, () => this.emit('change'));
-    }
-    this.emit('change');
-  }
-
   byMesh(object: THREE.Object3D): SceneObject | undefined {
     return this.objects.find((o) => o.mesh === object);
   }
@@ -380,7 +365,6 @@ export class SceneDocument extends EventTarget {
       data: obj.data,
       color: obj.color,
       defaultColor: obj.defaultColor,
-      texture: obj.texture,
       groupId: obj.groupId,
       thread: obj.thread,
       hidden: obj.hidden,
@@ -513,7 +497,6 @@ export class SceneDocument extends EventTarget {
 
     // Faded bystanders (see setFaded): very faint plain grey, no lines.
     const faded = this.faded.has(obj);
-    showTexture(m, !faded);
     if (faded) {
       m.transparent = true;
       m.opacity = FADED_OPACITY;

@@ -387,11 +387,6 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
   border: 1px solid rgba(127, 127, 127, 0.4);
 }
 .swatches button.active { outline: 2px solid var(--accent); outline-offset: 1px; }
-.swatches button[data-texture] { background-size: cover; background-position: center; }
-.texture-size { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
-.texture-size[hidden] { display: none; }
-.texture-size input { width: 64px; }
-.texture-size input:disabled { opacity: 0.5; }
 
 .color-input {
   display: inline-flex;

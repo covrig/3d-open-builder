@@ -123,17 +123,6 @@ The "Mono" font for text on faces (Roboto Mono Bold).
 
 ---
 
-## Texture pictures
-
-The wood, concrete, brick, steel, copper, gold, silver, aluminium, carbon fibre, granite, marble and cork looks
-(Colour pictures, 1K) come from ambientCG.com; the larger ones were saved again at a lower JPEG quality.
-
-- Licence: Creative Commons CC0 1.0 Universal (public domain dedication); credit is not required
-- Project: https://ambientcg.com
-- Details: [`public/textures/LICENSE.txt`](../textures/LICENSE.txt)
-
----
-
 ## Disclaimer
 
 All third-party software and fonts are provided under their respective

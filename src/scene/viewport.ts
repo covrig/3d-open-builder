@@ -9,7 +9,6 @@ import { lookDefaults } from './document';
 import { Ground, type GroundColors } from './ground';
 import { GRID_NUMBER_HEIGHT, labelScale, labelWidth, makeLabel, ORIGIN_HEIGHT, orient } from './labels';
 import { Reflection } from './reflection';
-import { setEnvironmentProvider } from './surfaceTextures';
 import { MM_PER_UNIT, settings, settingsEvents, type Unit } from '../settings';
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh';
 
@@ -151,7 +150,6 @@ export class Viewport extends EventTarget {
     // multisampled target, and the last pass (OutputPass) copies it 1:1 to the canvas.
     this.renderer = new THREE.WebGLRenderer({ antialias: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    setEnvironmentProvider(() => this.ensureEnvironment()); // metal textures reflect the room
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // The shadow map is redrawn only when something that shapes it changed (see shadowChanged).
@@ -829,16 +827,6 @@ export class Viewport extends EventTarget {
     step();
   }
 
-  /** The soft room reflection (built once, when first needed: by the Shine setting or by a metal texture). */
-  private ensureEnvironment(): THREE.Texture {
-    if (!this.environment) {
-      const pmrem = new THREE.PMREMGenerator(this.renderer);
-      this.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-      pmrem.dispose();
-    }
-    return this.environment;
-  }
-
   setShadows(enabled: boolean): void {
     this.sun.castShadow = enabled;
     this.shadowDirty = true;
@@ -854,7 +842,11 @@ export class Viewport extends EventTarget {
    */
   setLook(look: { shine: number; lightAngle: number; shadowStrength: number; contrast: number }): void {
     const { shine, lightAngle, shadowStrength, contrast } = look;
-    if (shine > 0) this.ensureEnvironment();
+    if (shine > 0 && !this.environment) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    }
     this.shadowDirty = true;
     this.scene.environment = shine > 0 ? this.environment : null;
     this.scene.environmentIntensity = 0.9 * shine;
