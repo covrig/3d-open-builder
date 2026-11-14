@@ -11,7 +11,7 @@
   --accent: #2fb3a1;
   --accent-soft: rgba(47, 179, 161, 0.16);
   --hover: rgba(255, 255, 255, 0.06);
-  --overlay: rgba(21, 27, 35, 0.94);
+  --overlay: #151b23; /* tooltips and tool boxes: solid, nothing shows through */
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   --select: #8cc4ff;
   --note-text: #f2c94c;
@@ -36,7 +36,7 @@
   --accent: #128a7a;
   --accent-soft: rgba(18, 138, 122, 0.12);
   --hover: rgba(0, 0, 0, 0.05);
-  --overlay: rgba(255, 255, 255, 0.95);
+  --overlay: #ffffff;
   --shadow: 0 8px 24px rgba(30, 45, 65, 0.18);
   --select: #1f6fd1;
   --note-text: #8a5a00;
@@ -154,7 +154,6 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
   line-height: 1.4;
   padding: 5px 12px;
   color: color-mix(in srgb, var(--text) 72%, transparent);
-  background: color-mix(in srgb, var(--overlay) 80%, transparent);
   box-shadow: none;
 }
 
@@ -168,7 +167,8 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
   place-items: center;
   border: 2px dashed var(--accent);
   border-radius: 10px;
-  background: var(--overlay);
+  /* The one overlay that stays see-through: the model shows while a file is dragged over the view. */
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
   font-size: 18px;
   pointer-events: none;
   z-index: 4;
@@ -591,6 +591,8 @@ svg.measure circle.hover { fill: none; stroke: var(--text); stroke-width: 1.5; o
 /* A distance label can be clicked to type a new distance. */
 .m-label[data-m] { pointer-events: auto; cursor: text; }
 .m-label[data-m]:hover { outline: 1px solid var(--accent); }
+/* Touch screens: a finger on a label must still reach the camera (pinch, pan); a tap on it is found by the measure tool. */
+@media (hover: none), (pointer: coarse) { .m-label[data-m] { pointer-events: none; } }
 /* The box that opens on it (see measureEdit.ts). */
 .m-edit { position: absolute; z-index: 3; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: var(--overlay); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow); }
 .m-edit[hidden] { display: none; }
@@ -706,14 +708,12 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
   bottom: 12px;
   z-index: 2;
   background: var(--overlay);
-  opacity: 0.85;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 10px;
   font-size: 12px;
   max-width: 260px;
 }
-#shortcuts-panel:hover { opacity: 1; }
 #shortcuts-panel header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 #shortcuts-panel header button { border: 0; background: none; padding: 0 4px; font-size: 16px; line-height: 1; }
 #shortcuts-panel dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
@@ -1034,7 +1034,7 @@ body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orien
 #busy button { padding: 4px 12px; }
 /* Touch screens: while the side panel is closed and a measure tool is on, a row of icon buttons under the hint
    (distance, angle, circle, stop) changes or ends the measuring without opening the panel. Same size as the
-   corner buttons; at the right so the view cube on the left stays clear. */
+   corner buttons; the "Turn view" one lets one finger turn the camera. */
 #measure-quick { display: none; gap: 6px; align-self: flex-end; pointer-events: auto; }
 #measure-quick button {
   width: 38px;
@@ -1151,8 +1151,10 @@ svg.gizmo .corner-touch { r: 16px; }
   svg.gizmo .ring-hit { stroke-width: 26; }
 }
 
-/* View cube under the app name. */
-#view-cube { position: absolute; top: 58px; left: 22px; width: 80px; height: 80px; z-index: 2; }
+/* View cube in the top right corner. */
+#view-cube { position: absolute; top: 10px; right: 12px; width: 80px; height: 80px; z-index: 2; }
+/* Out of the way while a tooltip lies over it (see tooltip.ts), like the app name. */
+#view-cube.under-tip, #brand-overlay.under-tip { visibility: hidden; }
 #view-cube .vc-stage { position: absolute; left: 50%; top: 50%; }
 #view-cube .vc-cube { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
 #view-cube .vc-face {

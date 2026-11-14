@@ -13,6 +13,7 @@ const HINTS: Record<MeasureKind, string> = {
   angle: 'Angle: click the start, the corner, then the end, all on the model. With X-ray on, hidden corners and edges can be picked too. Click Angle again to stop.',
   circle: 'Circle: click three points on the model, on the edge of a circle or hole. With X-ray on, hidden corners and edges can be picked too. Click Circle again to stop.',
 };
+const TURN_HINT = 'One finger turns the view, two fingers pan and zoom it. Tap Turn view again to pick points.';
 /** Colours of the 1st, 2nd and 3rd point. */
 const POINT_COLORS = ['#4cb8ff', '#7ed321', '#c77dff'];
 /**
@@ -99,6 +100,8 @@ export class MeasureTool {
   private readonly editor: DistanceEditor;
   /** True while the last pointer over the view was a finger */
   private touchPointer = false;
+  /** Touch: "Turn view" is on, so one finger turns the camera instead of aiming a point */
+  private turning = false;
   /** Touch: the aimed point waiting for the tick (the finger has lifted) */
   private candidate: Picked | null = null;
   /** The loupe shown above a finger that is aiming, and the canvas inside it that gets the zoomed copy of the view */
@@ -157,24 +160,41 @@ export class MeasureTool {
     viewport.onFrame(() => this.draw());
     this.editor = new DistanceEditor(viewport.element, doc, (p) => this.world(p), toast);
     // A click on a distance's number: type the distance it should be (resizes or moves the objects).
-    this.labels.addEventListener('click', (e) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>('.m-label[data-m]');
+    const openLabel = (el: HTMLElement | null): boolean => {
       const m = el && this.doc.measurements[Number(el.dataset.m)];
-      if (el && m) this.editor.open(m, el.getBoundingClientRect());
-    });
+      if (!el || !m) return false;
+      this.editor.open(m, el.getBoundingClientRect());
+      return true;
+    };
+    this.labels.addEventListener('click', (e) => openLabel((e.target as HTMLElement).closest<HTMLElement>('.m-label[data-m]')));
+    // On a touch screen the labels do not take fingers (see the stylesheet): a finger on one must still be able to
+    // pinch or pan the camera. A quick tap on a label is found here instead, from the canvas.
+    const touchesDown = new Set<number>();
+    let tap: { id: number; x: number; y: number; t: number } | null = null;
+    const labelAt = (x: number, y: number): HTMLElement | null => {
+      for (const el of this.labels.querySelectorAll<HTMLElement>('.m-label[data-m]')) {
+        const r = el.getBoundingClientRect();
+        if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) return el;
+      }
+      return null;
+    };
 
     // Which kind of pointer is over the view (main.ts passes plain coordinates), so a
     // finger can aim above itself. These run before main.ts's own handlers.
     const canvas = viewport.renderer.domElement;
     const track = (e: PointerEvent) => {
       this.touchPointer = e.pointerType === 'touch';
-      if (this.touchPointer) this.finger = { x: e.clientX, y: e.clientY };
+      if (this.touchPointer && !this.turning) this.finger = { x: e.clientX, y: e.clientY };
     };
     canvas.addEventListener(
       'pointerdown',
       (e) => {
         track(e);
-        if (!this.touchPointer || !this.kind) return;
+        if (e.pointerType === 'touch') {
+          touchesDown.add(e.pointerId);
+          tap = touchesDown.size === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
+        }
+        if (!this.touchPointer || !this.kind || this.turning) return;
         this.fingers.add(e.pointerId);
         if (this.fingers.size > 1) {
           // A second finger: pinch or two-finger pan of the camera, nothing is aimed.
@@ -196,10 +216,17 @@ export class MeasureTool {
         type,
         (e) => {
           if (e.pointerType !== 'touch') return;
+          touchesDown.delete(e.pointerId);
+          const wasTap = type === 'pointerup' && tap && tap.id === e.pointerId && performance.now() - tap.t < 500
+            && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 10;
+          if (tap && tap.id === e.pointerId) tap = null;
+          // A tap on a distance's label: type its distance, nothing else happens (not even a selection or an aimed point).
+          const label = wasTap ? labelAt(e.clientX, e.clientY) : null;
+          if (label && openLabel(label)) e.stopImmediatePropagation();
           // The finger is up: the point under it becomes the candidate (the chip asks to
           // place it). Done here, not in click(), because aiming is a drag, which click ignores.
           this.fingers.delete(e.pointerId);
-          const aimed = this.kind && !this.gesture && type === 'pointerup';
+          const aimed = this.kind && !this.turning && !this.gesture && type === 'pointerup' && !label;
           if (this.fingers.size === 0) this.gesture = false;
           this.finger = null;
           this.hover = null;
@@ -240,6 +267,8 @@ export class MeasureTool {
         this.setKind(what === 'stop' ? null : (what as MeasureKind));
       });
     }
+    // Touch screens: "Turn view" lets one finger turn the camera (it cannot while a finger aims the points).
+    document.querySelector('[data-measure-turn]')?.addEventListener('click', () => this.setTurning(!this.turning));
   }
 
   get active(): boolean {
@@ -254,13 +283,13 @@ export class MeasureTool {
     // A finger on the view aims the point instead of turning the camera (two fingers still
     // zoom and pan); put back when measuring stops. The mouse buttons are not affected.
     const touches = this.viewport.orbit.touches;
-    if (kind && !this.savedTouches) {
-      this.savedTouches = { ...touches };
-      touches.ONE = null;
-    } else if (!kind && this.savedTouches) {
+    if (kind && !this.savedTouches) this.savedTouches = { ...touches };
+    else if (!kind && this.savedTouches) {
       Object.assign(touches, this.savedTouches);
       this.savedTouches = null;
     }
+    if (!kind) this.turning = false;
+    this.applyTouches();
     this.cancelMove();
     this.fingers.clear();
     this.gesture = false;
@@ -276,8 +305,40 @@ export class MeasureTool {
       b.classList.toggle('active', b.dataset.measureQuick === kind);
     }
     this.viewport.element.classList.toggle('measuring', kind !== null);
-    if (kind) showHint('measure', HINTS[kind]);
-    else hideHint('measure');
+    this.showMeasureHint();
+    this.viewport.invalidate();
+  }
+
+  /** The hint of the measuring kind, or (touch, "Turn view" on) the one that says one finger turns the view. */
+  private showMeasureHint(): void {
+    if (!this.kind) return hideHint('measure');
+    showHint('measure', this.turning ? TURN_HINT : HINTS[this.kind]);
+  }
+
+  /** One finger aims the point while measuring; with "Turn view" on it turns the camera instead. The mouse is not affected. */
+  private applyTouches(): void {
+    const turn = document.querySelector<HTMLButtonElement>('[data-measure-turn]');
+    if (turn) {
+      turn.classList.toggle('active', this.turning);
+      turn.setAttribute('aria-pressed', String(this.turning));
+    }
+    const saved = this.savedTouches;
+    if (saved) this.viewport.orbit.touches.ONE = this.turning ? saved.ONE : null;
+  }
+
+  /** Touch: switch the "Turn view" button (see applyTouches). Whatever was being aimed is dropped. */
+  private setTurning(on: boolean): void {
+    if (!this.kind || on === this.turning) return;
+    this.turning = on;
+    this.applyTouches();
+    this.cancelMove();
+    this.fingers.clear();
+    this.gesture = false;
+    this.finger = null;
+    this.hover = null;
+    this.hoverSnap = null;
+    this.candidate = null;
+    this.showMeasureHint();
     this.viewport.invalidate();
   }
 
@@ -322,6 +383,7 @@ export class MeasureTool {
 
   move(clientX: number, clientY: number): void {
     if (!this.kind || this.gesture) return;
+    if (this.touchPointer && this.turning) return;
     if (this.touchPointer) {
       // The loupe copies the WebGL canvas, which needs a fresh 3D frame (see drawLoupe).
       this.cancelMove();

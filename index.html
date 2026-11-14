@@ -45,7 +45,7 @@
           <button data-insert="cube" role="menuitem"><i data-lucide="box"></i>Cube<kbd class="key-hint">1</kbd></button>
           <button data-insert="cylinder" role="menuitem"><i data-lucide="cylinder"></i>Cylinder<kbd class="key-hint">2</kbd></button>
           <button data-insert="sphere" role="menuitem"><i data-lucide="circle"></i>Sphere<kbd class="key-hint">3</kbd></button>
-          <button data-insert="tube" role="menuitem"><i data-lucide="circle-dot"></i>Tube</button>
+          <button data-insert="tube" role="menuitem"><i data-lucide="circle-dot"></i>Tube<kbd class="key-hint">4</kbd></button>
           <button data-insert="cone" role="menuitem"><i data-lucide="cone"></i>Cone</button>
           <button data-insert="pyramid" role="menuitem"><i data-lucide="pyramid"></i>Pyramid</button>
           <button data-insert="wedge" role="menuitem"><i data-lucide="triangle-right"></i>Wedge</button>
@@ -78,7 +78,7 @@
       <div class="group" aria-label="Combine">
         <button data-boolean="union" data-tip-title="Merge" data-shortcut="M" data-tip="Join the selected objects into one object. Objects that don't touch become one object made of separate pieces."><i data-lucide="squares-unite"></i><span>Merge</span></button>
         <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-shortcut="N" data-tip="Cut the selected objects out of every object or group part they go into, then remove them. Undo brings them back."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
-        <button data-boolean="intersection" data-tip-title="Intersect" data-shortcut="I" data-tip="Keep only the parts of objects inside other shapes, in two steps: click the objects to trim, then the shapes."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
+        <button data-boolean="intersection" data-tip-title="Intersect" data-shortcut="I" data-tip="Step 1: click Objects A button above and select objects. Step 2: click Objects B button above and select objects."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
       </div>
 
       <div class="group" aria-label="Edit">
@@ -166,6 +166,7 @@
             <button type="button" data-measure-quick="distance" aria-label="Distance" title="Distance"><i data-lucide="ruler"></i></button>
             <button type="button" data-measure-quick="angle" aria-label="Angle" title="Angle"><i data-lucide="angle"></i></button>
             <button type="button" data-measure-quick="circle" aria-label="Circle" title="Circle"><i data-lucide="circle-dashed"></i></button>
+            <button type="button" data-measure-turn aria-pressed="false" aria-label="Turn view" title="Turn view: one finger turns the camera instead of picking points"><i data-lucide="rotate-3d"></i></button>
             <button type="button" data-measure-quick="stop" class="stop" aria-label="Stop measuring" title="Stop measuring"><i data-lucide="x"></i></button>
           </div>
           <div id="busy" role="status" hidden><span>Working…</span><button type="button" data-action="cancel-op" class="cancel" data-tip-title="Cancel" data-tip="Stop this calculation. Nothing in the drawing changes.">Cancel</button></div>
@@ -179,7 +180,7 @@
             <dt>Ctrl+Z / Ctrl+Y</dt><dd>Undo / redo</dd>
             <dt>Ctrl+C / X / V</dt><dd>Copy / cut / paste</dd>
             <dt class="single-key">D</dt><dd class="single-key">Duplicate</dd>
-            <dt class="single-key">1 / 2 / 3</dt><dd class="single-key">Add cube / cylinder / sphere</dd>
+            <dt class="single-key">1 / 2 / 3 / 4</dt><dd class="single-key">Add cube / cylinder / sphere / tube</dd>
             <dt class="single-key">M / N / I</dt><dd class="single-key">Merge / subtract / intersect</dd>
             <dt class="single-key">S / E / P</dt><dd class="single-key">Split / extrude / pattern</dd>
             <dt class="single-key">B / O</dt><dd class="single-key">Bevel / round</dd>
@@ -448,7 +449,7 @@
         </fieldset>
         <fieldset>
           <legend>Keyboard</legend>
-          <label><input type="checkbox" name="shortcuts" /> Enable shortcuts: single keys like 1 2 3 to add shapes, D duplicate, M merge, S split… (Ctrl+Z, Ctrl+C and Esc always work)</label>
+          <label><input type="checkbox" name="shortcuts" /> Enable shortcuts: single keys like 1 2 3 4 to add shapes, D duplicate, M merge, S split… (Ctrl+Z, Ctrl+C and Esc always work)</label>
           <label class="mouse-only"><input type="checkbox" name="hideClipboard" /> Hide Copy, Cut and Paste in the toolbar (Ctrl+C, Ctrl+X and Ctrl+V still work), for more room</label>
         </fieldset>
         <fieldset>

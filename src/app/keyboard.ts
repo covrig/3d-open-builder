@@ -32,6 +32,7 @@ const TOOL_KEYS: Record<string, string> = {
   '1': '[data-insert="cube"]',
   '2': '[data-insert="cylinder"]',
   '3': '[data-insert="sphere"]',
+  '4': '[data-insert="tube"]',
   d: '[data-action="duplicate"]',
   s: '[data-action="split"]',
   m: '[data-boolean="union"]',

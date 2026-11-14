@@ -21,7 +21,7 @@ function cssMatrix(right: THREE.Vector3, down: THREE.Vector3, out: THREE.Vector3
 }
 
 /**
- * The view cube under the app name: a small cube that turns with the camera.
+ * The view cube in the top right corner of the view: a small cube that turns with the camera.
  * Clicking a side turns the view to look at that side. Built from page
  * elements with 3D CSS transforms, so it costs next to nothing and its labels
  * stay sharp.

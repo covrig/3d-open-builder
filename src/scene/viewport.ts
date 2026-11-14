@@ -53,6 +53,9 @@ const HOME_POSITION = new THREE.Vector3(-170, -260, 210);
 const HOME_TARGET = new THREE.Vector3(0, 0, 20);
 /** The middle of the plate, shown when there is nothing else to look at. */
 /** The even fill light and the sun: their strengths in the look the app always had. */
+/** Shadow map size (px), and the smaller one used while the camera turns (a quarter of the pixels). */
+const SHADOW_SIZE = 2048;
+const SHADOW_SIZE_TURNING = 1024;
 const SKY_LIGHT = 1.15;
 const SUN_LIGHT = 2.1;
 const HOME_AREA = new THREE.Box3(new THREE.Vector3(-60, -60, 0), new THREE.Vector3(60, 60, 20));
@@ -165,6 +168,13 @@ export class Viewport extends EventTarget {
     this.guardTouches();
     // Dragging the view stops a running turn to a view cube side.
     this.orbit.addEventListener('start', () => this.cameraRun++);
+    // The sun follows the turning camera, so the shadow is redrawn every frame of a turn: at a lower
+    // resolution while it lasts, in full when the camera is let go.
+    this.orbit.addEventListener('start', () => (this.turning = true));
+    this.orbit.addEventListener('end', () => {
+      this.turning = false;
+      this.setShadowResolution(SHADOW_SIZE);
+    });
     // The controls set an inline "cursor: auto" on the canvas, which would beat
     // every cursor in the stylesheet (turning, panning, zooming, measuring…).
     this.renderer.domElement.style.removeProperty('cursor');
@@ -177,7 +187,7 @@ export class Viewport extends EventTarget {
     this.scene.add(this.sky);
     this.sun = new THREE.DirectionalLight(0xffffff, SUN_LIGHT);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 4000;
     // Without these, faces shadow themselves in moving stripes ("shadow acne").
@@ -344,6 +354,10 @@ export class Viewport extends EventTarget {
       // The renderer refreshes world matrices only while drawing, after this point;
       // the shadow check needs them current.
       this.scene.updateMatrixWorld();
+      // Only a turn moves the sun: panning and zooming keep the shadow they have.
+      const sunKey = `${this.sun.position.x.toFixed(2)},${this.sun.position.y.toFixed(2)},${this.sun.position.z.toFixed(2)}`;
+      if (this.turning && sunKey !== this.sunKey) this.setShadowResolution(SHADOW_SIZE_TURNING);
+      this.sunKey = sunKey;
       if (this.shadowChanged()) {
         this.renderer.shadowMap.needsUpdate = true;
         this.stats.shadowUpdates++;
@@ -363,6 +377,20 @@ export class Viewport extends EventTarget {
    * drawing calls, not the GPU time; shadowUpdates counts shadow map redraws asked for.
    */
   readonly stats = { frames: 0, lastMs: 0, shadowUpdates: 0 };
+
+  /** The camera is being turned, panned or zoomed by hand */
+  private turning = false;
+  private sunKey = '';
+
+  /** Resize the shadow map (a new one is made the next time it is drawn, and drawn then). */
+  private setShadowResolution(size: number): void {
+    const sh = this.sun.shadow;
+    if (sh.mapSize.x === size) return;
+    sh.mapSize.set(size, size);
+    sh.map?.dispose();
+    sh.map = null;
+    this.invalidate();
+  }
 
   /** Set when something the signature cannot see may have changed the shadow (also true for the first frame). */
   private shadowDirty = true;
