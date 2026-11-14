@@ -17,7 +17,10 @@ export function setupTooltips(): void {
   title.className = 'tip-title';
   const body = document.createElement('div');
   body.className = 'tip-body';
-  tip.append(title, body);
+  // An optional warning under the text (data-tip-note), in yellow.
+  const note = document.createElement('div');
+  note.className = 'tip-note';
+  tip.append(title, body, note);
   document.body.append(tip);
 
   let current: HTMLElement | undefined;
@@ -34,7 +37,9 @@ export function setupTooltips(): void {
     const key = settings.shortcuts && el.dataset.shortcut ? ` (${el.dataset.shortcut})` : '';
     title.textContent = (el.dataset.tipTitle ?? el.textContent?.trim() ?? '') + key;
     // A control that can't be used right now (a tool is open, a group is selected) says why instead.
-    body.textContent = blockReason(el) ?? el.dataset.tip ?? '';
+    const blocked = blockReason(el);
+    body.textContent = blocked ?? el.dataset.tip ?? '';
+    note.textContent = blocked ? '' : (el.dataset.tipNote ?? '');
     tip.hidden = false;
     const r = el.getBoundingClientRect();
     const t = tip.getBoundingClientRect();

@@ -15,9 +15,7 @@ const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.
 
 const ARROW_LENGTH = 34; // px, double arrow for Move and Rotate
 const OFFSET = 14; // px between an object's face and its handle
-const MOVE_SNAP = 1; // mm
-const ROTATE_SNAP = 5; // degrees
-const SIZE_SNAP = 1; // mm
+// Snapping steps (distance, angle) come from the Settings: settings.snapDistance (mm) and settings.snapAngle (degrees).
 const FACE_SNAP = 2; // mm: faces closer than this to another face line up
 const NEAR = 20; // mm: only objects within this distance count for face snapping
 /**
@@ -562,7 +560,7 @@ export class Gizmo {
   private applyMove(d: DragState, a: number, delta: number): void {
     const lo = d.box.min.getComponent(a), hi = d.box.max.getComponent(a);
     if (settings.snapping) {
-      delta = Math.round(delta / MOVE_SNAP) * MOVE_SNAP;
+      delta = Math.round(delta / settings.snapDistance) * settings.snapDistance;
       // Line faces up with nearby objects' faces only (snapping to something
       // far away would look like a random jump), the plate for height, and
       // the centre with the origin axis lines.
@@ -630,7 +628,7 @@ export class Gizmo {
     const axis = AXES[d.handle.axis];
     let rad = d.handle.faceOn ? (d.handle.spin ?? 1) * d.angle : along;
     if (settings.snapping) {
-      const s = THREE.MathUtils.degToRad(ROTATE_SNAP);
+      const s = THREE.MathUtils.degToRad(settings.snapAngle);
       rad = Math.round(rad / s) * s;
     }
     const q = new THREE.Quaternion().setFromAxisAngle(axis, rad);
@@ -645,7 +643,7 @@ export class Gizmo {
     const startSize = d.box.max.getComponent(a) - d.box.min.getComponent(a);
     if (startSize <= 0) return;
     let newSize = startSize + along;
-    if (settings.snapping) newSize = Math.round(newSize / SIZE_SNAP) * SIZE_SNAP;
+    if (settings.snapping) newSize = Math.round(newSize / settings.snapDistance) * settings.snapDistance;
     const f = Math.max(newSize, 0.1) / startSize;
     const anchor = sign > 0 ? d.box.min.getComponent(a) : d.box.max.getComponent(a);
     if (this.keepProportions) {

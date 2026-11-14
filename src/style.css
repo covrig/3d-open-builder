@@ -14,6 +14,8 @@
   --overlay: rgba(21, 27, 35, 0.94);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   --select: #8cc4ff;
+  --note-text: #f2c94c;
+  --note-bg: rgba(242, 201, 76, 0.12);
   --x: #e5484d;
   --y: #30a46c;
   --z: #3e8ed0;
@@ -37,6 +39,8 @@
   --overlay: rgba(255, 255, 255, 0.95);
   --shadow: 0 8px 24px rgba(30, 45, 65, 0.18);
   --select: #1f6fd1;
+  --note-text: #8a5a00;
+  --note-bg: #fff3d1;
   color-scheme: light;
 }
 
@@ -153,6 +157,9 @@ button svg, a.button svg { width: 18px; height: 18px; color: var(--accent); flex
   background: color-mix(in srgb, var(--overlay) 80%, transparent);
   box-shadow: none;
 }
+
+/* A warning under a hint (Bevel and Round). */
+#op-hint .hint-note { display: block; margin-top: 3px; color: var(--note-text); }
 
 #drop-hint {
   position: absolute;
@@ -289,6 +296,9 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
 #tooltip .tip-body { color: var(--muted); line-height: 1.4; font-size: 12.5px; }
 /* A tooltip with only a title (e.g. "Hide the panel"): no line, no empty space. */
 #tooltip .tip-body:empty { display: none; }
+/* A warning under the text of a tooltip (e.g. Bevel and Round: do all edges at once). */
+#tooltip .tip-note { margin-top: 8px; padding: 6px 8px; border-left: 3px solid var(--note-text); border-radius: 3px; background: var(--note-bg); color: var(--note-text); line-height: 1.4; font-size: 12.5px; }
+#tooltip .tip-note:empty { display: none; }
 #tooltip .tip-title:has(+ .tip-body:empty) { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
 
 /* --- Sidebar ------------------------------------------------------------ */
@@ -328,6 +338,9 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
 #sidebar .header-action:hover { background: var(--panel-hover); border-color: var(--border-strong); }
 @media (hover: none) { #sidebar .header-action { opacity: 1; } }
 #settings-dialog label.disabled { opacity: 0.5; }
+#settings-dialog .snap-steps { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-left: 1.6em; }
+#settings-dialog .snap-steps label { display: flex; align-items: center; gap: 8px; }
+#settings-dialog select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
 #settings-dialog label .note { margin-left: 4px; }
 #sidebar h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--muted); }
 .muted { color: var(--muted); font-size: 12px; }

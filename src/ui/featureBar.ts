@@ -59,6 +59,8 @@ function applyLimits(f: Field, input: HTMLInputElement): void {
 export interface FeatureSpec<R> {
   title: string;
   hint: string;
+  /** A warning shown in yellow under the hint */
+  hintNote?: string;
   fields: Field[];
   /** Objects hidden while the preview shows (their replacement is previewed instead). */
   hide?: SceneObject[];
@@ -176,7 +178,7 @@ export class FeatureBar {
     // Everything the tool does not work on fades back, so its own objects stand out.
     const mine = new Set([...(spec.targets ?? []), ...(spec.hide ?? [])]);
     if (mine.size) this.doc.setFaded(this.doc.objects.filter((o) => !mine.has(o) && !o.hidden));
-    showHint('feature', spec.hint);
+    showHint('feature', spec.hint, spec.hintNote);
     this.refresh(0);
     if (spec.focusFirst && !matchMedia('(pointer: coarse)').matches) {
       // (not on touch screens: the keyboard would cover the view)

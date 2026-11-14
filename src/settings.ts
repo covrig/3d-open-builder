@@ -38,11 +38,11 @@ export interface UiState {
   rulerTextScale: number;
   /** Opacity of the edge lines in the Edges view (1 = solid) */
   edgeStrength: number;
-  /** Light and shadow options (the Shadows tile's sliders); the defaults are the look the app always had */
-  shine: number; // 0..1, 0 = matt as always
+  /** Light and shadow options (the Shadows tile's sliders); defaults: a little shine and contrast, shadows at 75% */
+  shine: number; // 0..1, 0 = matt
   lightAngle: number; // degrees the light is turned from its usual place, -180..180
-  shadowStrength: number; // 0..1, 1 = as always
-  surfaceContrast: number; // 0..1, 0 = as always
+  shadowStrength: number; // 0..1, 1 = full
+  surfaceContrast: number; // 0..1, 0 = none
   /** Dashed lines where objects overlap, in the Edges view */
   internalIntersections: boolean;
   /** With those: also the edges of an object where they run inside another object */
@@ -72,6 +72,10 @@ export interface Settings {
   unit: Unit;
   theme: ThemeChoice;
   snapping: boolean;
+  /** With snapping on: moves and sizes jump in steps of this many mm (a value from snapDistanceChoices) */
+  snapDistance: number;
+  /** With snapping on: turns jump in steps of this many degrees (one of SNAP_ANGLES) */
+  snapAngle: number;
   collision: boolean;
   /** Single-key shortcuts (1, D, M, F…); Ctrl+Z, Ctrl+C and the like always work */
   shortcuts: boolean;
@@ -87,6 +91,8 @@ const DEFAULTS: Settings = {
   unit: 'mm',
   theme: 'system',
   snapping: true,
+  snapDistance: 1,
+  snapAngle: 5,
   collision: false,
   shortcuts: true,
   ui: {
@@ -102,14 +108,14 @@ const DEFAULTS: Settings = {
     hiddenPanels: [],
     plateOpacity: 0.35,
     gridLineOpacity: 1,
-    gridValues: false,
+    gridValues: true,
     plateTextScale: 1,
     rulerTextScale: 1,
     edgeStrength: 1,
-    shine: 0,
+    shine: 0.1,
     lightAngle: 0,
-    shadowStrength: 1,
-    surfaceContrast: 0,
+    shadowStrength: 0.75,
+    surfaceContrast: 0.2,
     internalIntersections: true,
     internalEdges: true,
     reflection: { on: false, strength: 0.3, depth: 60 },
@@ -119,6 +125,33 @@ const DEFAULTS: Settings = {
     exportHidden: false,
   },
 };
+
+/** Snapping steps for moving and sizing: millimetres (also for cm) or fractions of an inch. Stored in mm. */
+const SNAP_DISTANCES_MM = [0.1, 0.25, 0.5, 1, 2, 5];
+const SNAP_FRACTIONS_IN = [1 / 64, 1 / 32, 1 / 16, 1 / 8, 1 / 4, 1 / 2];
+export const SNAP_ANGLES = [1, 5, 10];
+
+/** The distance steps offered for a unit, in mm. */
+export function snapDistanceChoices(unit: Unit): number[] {
+  return unit === 'in' ? SNAP_FRACTIONS_IN.map((f) => f * MM_PER_UNIT.in) : SNAP_DISTANCES_MM;
+}
+
+/** The choice closest to a value (steps are told apart by far more than any rounding). */
+export function nearestChoice(choices: number[], value: number): number {
+  return choices.reduce((best, c) => (Math.abs(c - value) < Math.abs(best - value) ? c : best), choices[0]);
+}
+
+/** A distance step as shown in the Settings list: "0.25 mm", "1.0 mm", "1/32 in". */
+export function snapDistanceLabel(mm: number, unit: Unit): string {
+  if (unit === 'in') {
+    const sixtyFourths = Math.round((mm / MM_PER_UNIT.in) * 64);
+    let n = sixtyFourths, d = 64;
+    while (n % 2 === 0 && d > 1) { n /= 2; d /= 2; }
+    return `${n}/${d} in`;
+  }
+  return `${Number.isInteger(mm) ? mm.toFixed(1) : mm} mm`;
+}
+
 const KEY = '3d-open-builder.settings';
 
 function load(): Settings {
@@ -142,6 +175,8 @@ function load(): Settings {
     // Storage blocked (private window etc.) or unreadable: use the defaults.
   }
   if (!UNITS.includes(s.unit)) s.unit = 'mm'; // older versions offered µm, ft and m
+  s.snapDistance = nearestChoice(snapDistanceChoices(s.unit), typeof s.snapDistance === 'number' && s.snapDistance > 0 ? s.snapDistance : DEFAULTS.snapDistance);
+  if (!SNAP_ANGLES.includes(s.snapAngle)) s.snapAngle = DEFAULTS.snapAngle;
   // Keep a saved panel order only for sections that still exist, and add new ones at the end.
   const known = PANELS.map(([id]) => id) as PanelId[];
   const saved = Array.isArray(s.ui.panelOrder) ? s.ui.panelOrder.filter((id) => known.includes(id)) : [];
@@ -164,11 +199,11 @@ function load(): Settings {
   s.ui.measure.deltas = s.ui.measure.deltas === true;
   s.ui.gridLineOpacity = clamp01(s.ui.gridLineOpacity, 1);
   s.ui.edgeStrength = clamp01(s.ui.edgeStrength, 1);
-  s.ui.shine = clamp01(s.ui.shine, 0);
+  s.ui.shine = clamp01(s.ui.shine, DEFAULTS.ui.shine);
   s.ui.lightAngle = inRange(s.ui.lightAngle, -180, 180, 0);
-  s.ui.shadowStrength = inRange(s.ui.shadowStrength, 0.1, 1, 1);
-  s.ui.surfaceContrast = clamp01(s.ui.surfaceContrast, 0);
-  s.ui.gridValues = s.ui.gridValues === true;
+  s.ui.shadowStrength = inRange(s.ui.shadowStrength, 0.1, 1, DEFAULTS.ui.shadowStrength);
+  s.ui.surfaceContrast = clamp01(s.ui.surfaceContrast, DEFAULTS.ui.surfaceContrast);
+  s.ui.gridValues = typeof s.ui.gridValues === 'boolean' ? s.ui.gridValues : DEFAULTS.ui.gridValues;
   s.ui.plateTextScale = inRange(s.ui.plateTextScale, 0.5, 2, DEFAULTS.ui.plateTextScale);
   s.ui.rulerTextScale = inRange(s.ui.rulerTextScale, 0.5, 2, DEFAULTS.ui.rulerTextScale);
   s.ui.importSeparate = s.ui.importSeparate === true;
@@ -193,6 +228,8 @@ function save(): void {
 
 export function updateSettings(patch: Partial<Omit<Settings, 'ui'>>): void {
   Object.assign(settings, patch);
+  // A new unit may not offer the current snap distance: take the closest one it does.
+  if (patch.unit !== undefined && patch.snapDistance === undefined) settings.snapDistance = nearestChoice(snapDistanceChoices(settings.unit), settings.snapDistance);
   save();
   settingsEvents.dispatchEvent(new Event('change'));
 }

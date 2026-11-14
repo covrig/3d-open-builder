@@ -67,10 +67,10 @@ class FacePlacement {
     this.offset.set(0, 0);
   }
 
-  /** Arrow keys nudge within the face: 1 mm with snapping on, 0.1 mm off, Shift ×10. */
+  /** Arrow keys nudge within the face: the snap distance with snapping on, 0.1 mm off, Shift ×10. */
   nudge(e: KeyboardEvent): boolean {
     if (!this.obj || !e.key.startsWith('Arrow')) return false;
-    const step = (settings.snapping ? 1 : 0.1) * (e.shiftKey ? 10 : 1);
+    const step = (settings.snapping ? settings.snapDistance : 0.1) * (e.shiftKey ? 10 : 1);
     if (e.key === 'ArrowLeft') this.offset.x -= step;
     if (e.key === 'ArrowRight') this.offset.x += step;
     if (e.key === 'ArrowUp') this.offset.y += step;

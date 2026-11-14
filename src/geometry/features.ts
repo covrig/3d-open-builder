@@ -79,6 +79,8 @@ function pointInside(wasm: ManifoldToplevel, solid: Manifold, p: V3, reach: numb
   return inside;
 }
 
+/** Two face normals closer than this (cosine of 5 degrees) are the same flat face */
+const FACE_STEADY = Math.cos((5 * Math.PI) / 180);
 const TOO_LARGE = 'This size is too large for the faces next to the picked edge. Use a smaller one.';
 /**
  * Next to an open end of a rim: how far from the end (in legs, plus two segments)
@@ -252,7 +254,11 @@ function checkSizes(
       // Along one smooth rim the tools of segments a few steps apart share a sliver where the
       // facets are irregular; that cuts the same material twice, which is harmless.
       const sliver = link(i) === link(j) ? 1e-3 : 1e-6;
-      if (both.volume() > sliver * Math.min(ti.volume, tj.volume)) throw new Error(TOO_LARGE);
+      // Where neither face stays the same along a smooth chain, both are curved: the crease
+      // two earlier rounds leave where they meet. Its tools overlap each other though the
+      // rounding is fine, so only there is that left to the result.
+      const creased = link(i) === link(j) && [segments[i].n1, segments[i].n2].every((a) => [segments[j].n1, segments[j].n2].every((b) => dot3(a, b) < FACE_STEADY));
+      if (!creased && both.volume() > sliver * Math.min(ti.volume, tj.volume)) throw new Error(TOO_LARGE);
     }
   }
   return bent;
@@ -396,6 +402,21 @@ function treat(
     const cube = keep(keep(Manifold.cube([probe / 2, probe / 2, probe / 2], true)).translate(at));
     return keep(solid.intersect(cube)).volume() > 0;
   };
+  /**
+   * Past end p of outside edge i (direction `out`), is there nothing on the edge line
+   * itself and nothing just under either of its two faces? Then the faces end at p and
+   * whatever solid stands past it lies only in the corner between them.
+   */
+  const box = solid.boundingBox();
+  const reachAll = 2 * Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]) + 1;
+  const leftoverWedge = (i: number, p: V3, out: V3) => {
+    const s = segments[i];
+    const probe = probeCubes(i);
+    const beyond = add(p, out, probe);
+    const tiny = 1e-3;
+    return [add(beyond, add(s.n1, s.n2), -tiny), add(beyond, s.n1, -tiny), add(beyond, s.n2, -tiny)]
+      .every((q) => !pointInside(wasm, solid, q, reachAll));
+  };
   const usable = (i: number) => frames[i].angle >= 0.35 && frames[i].angle <= Math.PI - 0.05;
   /** The picked edges that are not part of a curve (no end carries on smoothly) */
   const lone = (i: number) => usable(i) && !continues(i, segments[i].a) && !continues(i, segments[i].b);
@@ -446,6 +467,11 @@ function treat(
     const extend = (p: V3, out: V3) => {
       if (continues(i, p)) return overlap;
       if (!solidPast(i, p, out)) return corner;
+      // An edge that ends at a corner already cut by an earlier bevel or round (the third
+      // edge of a cube corner whose other two edges were done first): only a leftover
+      // wedge of the old corner stands past the end, between the two faces, which now stop
+      // at the cut. The tool runs on through it, so the three cuts meet cleanly.
+      if (s.convex && leftoverWedge(i, p, out)) return corner;
       return mitreAt(i, p, out) ? corner : 0;
     };
     const extA = !s.convex ? 0 : extend(s.a, [-f.u[0], -f.u[1], -f.u[2]]);

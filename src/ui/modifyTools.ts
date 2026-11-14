@@ -100,6 +100,8 @@ export class ModifyTools {
     this.bar.open<Piece>({
       title: name,
       hint: `${name}: click edges to pick them (blue; click again to drop). The result shows in orange.`,
+      // The same warning as the tool's tooltip (which touch screens never show).
+      hintNote: `Apply to all edges of a corner in one go. ${kind === 'chamfer' ? 'Bevelling' : 'Rounding'} in several steps may result in bad geometry.`,
       fields: [
         {
           key: 'size', label: kind === 'chamfer' ? 'Distance' : 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm',

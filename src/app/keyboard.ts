@@ -8,8 +8,9 @@ import { viewClicks } from '../ui/interaction';
 import type { OverhangTool } from '../ui/overhangTool';
 import type { SplitTool } from '../ui/splitTool';
 import { isBusy, isLocked, isToolOpen, stopActiveTool } from '../ui/toolLock';
-import { BUSY_MESSAGE, LOCKED_MESSAGE } from '../ui/toolGuard';
+import { LOCKED_MESSAGE } from '../ui/toolGuard';
 import type { EditActions } from './clipboard';
+import { REPEATABLE, setupRepeat } from './repeat';
 
 /** What the keyboard shortcuts need from the rest of the app. */
 export interface KeyboardContext {
@@ -25,9 +26,6 @@ export interface KeyboardContext {
   fitView: () => void;
   homeView: () => void;
 }
-
-/** Buttons whose tool can be run again with R (e.g. a second brace): edit, combine, add and mirror tools. */
-const REPEATABLE = '[data-modify], [data-boolean], [data-thread], [data-insert], [data-action="mirror"], [data-action="duplicate"], [data-action="rotate90"], [data-action="split"], [data-action="extrude-down"]';
 
 /** Single-key shortcuts: key → the button it presses (first match, the toolbar one when there are two). */
 const TOOL_KEYS: Record<string, string> = {
@@ -52,33 +50,22 @@ const targetElement = (e: Event): HTMLElement => (e.target instanceof HTMLElemen
 export function setupKeyboard(ctx: KeyboardContext): void {
   const { doc, gizmo, featureBar, splitTool, crossSection, overhangs, actions, toast } = ctx;
 
-  // --- Repeat the last tool (R) ------------------------------------------------
+  // --- Repeat the last command (R) ------------------------------------------------
 
-  let lastTool: HTMLElement | null = null;
-  document.addEventListener('click', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>(REPEATABLE);
-    if (el && e.isTrusted) lastTool = el;
-  }, true);
-
-  /** Run the last tool again, but only once the previous operation is finished. */
-  function repeatLastTool(): void {
-    if (!lastTool) return toast('Nothing to repeat yet: use a tool first');
-    if (isBusy() && !isLocked() && !isToolOpen()) return toast(BUSY_MESSAGE);
-    if (isToolOpen() || isLocked() || isBusy()) return toast(LOCKED_MESSAGE);
-    lastTool.click();
-  }
+  // The Repeat button and R run the last repeatable command again (see repeat.ts).
+  const { repeat: repeatLastTool, remember } = setupRepeat({ crossSection, overhangs, toast });
 
   // --- Keyboard -------------------------------------------------------------
 
   /**
    * Move the selection with the keyboard: arrows along X (left/right) and Y
-   * (up/down, as seen on the plate), Page Up/Down along Z. The step is 1 mm
-   * with snapping on (0.1 mm off); Shift moves ten times as far. A burst of
+   * (up/down, as seen on the plate), Page Up/Down along Z. The step is the snap
+   * distance with snapping on (0.1 mm off); Shift moves ten times as far. A burst of
    * key presses is one undo step.
    */
   let lastNudge = 0;
   function nudgeSelection(e: KeyboardEvent): void {
-    const step = (settings.snapping ? 1 : 0.1) * (e.shiftKey ? 10 : 1);
+    const step = (settings.snapping ? settings.snapDistance : 0.1) * (e.shiftKey ? 10 : 1);
     const d = new THREE.Vector3(
       e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0,
       e.key === 'ArrowUp' ? step : e.key === 'ArrowDown' ? -step : 0,
@@ -162,7 +149,7 @@ export function setupKeyboard(ctx: KeyboardContext): void {
     if (button) {
       return run(() => {
         const el = document.querySelector<HTMLElement>(button)!;
-        if (el.matches(REPEATABLE)) lastTool = el;
+        if (el.matches(REPEATABLE)) remember(el);
         el.click();
       });
     }

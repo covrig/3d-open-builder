@@ -87,10 +87,10 @@ export function setupViewPopovers(viewport: Viewport): void {
       setOn: () => {},
       switchedElsewhere: true,
       sliders: [
-        lookSlider('shine', 'Shine', 'How glossy the objects look: a soft highlight and a faint reflection of the sky. 0% is the normal look.', 0, 1, 0.05, pct),
-        lookSlider('lightAngle', 'Light direction', 'Turn the light around the scene. 0° is the normal place; the shadow moves with it.', -180, 180, 5, (v) => `${v > 0 ? '+' : ''}${v}°`),
+        lookSlider('shine', 'Shine', 'How glossy the objects look: a soft highlight and a faint reflection of the sky. 0% is matt.', 0, 1, 0.05, pct),
+        lookSlider('lightAngle', 'Light direction', 'Turn the light around the scene. 0° is the standard place; the shadow moves with it.', -180, 180, 5, (v) => `${v > 0 ? '+' : ''}${v}°`),
         lookSlider('shadowStrength', 'Shadow strength', 'How dark the cast shadow is.', 0.1, 1, 0.05, pct),
-        lookSlider('surfaceContrast', 'Surface contrast', 'Darker sides turned away from the light, so the shape reads better. 0% is the normal look.', 0, 1, 0.05, pct),
+        lookSlider('surfaceContrast', 'Surface contrast', 'Darker sides turned away from the light, so the shape reads better. 0% is flat.', 0, 1, 0.05, pct),
       ],
     },
     rulers: {

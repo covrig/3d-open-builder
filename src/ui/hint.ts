@@ -2,22 +2,29 @@
  * A tooltip-style instruction that stays on the 3D view (where short messages
  * appear) for as long as a multi-step operation is active, e.g. "Distance:
  * click two points". Each tool shows and hides its own hint; the most recent
- * one is displayed.
+ * one is displayed. A hint can carry a note, shown under it in yellow (a warning
+ * that touch screens, which have no hover tooltips, still see).
  */
-const active = new Map<string, string>();
+const active = new Map<string, { text: string; note?: string }>();
 let el: HTMLElement | null = null;
 
 function render(): void {
   el ??= document.querySelector<HTMLElement>('#op-hint');
   if (!el) return;
-  const texts = [...active.values()];
-  el.hidden = texts.length === 0;
-  el.textContent = texts[texts.length - 1] ?? '';
+  const shown = [...active.values()].pop();
+  el.hidden = !shown;
+  el.textContent = shown?.text ?? '';
+  if (shown?.note) {
+    const note = document.createElement('span');
+    note.className = 'hint-note';
+    note.textContent = shown.note;
+    el.append(note);
+  }
 }
 
-export function showHint(owner: string, text: string): void {
+export function showHint(owner: string, text: string, note?: string): void {
   active.delete(owner); // re-insert so it becomes the newest
-  active.set(owner, text);
+  active.set(owner, { text, note });
   render();
 }
 

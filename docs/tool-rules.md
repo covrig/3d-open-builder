@@ -50,6 +50,7 @@ the other), and measuring works beside them.
 | Copy (button, Ctrl+C) | Yes | Reads only |
 | Measuring tools, Clear measurements | No | Opening another tool would end this one |
 | Undo, redo | No | They rebuild the objects the tool works on |
+| Repeat (button, R) | No | It starts another tool or change |
 | Cut, paste, delete, duplicate, select all/none/invert, group, ungroup, the object list | No | They change or remove what the tool works on |
 | Other toolbar tools and menus (add, combine, edit, mirror, more, check) | No | One tool at a time |
 | Arrange (on plate, lay flat, center, align, distribute, pack) | No | They move what the tool works on |
@@ -140,3 +141,12 @@ since on threads that means tens of thousands of edges. Both tools can be used
 on the same object (bevel some edges, round others). Picking the many short
 edges a bevel or rounding leaves behind and treating them again works, but is
 slow and builds large meshes.
+
+## Repeat
+
+The Repeat button (after Redo) and R run the last repeatable command again; a new one replaces it.
+Repeatable: the toolbar tools and their menus (add, combine, duplicate, mirror, rotate, split, extrude down,
+pattern, text, bevel, round, shell, brace, threaded parts), measuring (distance, angle, circle), the align
+commands, the other Arrange commands (place on plate, lay flat, center, pack, space evenly), the section view and the Check menu (check and repair, overhangs, best print orientation).
+Not repeatable: the View options and Look sliders, Undo, Redo, Copy, Cut, Paste, Delete, Fit and Home. The section and overhangs views are switched on again, never off. Like the other toolbar
+buttons, Repeat is refused while a tool is open or a calculation runs.

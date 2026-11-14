@@ -25,7 +25,7 @@ Nothing to install, no account, and your files never leave your computer.
 - **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges, edge middles and the lines where objects overlap; a section view that cuts the view open, with measuring on the cut.
 - **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour, best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.
 - **See it your way:** X-ray, wireframe, edges (with faint lines where objects overlap) and shadows, rulers, a view cube, hide objects you don't need right now, and light or dark themes.
-- **Any device:** mouse, trackpad or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a key to repeat the last tool.
+- **Any device:** mouse, trackpad or touch, with Home, Select several and Delete buttons on touch screens; on desktop, optional single-key shortcuts and a Repeat button (key R) for the last tool, measurement, arrange command, section or check.
 - **Safe to use:** 100 undo steps, autosave/save, and saving the whole drawing to a project file you can open again.
 
 ## Private by design

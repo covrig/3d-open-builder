@@ -63,6 +63,7 @@
       <div class="group">
         <button data-action="undo" data-tip-title="Undo (Ctrl+Z)" data-tip="Take back the last change."><i data-lucide="undo-2"></i><span>Undo</span></button>
         <button data-action="redo" data-tip-title="Redo (Ctrl+Y)" data-tip="Bring back a change you undid."><i data-lucide="redo-2"></i><span>Redo</span></button>
+        <button data-action="repeat" data-shortcut="R" data-tip-title="Repeat" data-tip="Do the last tool, measurement, arrange command, section or check again." disabled><i data-lucide="repeat"></i><span>Repeat</span></button>
       </div>
 
       <div class="group clipboard-group">
@@ -81,15 +82,15 @@
       </div>
 
       <div class="group" aria-label="Edit">
-        <button data-action="duplicate" data-tip-title="Duplicate" data-shortcut="D" data-tip="Make a copy of the selection. Pick the axis (or two points) and the distance, check the orange preview, then Apply. The original stays."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
+        <button data-action="duplicate" data-tip-title="Duplicate" data-shortcut="D" data-tip="Make a copy of the selection. Pick the axis (or two points) and the distance, check the orange preview, then Apply."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
         <button data-action="split" class="wide-only" data-tip-title="Split" data-shortcut="S" data-tip="Cut the selected object in two with a plane. Choose which piece to keep, then Apply."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
         <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-shortcut="E" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-shortcut="P" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
         <button data-action="mirror" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z. Pick the axis, check the orange preview, then Apply."><i data-lucide="flip-vertical-2"></i><span>Mirror</span></button>
         <!-- The More menu's tools, shown here instead when the toolbar has room (toolbarFit.ts). -->
-        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply."><i data-lucide="bevel"></i><span>Bevel</span></button>
-        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply."><i data-lucide="square-round-corner"></i><span>Round</span></button>
+        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply." data-tip-note="Apply to all edges of a corner in one go. Bevelling in several steps may result in bad geometry."><i data-lucide="bevel"></i><span>Bevel</span></button>
+        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply." data-tip-note="Apply to all edges of a corner in one go. Rounding in several steps may result in bad geometry."><i data-lucide="square-round-corner"></i><span>Round</span></button>
         <button data-modify="shell" class="more-out" data-tip-title="Shell" data-tip="Hollow the object out, leaving walls as thick as you choose."><i data-lucide="box"></i><span>Shell</span></button>
         <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle-left"></i><span>Brace</span></button>
         <button data-action="rotate90" class="more-out" data-tip-title="Rotate" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like, check the orange preview, then Apply."><i data-lucide="rotate-cw"></i><span>Rotate</span></button>
@@ -100,8 +101,8 @@
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
           <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
           <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
-          <button data-modify="chamfer" role="menuitem"><i data-lucide="bevel"></i>Bevel<kbd class="key-hint">B</kbd></button>
-          <button data-modify="fillet" role="menuitem"><i data-lucide="square-round-corner"></i>Round<kbd class="key-hint">O</kbd></button>
+          <button data-modify="chamfer" role="menuitem" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges, set the distance, then Apply." data-tip-note="Apply to all edges of a corner in one go. Bevelling in several steps may result in bad geometry."><i data-lucide="bevel"></i>Bevel<kbd class="key-hint">B</kbd></button>
+          <button data-modify="fillet" role="menuitem" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges, set the radius, then Apply." data-tip-note="Apply to all edges of a corner in one go. Rounding in several steps may result in bad geometry."><i data-lucide="square-round-corner"></i>Round<kbd class="key-hint">O</kbd></button>
           <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
           <button data-modify="gusset" role="menuitem"><i data-lucide="triangle-left"></i>Brace</button>
           <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate</button>
@@ -187,7 +188,7 @@
             <dt>Arrow keys</dt><dd>Move selection (Shift: ×10)</dd>
             <dt>Page Up / Down</dt><dd>Move selection up / down</dd>
             <dt class="single-key">H</dt><dd class="single-key">Home view</dd>
-            <dt class="single-key">R</dt><dd class="single-key">Repeat the last tool</dd>
+            <dt class="single-key">R</dt><dd class="single-key">Repeat the last command</dd>
             <dt class="single-key">F</dt><dd class="single-key">Fit view</dd>
             <dt>Left drag</dt><dd>Turn the view</dd>
             <dt>Right drag</dt><dd>Pan</dd>
@@ -431,7 +432,11 @@
         </fieldset>
         <fieldset>
           <legend>Placing objects</legend>
-          <label><input type="checkbox" name="snapping" /> Snapping: move in 1 mm steps, turn in 5° steps, line faces up with the plate and other objects</label>
+          <label><input type="checkbox" name="snapping" /> Snapping: move, size and turn in steps, and line faces up with the plate and other objects</label>
+          <div class="snap-steps">
+            <label>Distance step <select name="snapDistance"></select></label>
+            <label>Angle step <select name="snapAngle"><option value="1">1°</option><option value="5">5°</option><option value="10">10°</option></select></label>
+          </div>
           <label><input type="checkbox" name="collision" /> Collision: a dragged object stops when it touches another one</label>
         </fieldset>
         <fieldset>
