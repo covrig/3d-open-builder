@@ -96,7 +96,8 @@
         <button data-action="rotate90" class="more-out" data-tip-title="Rotate" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like and check the orange preview."><i data-lucide="rotate-cw"></i><span>Rotate</span></button>
         <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cut the view open across X, Y or Z to see inside. Only the view changes; measuring works on the cut."><i data-lucide="scan-line"></i><span>Section</span></button>
         <button data-modify="soften" class="more-out" data-tip-title="Soften" data-tip="Round all the outer edges of an object in one go, straight or curved (the rim of a cylinder too). A hollow box works too: only the outside is rounded."><i data-lucide="soften"></i><span>Soften</span></button>
-        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, soften, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
+        <button data-modify="texture" class="more-out" data-tip-title="Texture" data-tip="Cover a flat face, the wall of a cylinder, or all the outer faces with small bumps or dents for grip or looks. It prints without support."><i data-lucide="grid-3x3"></i><span>Texture</span></button>
+        <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, soften, texture, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
           <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
@@ -109,6 +110,7 @@
           <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate</button>
           <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Section</button>
           <button data-modify="soften" role="menuitem" data-tip-title="Soften" data-tip="Round all the outer edges of an object in one go, straight or curved (the rim of a cylinder too). A hollow box works too: only the outside is rounded."><i data-lucide="soften"></i>Soften</button>
+          <button data-modify="texture" role="menuitem" data-tip-title="Texture" data-tip="Cover a flat face, the wall of a cylinder, or all the outer faces with small bumps or dents for grip or looks. It prints without support."><i data-lucide="grid-3x3"></i>Texture</button>
         </div>
       </div>
 
@@ -398,6 +400,7 @@
 
     <div id="color-popover" class="popover" hidden>
       <div class="swatches"></div>
+      <label class="texture-size" hidden data-tip-title="Pattern size" data-tip="How big one tile of the picture is on the object."><span>Pattern size</span><input type="number" id="texture-size" min="2" max="500" step="5" /><span>mm</span></label>
       <div class="button-grid cols-1">
         <button id="custom-color-open" data-tip-title="Custom colour" data-tip="Pick any colour: drag in the square, or type a hex code."><span class="swatch-dot"></span><span>Custom colour…</span></button>
         <button data-action="eyedropper" data-tip-title="Copy from object" data-tip="Then click another object in the view to use its colour."><i data-lucide="pipette"></i><span>Copy from object</span></button>

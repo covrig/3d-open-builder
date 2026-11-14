@@ -1,0 +1,20 @@
+Texture pictures in this folder
+
+wood.jpg       Wood096       (ambientCG.com)
+concrete.jpg   Concrete034   (ambientCG.com)
+brick.jpg      Bricks105     (ambientCG.com)
+steel.jpg      Metal046B     (ambientCG.com)
+copper.jpg     Metal035      (ambientCG.com)
+gold.jpg       Metal042A     (ambientCG.com)
+silver.jpg     Metal049A     (ambientCG.com)
+aluminium.jpg  Metal009      (ambientCG.com)
+carbon.jpg     Fabric004     (ambientCG.com)
+granite.jpg    Granite001A   (ambientCG.com)
+marble.jpg     Marble021     (ambientCG.com)
+cork.jpg       Cork003       (ambientCG.com)
+
+Each is the "Color" picture at 1K (1024 x 1024 pixels) of the ambientCG material named above. The larger ones
+(wood, gold, granite, marble, cork) were saved again as JPEG at a lower quality setting to make the file smaller;
+nothing else was changed. All of them are licensed under the Creative Commons CC0 1.0 Universal License (public
+domain dedication): https://creativecommons.org/publicdomain/zero/1.0/
+Credit is not required. Thank you, ambientCG: https://ambientcg.com

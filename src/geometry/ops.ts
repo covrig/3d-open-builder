@@ -9,6 +9,7 @@ import { findEdgesPlaced, type EdgeSegment } from './edges';
 import { edgeTreatment, gusset, shell, textOnFace } from './features';
 import { overlapLines } from './overlaps';
 import { roundBox } from './roundBox';
+import { surfaceTexture, type SurfaceTextureOptions } from './surfaceTexture';
 import { makeThreaded, type ThreadInfo } from './threads';
 
 /**
@@ -38,6 +39,8 @@ export const ops = {
   union: (wasm: ManifoldToplevel, a: { items: PlacedMesh[] }) => booleanOp(wasm, 'union', a.items),
   threaded: (wasm: ManifoldToplevel, a: Parameters<typeof makeThreaded>[1]) => makeThreaded(wasm, a),
   text: (wasm: ManifoldToplevel, a: { item: PlacedMesh } & Parameters<typeof textOnFace>[2]) => textOnFace(wasm, a.item, a),
+  // A relief pattern (bumps or dents) over flat faces.
+  texture: (wasm: ManifoldToplevel, a: { item: PlacedMesh } & SurfaceTextureOptions) => surfaceTexture(wasm, a.item, a),
   // Sharp edges of the object as placed, for picking (bevel, round, brace).
   findEdges: (_wasm: ManifoldToplevel, a: { item: PlacedMesh }) => findEdgesPlaced(a.item),
   // Lines along the edges sharper than `angle` degrees (the Edges view), 6 numbers per segment, in the mesh's own space.

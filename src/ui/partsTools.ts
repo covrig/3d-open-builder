@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { Piece } from '../geometry/cut';
 import type { MeshData } from '../geometry/meshData';
 import { flatFaceCentre } from '../geometry/faceRegion';
+import type { SurfaceTextureOptions } from '../geometry/surfaceTexture';
 import { FONTS, loadFont, missingCharacters, textOutlines, type FontName } from '../geometry/text';
 import { ISO_THREADS, threadLabel, type ThreadKind, type ThreadQuality, type ThreadSize } from '../geometry/threads';
 import { runOp } from '../geometry/workerClient';
@@ -94,6 +95,7 @@ export class PartsTools {
       b.addEventListener('click', () => this.part(b.dataset.thread as Exclude<ThreadKind, 'tap'>));
     }
     for (const b of document.querySelectorAll('[data-modify="text"]')) b.addEventListener('click', () => this.text());
+    for (const b of document.querySelectorAll('[data-modify="texture"]')) b.addEventListener('click', () => this.texture());
   }
 
   /** Clicks on an object's face place `p`; arrow keys nudge it. */
@@ -251,6 +253,62 @@ export class PartsTools {
           this.doc.replaceWithPiece(obj, p);
           this.doc.emit('transform');
         });
+      },
+      onClose: () => this.release(),
+    });
+    this.setApplyEnabled(false);
+    this.capture(at, obj, () => this.bar.refresh(0));
+  }
+
+  // --- Texture ----------------------------------------------------------------------
+
+  /** A pattern of small bumps or dents over a flat face, or over all the outer or upright faces. */
+  private texture(): void {
+    if (this.doc.selection.length !== 1) return this.toast('Select the object to texture');
+    const obj: SceneObject = this.doc.selection[0];
+    const at = new FacePlacement();
+    type Result = Piece & { tiles: number; faces: number };
+    this.bar.open<Result>({
+      title: 'Texture',
+      hint: 'Click the face for the texture (a flat face, or the outside wall of a cylinder or tube), set the pattern, and check the orange preview.',
+      hintNote: 'Every bump narrows at 45° so it prints without support. Round walls are wrapped all the way round, so the cell is adjusted a little to close the pattern. Other curved faces are left as they are.',
+      fields: [
+        { key: 'pattern', label: 'Pattern', type: 'select', value: 'pyramids', options: [['pyramids', 'Pyramids (grip)'], ['dots', 'Dots'], ['hexagons', 'Hexagons'], ['ribs', 'Ribs']], tip: 'Shape of the bumps or dents.' },
+        { key: 'mode', label: 'Type', type: 'select', value: 'raised', options: [['raised', 'Raised'], ['cut', 'Cut in']], tip: 'Raise the pattern out of the face or cut it into it.' },
+        { key: 'cell', label: 'Cell', type: 'number', value: 4, min: 1.2, step: 0.5, unit: 'mm', tip: 'Distance between the middles of neighbouring bumps.' },
+        { key: 'gap', label: 'Gap', type: 'number', value: 1, min: 0.4, step: 0.2, unit: 'mm', tip: 'Space between neighbouring bumps at their base (at least 0.4 mm to print).' },
+        { key: 'depth', label: 'Height', type: 'number', value: 0.8, min: 0.3, max: 5, step: 0.1, unit: 'mm', tip: 'How far the bumps stand out, or how deep the dents are (at least 0.3 mm).' },
+        { key: 'angle', label: 'Rotate', type: 'number', value: 0, step: 15, unit: '°', tip: 'Turn the pattern on the face.' },
+        { key: 'margin', label: 'Margin', type: 'number', value: 2.5, min: 0, step: 0.5, unit: 'mm', tip: 'Space left free along the edges of the face.' },
+        {
+          key: 'faces', label: 'Faces', type: 'select', value: 'one',
+          options: [['one', 'The clicked face'], ['sides', 'All upright faces'], ['outer', 'All outer faces (not the bottom)']],
+          tip: 'Texture only the face you click, or every face of that kind on the object (flat faces and cylinder walls).',
+        },
+      ],
+      hide: [],
+      targets: [obj],
+      compute: async (v, signal) => {
+        const one = v.faces === 'one';
+        this.setApplyEnabled(!one || at.placed);
+        if (one && !at.placed) return null;
+        const point = at.point();
+        const options: SurfaceTextureOptions = {
+          pattern: v.pattern as SurfaceTextureOptions['pattern'], mode: v.mode as SurfaceTextureOptions['mode'],
+          cell: Number(v.cell), gap: Number(v.gap), depth: Number(v.depth), angle: Number(v.angle), margin: Number(v.margin),
+          faces: v.faces as SurfaceTextureOptions['faces'],
+          point: [point.x, point.y, point.z], normal: [at.normal.x, at.normal.y, at.normal.z],
+        };
+        return runOp('texture', { item: this.doc.placed(obj), ...options }, { signal });
+      },
+      show: (r) => [previewMesh(r.mesh, r.center)],
+      apply: (r) => {
+        if (!this.doc.objects.includes(obj)) return;
+        this.doc.transact(() => {
+          this.doc.replaceWithPiece(obj, r);
+          this.doc.emit('transform');
+        });
+        this.toast(`Texture added: ${r.tiles.toLocaleString()} bumps on ${r.faces} face${r.faces > 1 ? 's' : ''}`);
       },
       onClose: () => this.release(),
     });

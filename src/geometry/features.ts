@@ -35,7 +35,7 @@ function frameMatrix(z: V3, origin: V3): Mat4 {
   return [x[0], x[1], x[2], 0, y[0], y[1], y[2], 0, z[0], z[1], z[2], 0, origin[0], origin[1], origin[2], 1];
 }
 
-function toPiece(m: Manifold): Piece {
+export function toPiece(m: Manifold): Piece {
   const status = m.status();
   if (status !== 'NoError') throw new Error(`The operation failed (${status})`);
   if (m.isEmpty()) throw new Error('Nothing would be left of the object');
@@ -44,8 +44,8 @@ function toPiece(m: Manifold): Piece {
 }
 
 /** Run `build` with a list that frees every Manifold put in it afterwards. */
-function withCleanup<T>(build: (keep: <M extends Manifold>(m: M) => M) => T): T {
-  const owned: Manifold[] = [];
+export function withCleanup<T>(build: (keep: <M extends { delete(): void }>(m: M) => M) => T): T {
+  const owned: { delete(): void }[] = [];
   try {
     return build((m) => (owned.push(m), m));
   } finally {

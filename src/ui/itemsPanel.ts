@@ -1,6 +1,7 @@
 import { OBJECT_COLORS, type SceneDocument, type SceneObject } from '../scene/document';
 import type { ColorPopover } from './colorPopover';
 import { multiSelect } from './chrome';
+import { textureInfo } from '../scene/surfaceTextures';
 import { icon } from './icons';
 
 export interface RowActions {
@@ -168,8 +169,13 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
         const box = document.createElement('button');
         box.className = 'color-box';
         box.style.background = obj.color;
-        box.dataset.tipTitle = 'Colour';
-        box.dataset.tip = 'Click to pick a colour, copy one from another object, or go back to the default.';
+        const look = obj.texture ? textureInfo(obj.texture.id) : undefined;
+        if (look) {
+          box.style.backgroundImage = `url(${look.file})`;
+          box.style.backgroundSize = 'cover';
+        }
+        box.dataset.tipTitle = 'Colour and texture';
+        box.dataset.tip = 'Click to pick a colour or a texture, copy a colour from another object, or go back to the default.';
         box.addEventListener('click', (e) => {
           e.stopPropagation();
           colors.open(box, obj);

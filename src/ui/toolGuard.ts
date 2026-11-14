@@ -47,7 +47,7 @@ export function lockedNow(el: Element): boolean {
  */
 export const SINGLE_ONLY = [
   '[data-modify="chamfer"]', '[data-modify="fillet"]', '[data-modify="shell"]', '[data-modify="soften"]',
-  '[data-modify="gusset"]', '[data-modify="text"]', '[data-action="orient"]',
+  '[data-modify="gusset"]', '[data-modify="text"]', '[data-modify="texture"]', '[data-action="orient"]',
 ].join(', ');
 export const SINGLE_ONLY_MESSAGE = 'Works on one object at a time. For a group, Merge it into one object first (or Ungroup and select one part).';
 let manySelected = false;

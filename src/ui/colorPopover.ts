@@ -1,4 +1,5 @@
 import type { SceneDocument, SceneObject } from '../scene/document';
+import { MAX_TEXTURE_SIZE, MIN_TEXTURE_SIZE, SURFACE_TEXTURES, textureInfo } from '../scene/surfaceTextures';
 import { closeColorPicker, openColorPicker } from './colorPicker';
 import { beginTool, endTool } from './toolLock';
 
@@ -17,6 +18,7 @@ export class ColorPopover {
   private readonly el: HTMLElement;
   private readonly custom: HTMLButtonElement;
   private readonly customDot: HTMLElement;
+  private readonly sizeInput: HTMLInputElement;
   private targets: SceneObject[] = [];
   /** Objects waiting for "Copy from object": the next object clicked in the view gives its colour. */
   pickingFor: SceneObject[] | null = null;
@@ -39,6 +41,26 @@ export class ColorPopover {
       b.addEventListener('click', () => this.apply(color));
       swatches.append(b);
     }
+    this.sizeInput = this.el.querySelector<HTMLInputElement>('#texture-size')!;
+    // The textures go on after the colours, in the same grid and size; picking any colour takes the texture off again.
+    for (const t of SURFACE_TEXTURES) {
+      const b = document.createElement('button');
+      b.style.backgroundImage = `url(${t.file})`;
+      b.dataset.texture = t.id;
+      b.dataset.tipTitle = t.name;
+      b.dataset.tip = `Show the object with a ${t.name.toLowerCase()} look (on the screen only; exports keep the colour). Click a colour to go back.`;
+      b.setAttribute('aria-label', t.name);
+      b.addEventListener('click', () => this.setTexture({ id: t.id, size: t.size }));
+      swatches.append(b);
+    }
+    this.sizeInput.addEventListener('change', () => {
+      const size = Math.min(MAX_TEXTURE_SIZE, Math.max(MIN_TEXTURE_SIZE, Number(this.sizeInput.value.replace(',', '.'))));
+      if (!Number.isFinite(size)) return this.refreshTexture();
+      this.doc.transact(() => {
+        for (const o of this.targets) if (o.texture) this.doc.setTexture([o], { id: o.texture.id, size });
+      });
+      this.refreshTexture();
+    });
     this.custom.addEventListener('click', () => this.pickCustom());
     this.el.querySelector('[data-action="eyedropper"]')!.addEventListener('click', () => {
       beginTool('eyedropper', () => this.finishPick(undefined), false);
@@ -48,6 +70,7 @@ export class ColorPopover {
     });
     this.el.querySelector('[data-action="reset-color"]')!.addEventListener('click', () => {
       this.doc.transact(() => {
+        this.doc.setTexture(this.targets, undefined);
         for (const o of this.targets) this.doc.setColor([o], o.defaultColor);
       });
       this.close();
@@ -65,17 +88,38 @@ export class ColorPopover {
   open(anchor: HTMLElement, obj: SceneObject): void {
     this.targets = this.doc.selection.includes(obj) ? [...this.doc.selection] : [obj];
     const colors = new Set(this.targets.map((o) => o.color));
-    const only = colors.size === 1 ? [...colors][0] : undefined;
-    for (const b of this.el.querySelectorAll<HTMLButtonElement>('.swatches button')) {
-      b.classList.toggle('active', b.dataset.color === only);
-    }
-    this.customDot.style.background = only ?? obj.color;
+    this.customDot.style.background = colors.size === 1 ? [...colors][0] : obj.color;
+    this.refreshTexture();
     this.el.hidden = false;
     const r = anchor.getBoundingClientRect();
     const p = this.el.getBoundingClientRect();
     // Open to the left of the sidebar so the list stays visible.
     this.el.style.left = `${Math.max(8, r.left - p.width - 10)}px`;
     this.el.style.top = `${Math.max(8, Math.min(r.top - 10, window.innerHeight - p.height - 8))}px`;
+  }
+
+  /** The swatches show the targets' texture or colour (nothing outlined when they differ); the size row only shows with a texture. */
+  private refreshTexture(): void {
+    const colors = new Set(this.targets.map((o) => o.color));
+    const only = colors.size === 1 ? [...colors][0] : undefined;
+    const looks = new Set(this.targets.map((o) => o.texture?.id ?? ''));
+    const look = looks.size === 1 ? [...looks][0] : undefined;
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>('.swatches button')) {
+      b.classList.toggle('active', b.dataset.texture !== undefined ? b.dataset.texture === look : look === '' && b.dataset.color === only);
+    }
+    const first = this.targets.find((o) => o.texture)?.texture;
+    const row = this.sizeInput.closest('label')!;
+    row.hidden = !first;
+    this.sizeInput.value = first ? String(Math.round(first.size * 100) / 100) : '';
+    this.sizeInput.placeholder = String(textureInfo(look ?? '')?.size ?? '');
+  }
+
+  /** The same texture for all targets, at its natural tile size when it is a new one (keeps the size when it is the same picture). */
+  private setTexture(texture: { id: string; size: number } | undefined): void {
+    this.doc.transact(() => {
+      for (const o of this.targets) this.doc.setTexture([o], texture && o.texture?.id === texture.id ? o.texture : texture);
+    });
+    this.refreshTexture();
   }
 
   close(): void {
@@ -98,14 +142,19 @@ export class ColorPopover {
           started = true;
           this.doc.checkpoint();
         }
+        this.doc.setTexture(targets, undefined);
         this.doc.setColor(targets, hex);
         this.customDot.style.background = hex;
+        this.refreshTexture();
       },
     });
   }
 
   private apply(color: string): void {
-    this.doc.transact(() => this.doc.setColor(this.targets, color));
+    this.doc.transact(() => {
+      this.doc.setTexture(this.targets, undefined);
+      this.doc.setColor(this.targets, color);
+    });
     this.close();
   }
 
@@ -116,6 +165,9 @@ export class ColorPopover {
     endTool('eyedropper');
     this.onPickStart(false);
     if (!source || !targets) return;
-    this.doc.transact(() => this.doc.setColor(targets, source.color));
+    this.doc.transact(() => {
+      this.doc.setTexture(targets, undefined);
+      this.doc.setColor(targets, source.color);
+    });
   }
 }
