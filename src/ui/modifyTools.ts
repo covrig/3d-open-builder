@@ -123,14 +123,14 @@ export class ModifyTools {
 
   // --- Soften -----------------------------------------------------------------
 
-  /** Round all the straight outer edges at once (a box, also a hollow one): no edges to pick. */
+  /** Round all the outer edges at once (a box or cylinder, also a hollow one): no edges to pick. */
   private soften(): void {
     const obj = this.one();
     if (!obj) return;
     interface Rounded { piece: Piece; skipped: number }
     this.bar.open<Rounded>({
       title: 'Soften',
-      hint: 'Round all the straight outer edges (a hollow box too: only the outside). Set the radius and check the orange preview.',
+      hint: 'Round all the outer edges, straight or curved (a hollow box too: only the outside). Set the radius and check the orange preview.',
       fields: [
         { key: 'radius', label: 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm', tip: 'Radius of the rounding. Edges too small for it are left sharp.' },
       ],

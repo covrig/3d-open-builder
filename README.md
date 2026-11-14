@@ -20,7 +20,7 @@ Nothing to install, no account, and your files never leave your computer.
 ## Features
 
 - **Shapes and threads:** basic shapes with their measurements set before they are added, plus bolts, nuts and threads (also for cutting threaded holes) in metric and imperial sizes.
-- **Combine and edit:** merge, subtract and intersect, split, mirror and rotate in quarter turns, pattern, extrude down to the plate, shell, edge bevel and rounding, soften (rounding a whole box in one go, hollow ones too), braces, and raised or cut-in text. Groups work with move, mirror, split, extrude and pattern.
+- **Combine and edit:** merge, subtract and intersect, split, mirror and rotate in quarter turns, pattern, extrude down to the plate, shell, edge bevel and rounding, soften (rounding all the outer edges, straight or round, in one go, hollow boxes too), braces, and raised or cut-in text. Groups work with move, mirror, split, extrude and pattern.
 - **Place precisely:** move, rotate and size handles with snapping, put on the plate, lay flat, align, distribute and pack, and a reference picture to trace over.
 - **Measure and look inside:** distance, angle and circle measuring that snaps to corners, edges, edge middles and the lines where objects overlap (click a distance or diameter and type the size you want to resize the object, or to set the gap between two objects); a section view that cuts the view open, with measuring on the cut.
 - **Ready to print:** print check with automatic repair (it never alters a model that is already sound), overhangs shown in colour, best print orientation, and export to 3MF (with colours) or STL under a name you choose. Imports 3MF, STL and OBJ.

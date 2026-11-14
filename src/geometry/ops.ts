@@ -30,7 +30,7 @@ export const ops = {
   repair: (wasm: ManifoldToplevel, a: { mesh: MeshData }) => repairMesh(wasm, a.mesh),
   edgeTreatment: (wasm: ManifoldToplevel, a: { item: PlacedMesh; segments: EdgeSegment[]; kind: 'chamfer' | 'fillet'; size: number }) =>
     edgeTreatment(wasm, a.item, a.segments, a.kind, a.size),
-  // Round every straight outer edge at once (Soften); also tells how many edges were too small.
+  // Round every outer edge at once (Soften); also tells how many edges were too small.
   roundBox: (wasm: ManifoldToplevel, a: { item: PlacedMesh; radius: number }) => roundBox(wasm, a.item, a.radius),
   gusset: (wasm: ManifoldToplevel, a: { item: PlacedMesh; edge: EdgeSegment; leg1: number; leg2: number; thickness: number; position: number }) =>
     gusset(wasm, a.item, a.edge, a),

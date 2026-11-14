@@ -20,9 +20,9 @@ function faceIsOutside(solid: Manifold, s: EdgeSegment, across: V3, normal: V3, 
 const MAX_SEARCH = 80;
 
 /**
- * The edges Soften rounds: the straight, outside edges of the object's
- * outer surface. An edge counts when it sticks out (convex), runs straight (all
- * the pieces of its chain are parallel) and both its faces are seen from
+ * The edges Soften rounds: the outside edges of the object's outer surface,
+ * straight or curved (the rim of a cylinder, the edge of a round boss). An edge
+ * counts when it sticks out (convex) and both its faces are seen from
  * outside: the walls of a hollow, and the inner edge of an opening's rim, have a
  * face that looks into the hollow, so they stay as they are. Edges that cannot
  * take the radius (too short, faces too narrow, or in the way of another edge's
@@ -37,8 +37,6 @@ export function outerBoxEdges(wasm: ManifoldToplevel, solid: Manifold, item: Pla
   for (const chain of set.chains) {
     const parts = chain.map((i) => set.segments[i]);
     if (!parts.every((s) => s.convex)) continue;
-    const u = edgeFrame(parts[0]).u;
-    if (!parts.every((s) => Math.abs(dot(edgeFrame(s).u, u)) > 0.9995)) continue; // curved: left alone
     const outside = parts.every((s) => {
       const f = edgeFrame(s);
       return faceIsOutside(solid, s, f.t1, s.n1, reach) && faceIsOutside(solid, s, f.t2, s.n2, reach);
@@ -107,14 +105,14 @@ function wallsHold(solid: Manifold, segments: EdgeSegment[], radius: number): bo
   return true;
 }
 
-/** Round every straight outer edge in one go (see outerBoxEdges); `skipped` is how many edges were left sharp because they were too small. */
+/** Round every outer edge in one go (see outerBoxEdges); `skipped` is how many edges were left sharp because they were too small. */
 export function roundBox(wasm: ManifoldToplevel, item: PlacedMesh, radius: number): { piece: Piece; skipped: number } {
   if (!(radius > 0)) throw new Error('The radius must be more than 0');
   const solid = meshDataToManifold(wasm, item.mesh, item.matrix);
   try {
     const { segments, skipped } = outerBoxEdges(wasm, solid, item, radius);
     if (segments.length === 0) {
-      throw new Error(skipped > 0 ? 'The radius is too large for the edges of this object. Use a smaller one.' : 'There are no straight outer edges to round.');
+      throw new Error(skipped > 0 ? 'The radius is too large for the edges of this object. Use a smaller one.' : 'There are no outer edges to round.');
     }
     if (!wallsHold(solid, segments, radius)) throw new Error(TOO_THICK);
     const piece = edgeTreatment(wasm, item, segments, 'fillet', radius);
