@@ -95,7 +95,7 @@ export class ExtrudeTool {
       hint: 'Drag the blue arrow or type a height. Tilt the plane if you like. Below the plane, each object becomes its shape at the plane, extended straight down to the plate.',
       fields: [
         {
-          key: 'height', label: 'Plane height', type: 'number', value: round(start), min: 0, step: 0.5, unit: 'mm',
+          key: 'height', label: 'Height', type: 'number', value: round(start), min: 0, step: 0.5, unit: 'mm',
           tip: 'Height of the plane above the plate, at the middle of the objects. What is above it stays; below it the shape at the plane goes straight down.',
         },
         {

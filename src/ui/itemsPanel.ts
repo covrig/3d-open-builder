@@ -180,7 +180,7 @@ export function setupItemsPanel(el: HTMLElement, doc: SceneDocument, colors: Col
         name.dataset.tipTitle = obj.hidden ? `${obj.name} (hidden)` : obj.name;
         name.dataset.tip = obj.hidden
           ? 'Hidden from the view. Click the eye to show it again. Double-click to rename.'
-          : 'Click to select (Ctrl+click adds). Double-click to rename.';
+          : 'Click to select an object, or Ctrl+click to add it to the selection. Double-click to rename.';
         li.classList.toggle('hidden-object', obj.hidden === true);
         name.addEventListener('dblclick', (e) => {
           e.stopPropagation();

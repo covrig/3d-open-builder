@@ -18,8 +18,8 @@ const WORDS = {
     tools: '2 · Objects B',
     joiner: 'with',
     steps: {
-      target: 'Step 1: click Objects A (green). Each keeps only its part that lies inside Objects B, in its own colour. Then press "2 · Objects B".',
-      tool: 'Step 2: click Objects B (red), the shapes Objects A are trimmed to. Click again to unmark.',
+      target: 'Step 1: select Objects A (green). Press "2 · Objects B".',
+      tool: 'Step 2: select Objects B (red), the shapes Objects A are trimmed to. Click again to unmark.',
     },
     tips: {
       target: 'Then click Objects A: each keeps only its part inside Objects B, in its own colour (separate pieces become separate objects).',

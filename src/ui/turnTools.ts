@@ -99,7 +99,7 @@ export class TurnTools {
           ? 'Click Pick again to choose other points.'
           : 'Those points do not define a plane (they lie in a line). Click Pick again.');
       }
-      showHint('feature', `Click point ${picked.length + 1} of 2 for the line (corners, edge middles and face centres snap). Esc stops picking.`);
+      showHint('feature', `Click point ${picked.length + 1} of 2 for the line (corners, edge middles and face centres snap).`);
       picker.start({
         extraPoints: () => picked,
         onPick: (at) => {
@@ -314,7 +314,7 @@ export class TurnTools {
       if (title) title.textContent = t ? `Rotate: ${t}` : 'Rotate';
       showHint('feature', t
         ? `Total ${t}. Click X, Y or Z to turn further, or Reset to start again.`
-        : 'Click X, Y or Z for a quarter turn clockwise (as often as you like).');
+        : 'Click X, Y or Z for a quarter turn clockwise.');
     };
 
     /** The placements after all the turns, worked out on the real objects and put back. */

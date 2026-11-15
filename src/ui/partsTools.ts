@@ -141,7 +141,7 @@ export class PartsTools {
       focusFirst: true,
       title: `Add ${KIND_NAMES[kind]}`,
       hint: kind === 'rod'
-        ? 'Choose the size and length. To make a threaded hole, tick "For a hole", place the thread where the hole should go, select it and press Subtract.'
+        ? 'Choose the size and length. To make a threaded hole, tick "For a hole", move thread to location, use Subtract.'
         : `Choose the size${kind === 'nut' ? '' : ' and length'}.`,
       fields: [
         { key: 'size', label: 'Size', type: 'select', value: 'M6', options: SIZES, tip: 'Metric (M6 = 6 mm) or imperial UNC (1/4″-20 = ¼ inch, 20 threads per inch).' },
@@ -205,12 +205,12 @@ export class PartsTools {
     let reported = '';
     this.bar.open<Piece & { letters: MeshData }>({
       title: 'Text on a face',
-      hint: 'Click the face where the text should go. Arrow keys move it.',
+      hint: 'Click a face to place. Arrow keys move the text.',
       fields: [
         { key: 'text', label: 'Text', type: 'text', value: 'Text', maxLength: 200, prominent: true, tip: 'The letters to add (up to 200).' },
         { key: 'font', label: 'Font', type: 'select', value: 'sans', options: fonts, tip: 'Typeface (bold, for clean printing).' },
         { key: 'size', label: 'Size', type: 'number', value: 8, min: 1, step: 1, unit: 'mm', tip: 'Height of capital letters.' },
-        { key: 'mode', label: 'Type', type: 'select', value: 'emboss', options: [['emboss', 'Raised (emboss)'], ['deboss', 'Cut in (deboss)']], tip: 'Raise the letters out of the face or cut them into it.' },
+        { key: 'mode', label: 'Type', type: 'select', value: 'emboss', options: [['emboss', 'Raised'], ['deboss', 'Cut in']], tip: 'Raise the letters out of the face or cut them into it.' },
         { key: 'depth', label: 'Height', type: 'number', value: 1, min: 0.1, step: 0.2, unit: 'mm', tip: 'How far the letters stand out, or how deep they are cut.' },
         { key: 'angle', label: 'Rotate', type: 'number', value: 0, step: 15, unit: '°', tip: 'Turn the text on the face.' },
         {
@@ -262,7 +262,7 @@ export class PartsTools {
 
   // --- Texture ----------------------------------------------------------------------
 
-  /** A pattern of small bumps or dents over a flat face, or over all the outer or upright faces. */
+  /** A pattern of small bumps or dents over a flat face, or over all the outer faces. */
   private texture(): void {
     if (this.doc.selection.length !== 1) return this.toast('Select the object to texture');
     const obj: SceneObject = this.doc.selection[0];
@@ -270,10 +270,10 @@ export class PartsTools {
     type Result = Piece & { tiles: number; faces: number };
     this.bar.open<Result>({
       title: 'Texture',
-      hint: 'Click the face for the texture (a flat face, or the outside wall of a cylinder or tube), set the pattern, and check the orange preview.',
-      hintNote: 'Every bump narrows at 45° so it prints without support. Round walls are wrapped all the way round, so the cell is adjusted a little to close the pattern. Other curved faces are left as they are.',
+      hint: 'Click the face for the texture (a flat face, or the outside wall of a cylinder) and set the pattern.',
+      hintNote: 'Every bump narrows at 45° so it prints without support.',
       fields: [
-        { key: 'pattern', label: 'Pattern', type: 'select', value: 'pyramids', options: [['pyramids', 'Pyramids (grip)'], ['dots', 'Dots'], ['hexagons', 'Hexagons'], ['ribs', 'Ribs']], tip: 'Shape of the bumps or dents.' },
+        { key: 'pattern', label: 'Pattern', type: 'select', value: 'pyramids', options: [['pyramids', 'Pyramids'], ['dots', 'Dots'], ['hexagons', 'Hexagons'], ['ribs', 'Ribs']], tip: 'Shape of the bumps or dents.' },
         { key: 'mode', label: 'Type', type: 'select', value: 'raised', options: [['raised', 'Raised'], ['cut', 'Cut in']], tip: 'Raise the pattern out of the face or cut it into it.' },
         { key: 'cell', label: 'Cell', type: 'number', value: 4, min: 1.2, step: 0.5, unit: 'mm', tip: 'Distance between the middles of neighbouring bumps.' },
         { key: 'gap', label: 'Gap', type: 'number', value: 1, min: 0.4, step: 0.2, unit: 'mm', tip: 'Space between neighbouring bumps at their base (at least 0.4 mm to print).' },
@@ -282,7 +282,7 @@ export class PartsTools {
         { key: 'margin', label: 'Margin', type: 'number', value: 2.5, min: 0, step: 0.5, unit: 'mm', tip: 'Space left free along the edges of the face.' },
         {
           key: 'faces', label: 'Faces', type: 'select', value: 'one',
-          options: [['one', 'The clicked face'], ['sides', 'All upright faces'], ['outer', 'All outer faces (not the bottom)']],
+          options: [['one', 'The clicked face'], ['outer', 'All outer faces (not the bottom)']],
           tip: 'Texture only the face you click, or every face of that kind on the object (flat faces and cylinder walls).',
         },
       ],

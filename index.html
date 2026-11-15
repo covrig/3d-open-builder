@@ -67,7 +67,7 @@
       </div>
 
       <div class="group clipboard-group">
-        <button data-action="copy" data-tip-title="Copy (Ctrl+C)" data-tip="Copy the selection. It stays available after closing the page."><i data-lucide="copy"></i><span>Copy</span></button>
+        <button data-action="copy" data-tip-title="Copy (Ctrl+C)" data-tip="Copy the selection."><i data-lucide="copy"></i><span>Copy</span></button>
         <button data-action="cut" data-tip-title="Cut (Ctrl+X)" data-tip="Remove the selection and keep it for pasting."><i data-lucide="scissors"></i><span>Cut</span></button>
         <button data-action="paste" data-tip-title="Paste (Ctrl+V)" data-tip="Add the copied objects to the drawing."><i data-lucide="clipboard-paste"></i><span>Paste</span></button>
       </div>
@@ -76,27 +76,27 @@
       <div class="row-break" aria-hidden="true"></div>
 
       <div class="group" aria-label="Combine">
-        <button data-boolean="union" data-tip-title="Merge" data-shortcut="M" data-tip="Join the selected objects into one object. Objects that don't touch become one object made of separate pieces."><i data-lucide="squares-unite"></i><span>Merge</span></button>
-        <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-shortcut="N" data-tip="Cut the selected objects out of every object or group part they go into, then remove them. Undo brings them back."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
-        <button data-boolean="intersection" data-tip-title="Intersect" data-shortcut="I" data-tip="Step 1: click Objects A button above and select objects. Step 2: click Objects B button above and select objects."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
+        <button data-boolean="union" data-tip-title="Merge" data-shortcut="M" data-tip="Combines the selected objects into a single object. Separate, non-touching parts remain separate within the same object."><i data-lucide="squares-unite"></i><span>Merge</span></button>
+        <button data-boolean="difference" id="subtract-button" data-tip-title="Subtract" data-shortcut="N" data-tip="Cuts the selected objects out of any objects they intersect, then removes the cutting objects."><i data-lucide="squares-subtract"></i><span>Subtract</span></button>
+        <button data-boolean="intersection" data-tip-title="Intersect" data-shortcut="I" data-tip="Keeps only the overlapping volume where the selected objects intersect."><i data-lucide="squares-intersect"></i><span>Intersect</span></button>
       </div>
 
       <div class="group" aria-label="Edit">
-        <button data-action="duplicate" data-tip-title="Duplicate" data-shortcut="D" data-tip="Make a copy of the selection. Pick the axis (or two points) and the distance, and check the orange preview."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
+        <button data-action="duplicate" data-tip-title="Duplicate" data-shortcut="D" data-tip="Creates a duplicate of the selection along an axis or between two points, using the specified distance."><i data-lucide="copy-plus"></i><span>Duplicate</span></button>
         <button data-action="split" class="wide-only" data-tip-title="Split" data-shortcut="S" data-tip="Cut the selected object in two with a plane. Choose which piece to keep."><i data-lucide="scissors-line-dashed"></i><span>Split</span></button>
-        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-shortcut="E" data-tip="Place a level plane through the selected object: below it, the object becomes its shape at the plane, extended straight down to the plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
+        <button data-action="extrude-down" class="wide-only" data-tip-title="Extrude down" data-shortcut="E" data-tip="Slices the object at a horizontal plane and extends its cross-section down to the build plate."><i data-lucide="arrow-down-from-line"></i><span>Extrude</span></button>
         <button data-modify="pattern" class="wide-only" data-tip-title="Pattern" data-shortcut="P" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i><span>Pattern</span></button>
         <button data-modify="text" class="wide-only" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i><span>Text</span></button>
-        <button data-action="mirror" data-tip-title="Mirror" data-tip="Flip the selected objects along X, Y or Z. Pick the axis and check the orange preview."><i data-lucide="flip-vertical-2"></i><span>Mirror</span></button>
+        <button data-action="mirror" data-tip-title="Mirror" data-tip="Creates a mirror image of the selection along an axis or between two points, using the specified distance. The original can be kept."><i data-lucide="flip-vertical-2"></i><span>Mirror</span></button>
         <!-- The More menu's tools, shown here instead when the toolbar has room (toolbarFit.ts). -->
-        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges and set the distance." data-tip-note="Apply to all edges of a corner in one go. Bevelling in several steps may result in bad geometry."><i data-lucide="bevel"></i><span>Bevel</span></button>
-        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges and set the radius." data-tip-note="Apply to all edges of a corner in one go. Rounding in several steps may result in bad geometry."><i data-lucide="square-round-corner"></i><span>Round</span></button>
-        <button data-modify="shell" class="more-out" data-tip-title="Shell" data-tip="Hollow the object out, leaving walls as thick as you choose."><i data-lucide="box"></i><span>Shell</span></button>
+        <button data-modify="chamfer" class="more-out" data-tip-title="Bevel" data-shortcut="B" data-tip="Cuts the selected edges at an angle using the specified distance." data-tip-note="Apply to all edges of a corner in one go. Bevelling in several steps may result in bad geometry."><i data-lucide="bevel"></i><span>Bevel</span></button>
+        <button data-modify="fillet" class="more-out" data-tip-title="Round" data-shortcut="O" data-tip="Rounds the selected edges using the specified radius." data-tip-note="Apply to all edges of a corner in one go. Rounding in several steps may result in bad geometry."><i data-lucide="square-round-corner"></i><span>Round</span></button>
+        <button data-modify="shell" class="more-out" data-tip-title="Shell" data-tip="Creates a hollow interior while keeping walls at the specified thickness."><i data-lucide="box"></i><span>Shell</span></button>
         <button data-modify="gusset" class="more-out" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle-left"></i><span>Brace</span></button>
-        <button data-action="rotate90" class="more-out" data-tip-title="Rotate" data-tip="Turn the selection in quarter turns about X, Y or Z. Click an axis as often as you like and check the orange preview."><i data-lucide="rotate-cw"></i><span>Rotate</span></button>
-        <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cut the view open across X, Y or Z to see inside. Only the view changes; measuring works on the cut."><i data-lucide="scan-line"></i><span>Section</span></button>
-        <button data-modify="soften" class="more-out" data-tip-title="Soften" data-tip="Round all the outer edges of an object in one go, straight or curved (the rim of a cylinder too). A hollow box works too: only the outside is rounded."><i data-lucide="soften"></i><span>Soften</span></button>
-        <button data-modify="texture" class="more-out" data-tip-title="Texture" data-tip="Cover a flat face, the wall of a cylinder, or all the outer faces with small bumps or dents for grip or looks. It prints without support."><i data-lucide="grid-3x3"></i><span>Texture</span></button>
+        <button data-action="rotate90" class="more-out" data-tip-title="Rotate" data-tip="Rotates the selection in 90° steps around the X, Y, or Z axis."><i data-lucide="rotate-cw"></i><span>Rotate</span></button>
+        <button data-action="cross-section" class="more-out" data-tip-title="Section" data-tip="Cuts the view along the X, Y, or Z axis to reveal the interior. The model remains unchanged, and measurements work on the cut surface."><i data-lucide="scan-line"></i><span>Section</span></button>
+        <button data-modify="soften" class="more-out" data-tip-title="Soften" data-tip="Rounds all outer edges of the object at once, including curved edges and cylinder rims. For hollow objects, only the outside edges are rounded."><i data-lucide="soften"></i><span>Soften</span></button>
+        <button data-modify="texture" class="more-out" data-tip-title="Texture" data-tip="Adds small bumps or dents to flat faces, cylindrical walls, or all outer surfaces for improved grip or appearance. Prints without supports."><i data-lucide="grid-3x3"></i><span>Texture</span></button>
         <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, soften, texture, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
           <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
@@ -157,7 +157,7 @@
           </div>
           <div class="corner-item touch-only">
             <span class="corner-label">Select several</span>
-            <button data-action="multi-select" class="multi-select" aria-pressed="false" aria-label="Select several" data-tip-title="Select several" data-tip="While on, each tap on an object (or its row in the list) adds it to the selection or takes it out, like Ctrl+click."><i data-lucide="list-checks"></i></button>
+            <button data-action="multi-select" class="multi-select" aria-pressed="false" aria-label="Select several" data-tip-title="Select several" data-tip="When enabled, each tap adds an object to the selection or removes it, just like Ctrl+click. Works on objects in the view or their rows in the list."><i data-lucide="list-checks"></i></button>
           </div>
         </div>
         <div id="view-cube" aria-label="View cube: click a side to look at it"><div class="vc-stage"><div class="vc-cube"></div><div class="vc-ring"></div></div></div>
@@ -294,15 +294,15 @@
         <section data-panel="view">
           <header><h2>View</h2></header>
           <div class="button-grid cols-3 tiles">
-            <button data-action="fit" data-tip-title="Fit view" data-shortcut="F" data-tip="Zoom to the selection, or to everything when nothing is selected."><i data-lucide="focus"></i><span>Fit</span></button>
-            <button data-pop="reflection" data-tip-title="Reflection" data-tip="Show a mirror image of the objects in the plate. Switching it on opens its sliders; the arrow in the tile opens them again."><i data-lucide="flip-horizontal-2"></i><span>Reflection</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
-            <button data-pop="plate" data-tip-title="Plate" data-tip="Show the build plate. Switching it on opens a slider for how see-through it is; the arrow in the tile opens it again."><i data-lucide="grid-3x3"></i><span>Plate</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
+            <button data-action="fit" data-tip-title="Fit view" data-shortcut="F" data-tip="Zooms in on the selected objects, or fits all objects in view if nothing is selected."><i data-lucide="focus"></i><span>Fit</span></button>
+            <button data-pop="reflection" data-tip-title="Reflection" data-tip="Shows a mirrored copy of the objects across the build plate. Toggle it on to open the adjustment sliders; use the tile arrow to reopen them."><i data-lucide="flip-horizontal-2"></i><span>Reflection</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
+            <button data-pop="plate" data-tip-title="Plate" data-tip="Shows or hides the build plate. Toggle it on to adjust its transparency; use the tile arrow to reopen the slider."><i data-lucide="grid-3x3"></i><span>Plate</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
             <button data-action="home" data-tip-title="Home view" data-shortcut="H" data-tip="Go back to the view the page starts with, zoomed out to show every object."><i data-lucide="house"></i><span>Home</span></button>
-            <button data-view="rulers" data-pop="rulers" data-tip-title="Rulers" data-tip="Show the rulers and axis arrows next to the objects. Switching it on opens a slider for the size of the numbers; the arrow in the tile opens it again."><i data-lucide="ruler"></i><span>Rulers</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
-            <button data-view="shadows" data-pop="shadows" class="active" data-tip-title="Shadows" data-tip="Cast shadows on the plate. Switching it on opens sliders for shine, the direction of the light, how dark the shadow is and how much the shading shows the shape; the arrow in the tile opens them again."><i data-lucide="sun"></i><span>Shadows</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
-            <button data-view="xray" data-tip-title="X-ray" data-tip="Make objects see-through to look at hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
-            <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Show the triangles the surfaces are made of."><i data-lucide="globe"></i><span>Wireframe</span></button>
-            <button data-view="edges" data-pop="edges" data-tip-title="Edges" data-tip="Draw a line along every sharp edge. Switching it on opens a slider for how strong the lines are; the arrow in the tile opens it again."><i data-lucide="square-dashed"></i><span>Edges</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
+            <button data-view="rulers" data-pop="rulers" data-tip-title="Rulers" data-tip="Shows rulers and axis arrows around the objects. Toggle it on to adjust the number size; use the tile arrow to reopen the slider."><i data-lucide="ruler"></i><span>Rulers</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
+            <button data-view="shadows" data-pop="shadows" class="active" data-tip-title="Shadows" data-tip="Adds shadows to the build plate. Toggle it on to adjust shine, light direction, shadow darkness, and shading strength; use the tile arrow to reopen the sliders."><i data-lucide="sun"></i><span>Shadows</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the sliders for this."><i data-lucide="chevron-down"></i></em></button>
+            <button data-view="xray" data-tip-title="X-ray" data-tip="Makes objects see-through so you can inspect their hidden parts."><i data-lucide="ghost"></i><span>X-ray</span></button>
+            <button data-view="wireframe" data-tip-title="Wireframe" data-tip="Displays the triangular faces that make up the object's surfaces."><i data-lucide="globe"></i><span>Wireframe</span></button>
+            <button data-view="edges" data-pop="edges" data-tip-title="Edges" data-tip="Highlights every sharp edge with a line. Toggle it on to adjust line strength; use the tile arrow to reopen the slider."><i data-lucide="square-dashed"></i><span>Edges</span><em class="tile-more" role="button" aria-label="Settings" data-tip-title="Settings" data-tip="Open the slider for this."><i data-lucide="chevron-down"></i></em></button>
           </div>
         </section>
 
@@ -349,7 +349,7 @@
           </div>
           <div class="button-grid cols-3">
             <button data-action="ref-calibrate" data-tip-title="Calibrate" data-tip="Click two points with a known distance to set the real size.">Calibrate</button>
-            <button data-action="ref-straighten" data-tip-title="Straighten" data-tip="Click four corners of a known rectangle to remove perspective and skew.">Straighten</button>
+            <button data-action="ref-straighten" data-tip-title="Straighten" data-tip="Select the four corners of a known rectangle to remove perspective distortion and skew.">Straighten</button>
             <button data-action="ref-remove" data-tip-title="Remove" data-tip="Take the picture away.">Remove</button>
           </div>
         </section>
@@ -362,7 +362,7 @@
             <button data-measure="circle" data-tip-title="Circle" data-tip="Click three points on the model, on the edge of a circle or hole. Shows its diameter and radius."><i data-lucide="circle-dashed"></i><span>Circle</span></button>
           </div>
           <div class="chips one-row">
-            <button data-measure-option="snap" class="chip active" data-tip-title="Snap" data-tip="Points jump to the nearest corner, measurement point, middle of an edge, centre of a flat face or sharp edge when close.">Snap</button>
+            <button data-measure-option="snap" class="chip active" data-tip-title="Snap" data-tip="Automatically snaps points to nearby corners, measurement points, edge midpoints, face centres, and sharp edges.">Snap</button>
             <button data-measure-option="dotted" class="chip active" data-tip-title="Dotted" data-tip="Draw measurement lines dotted instead of solid.">Dotted</button>
             <button data-measure-option="deltas" class="chip" data-tip-title="ΔX ΔY ΔZ" data-tip="Also show the distance along each axis.">ΔX ΔY ΔZ</button>
           </div>
@@ -376,11 +376,11 @@
           <div class="button-grid cols-3">
             <button data-action="select-all" data-tip-title="Select all (Ctrl+A)" data-tip="Select every object.">All</button>
             <button data-action="deselect-all" data-tip-title="Select none" data-tip="Clear the selection.">None</button>
-            <button data-action="invert-selection" data-tip-title="Invert selection" data-tip="Select what isn't selected, and the other way round.">Invert</button>
+            <button data-action="invert-selection" data-tip-title="Invert selection" data-tip="Selects everything that isn't currently selected and deselects everything that is.">Invert</button>
           </div>
           <div class="button-grid cols-2">
-            <button data-action="group" data-tip-title="Group" data-tip="Tie the selected objects together so they select and move as one."><i data-lucide="group"></i><span>Group</span></button>
-            <button data-action="ungroup" data-tip-title="Ungroup" data-tip="Let the objects in the selected groups move separately again."><i data-lucide="ungroup"></i><span>Ungroup</span></button>
+            <button data-action="group" data-tip-title="Group" data-tip="Groups the selected objects so they can be selected and moved together. Also allows certain operations to be applied to the group."><i data-lucide="group"></i><span>Group</span></button>
+            <button data-action="ungroup" data-tip-title="Ungroup" data-tip="Separates the selected groups so their objects can be selected and moved individually again."><i data-lucide="ungroup"></i><span>Ungroup</span></button>
           </div>
           <ul class="items"></ul>
         </section>

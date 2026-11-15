@@ -7,7 +7,7 @@ import { shellsOf } from './meshCheck';
 import type { V3 } from './edges';
 
 export type TexturePattern = 'pyramids' | 'dots' | 'ribs' | 'hexagons';
-export type TextureFaces = 'one' | 'sides' | 'outer';
+export type TextureFaces = 'one' | 'outer';
 
 export interface SurfaceTextureOptions {
   pattern: TexturePattern;
@@ -470,13 +470,13 @@ export function surfaceTexture(wasm: ManifoldToplevel, item: PlacedMesh, o: Surf
         const f = faceOfTriangle(world, t);
         for (const r of f.triangles) seen.add(r);
         if (f.flat || narrow(world, f) >= 3 * o.cell) {
-          if (f.area >= minArea && (o.faces === 'sides' ? Math.abs(f.normal[2]) < 0.05 : f.normal[2] > -0.95) && facesOut(solid, f, reach)) surfaces.push({ face: f });
+          if (f.area >= minArea && f.normal[2] > -0.95 && facesOut(solid, f, reach)) surfaces.push({ face: f });
           continue;
         }
         const wall = cylinderWallAt(world, t);
         if (!wall) continue;
         for (const r of wall.triangles) seen.add(r);
-        if (wall.area >= minArea && (o.faces !== 'sides' || Math.abs(wall.axis[2]) > 0.99) && facesOut(solid, wallMiddle(wall), reach)) surfaces.push({ wall });
+        if (wall.area >= minArea && facesOut(solid, wallMiddle(wall), reach)) surfaces.push({ wall });
       }
       if (surfaces.length === 0) throw new Error('There are no faces big enough for this pattern.');
     }

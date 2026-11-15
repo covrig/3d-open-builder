@@ -130,7 +130,7 @@ export class ModifyTools {
     interface Rounded { piece: Piece; skipped: number }
     this.bar.open<Rounded>({
       title: 'Soften',
-      hint: 'Round all the outer edges, straight or curved (a hollow box too: only the outside). Set the radius and check the orange preview.',
+      hint: 'Round all the outer edges, straight or curved (a hollow box too: only the outside).',
       fields: [
         { key: 'radius', label: 'Radius', type: 'number', value: 2, min: 0.1, step: 0.5, unit: 'mm', tip: 'Radius of the rounding. Edges too small for it are left sharp.' },
       ],
@@ -257,7 +257,7 @@ export class ModifyTools {
     const pickPoint = () => {
       const typeSelect = document.querySelector<HTMLSelectElement>('#feature-bar [data-key="type"] select');
       const circular = typeSelect?.value === 'circular';
-      this.toast('Click a point on the model (Esc stops picking)');
+      this.toast('Click a point on the model');
       this.points.start({
         onPick: (at) => {
           const [x, y, z] = at.toArray().map(round2);
@@ -288,7 +288,7 @@ export class ModifyTools {
         { key: 'cx', label: 'Centre X', type: 'number', value: Math.round(centre.x - spacing), step: 1, unit: 'mm', showIf: (v) => v.type === 'circular' && v.axis !== 'x', tip: 'Where the axis passes through.' },
         { key: 'cy', label: 'Centre Y', type: 'number', value: Math.round(centre.y), step: 1, unit: 'mm', showIf: (v) => v.type === 'circular' && v.axis !== 'y', tip: 'Where the axis passes through.' },
         { key: 'cz', label: 'Centre Z', type: 'number', value: 0, step: 1, unit: 'mm', showIf: (v) => v.type === 'circular' && v.axis !== 'z', tip: 'Where the axis passes through.' },
-        { key: 'pick', label: 'Pick point', type: 'button', value: '', onClick: pickPoint, showIf: (v) => v.type === 'circular' || v.centreOn === 'on', tip: 'Click a corner, edge or face on the model to centre the pattern there (Esc stops picking).' },
+        { key: 'pick', label: 'Pick point', type: 'button', value: '', onClick: pickPoint, showIf: (v) => v.type === 'circular' || v.centreOn === 'on', tip: 'Click a corner, edge or face on the model to centre the pattern there.' },
         { key: 'merge', label: 'Merge into one', type: 'checkbox', value: false, tip: 'Join the original and all copies into a single object.' },
       ],
       targets: objs,
