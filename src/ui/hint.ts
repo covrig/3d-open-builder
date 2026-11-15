@@ -108,6 +108,8 @@ export function watchCovers(): void {
   }
   sizes.observe(view);
   window.addEventListener('resize', schedule);
+  // The phone drawer moves the view cube sideways when it opens or closes.
+  new MutationObserver(schedule).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   schedule();
 }
 

@@ -2,9 +2,9 @@ import { parse, type Font } from 'opentype.js';
 
 /** Fonts shipped with the app (in public/fonts, with their licences). */
 export const FONTS = {
-  sans: { label: 'Sans (Roboto)', file: 'fonts/Roboto-Bold.ttf' },
-  serif: { label: 'Serif (Roboto Slab)', file: 'fonts/RobotoSlab-Bold.ttf' },
-  mono: { label: 'Mono (Roboto Mono)', file: 'fonts/RobotoMono-Bold.ttf' },
+  sans: { label: 'Sans', file: 'fonts/Roboto-Bold.ttf' },
+  serif: { label: 'Serif', file: 'fonts/RobotoSlab-Bold.ttf' },
+  mono: { label: 'Mono', file: 'fonts/RobotoMono-Bold.ttf' },
 } as const;
 export type FontName = keyof typeof FONTS;
 

@@ -1016,7 +1016,14 @@ body.panel-closed #view-corner .panel-close { display: none; }
 body.sidebar-hidden #sidebar { display: none; }@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
   /* The drawer covers the right of the view: keep the > just left of it. */
   body.sidebar-open #view-corner { right: calc(min(290px, 86vw) + 8px); z-index: 21; }
-  /* On phones the open drawer leaves little room: the app name makes way for the >. */
+}
+/* The open drawer (290 px) covers the right of the view. The bar (338 px, centred) reaches it below about 930 px,
+   the app name (about 160 px, top left) only on phones below about 470 px; both stay when there is room.
+   The view cube moves left of the drawer when 600 px or more remain, else it makes way. */
+@media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
+  @media (max-width: 929px) { body.sidebar-open #transform-bar { display: none; } }
+}
+@media (max-width: 469px) {
   body.sidebar-open #brand-overlay { visibility: hidden; }
 }
 /* Working… with Cancel, while a geometry calculation runs. */
@@ -1126,7 +1133,7 @@ body.shortcuts-on .shortcuts-off { display: none; }
 :root[data-theme='light'][data-accent='purple'] { --accent: #7c3aed; --accent-soft: rgba(124, 58, 237, 0.12); }
 :root[data-theme='light'][data-accent='pink'] { --accent: #c2255c; --accent-soft: rgba(194, 37, 92, 0.12); }
 :root[data-theme='light'][data-accent='orange'] { --accent: #b35900; --accent-soft: rgba(179, 89, 0, 0.12); }
-.accent-swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+.accent-swatches { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .accent-swatch { position: relative; display: inline-block; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
 .accent-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .accent-swatch:has(input:checked) { outline: 2px solid var(--text); outline-offset: 2px; }
@@ -1175,7 +1182,10 @@ svg.gizmo .corner-touch { r: 16px; }
   border: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); pointer-events: none;
 }
 @media (max-width: 900px), (orientation: portrait) and (max-width: 1100px) {
-  /* Like the app name: out of the way while the panel drawer is open. */
+  /* While the panel drawer is open: beside it when 600 px or more remain, otherwise out of the way. */
+  body.sidebar-open #view-cube { right: calc(min(290px, 86vw) + 12px); }
+}
+@media (max-width: 599px) {
   body.sidebar-open #view-cube { visibility: hidden; }
 }
 

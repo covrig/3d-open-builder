@@ -20,7 +20,7 @@
         <button data-menu="file-menu" data-tip-title="Menu" data-tip="New drawing, import 3D objects, export 3MF or STL, settings, shortcuts, privacy and libraries."><i data-lucide="menu"></i><span>Menu</span></button>
         <div id="file-menu" class="menu" role="menu" hidden>
           <button data-action="new" role="menuitem"><i data-lucide="file-plus"></i>New drawing</button>
-          <button data-action="save" role="menuitem"><i data-lucide="save"></i>Save <small>in this browser now (it also saves on its own)</small></button>
+          <button data-action="save" role="menuitem"><i data-lucide="save"></i>Save <small>in the browser memory (autosaves every 60 s)</small></button>
           <button data-action="save-project" role="menuitem"><i data-lucide="save"></i>Save project to file <small>everything, to open again later</small></button>
           <button data-action="open-project" role="menuitem"><i data-lucide="folder-open"></i>Open project <small>.3dob</small></button>
           <hr />
@@ -99,18 +99,18 @@
         <button data-modify="texture" class="more-out" data-tip-title="Texture" data-tip="Adds small bumps or dents to flat faces, cylindrical walls, or all outer surfaces for improved grip or appearance. Prints without supports."><i data-lucide="grid-3x3"></i><span>Texture</span></button>
         <button data-menu="modify-menu" data-tip-title="More" data-tip="Bevel, round, soften, texture, brace, shell, rotate, and section."><span class="icon-row"><i data-lucide="pencil-ruler"></i><i data-lucide="chevron-down" class="caret"></i></span><span>More</span></button>
         <div id="modify-menu" class="menu compact" role="menu" hidden>
-          <button data-action="split" class="narrow-only" role="menuitem"><i data-lucide="scissors-line-dashed"></i>Split</button>
-          <button data-action="extrude-down" class="narrow-only" role="menuitem"><i data-lucide="arrow-down-from-line"></i>Extrude</button>
-          <button data-modify="pattern" class="narrow-only" role="menuitem"><i data-lucide="layout-grid"></i>Pattern</button>
-          <button data-modify="text" class="narrow-only" role="menuitem"><i data-lucide="type"></i>Text</button>
-          <button data-modify="chamfer" role="menuitem" data-tip-title="Bevel" data-shortcut="B" data-tip="Cut the edges you pick at an angle. Pick edges and set the distance." data-tip-note="Apply to all edges of a corner in one go. Bevelling in several steps may result in bad geometry."><i data-lucide="bevel"></i>Bevel<kbd class="key-hint">B</kbd></button>
-          <button data-modify="fillet" role="menuitem" data-tip-title="Round" data-shortcut="O" data-tip="Round the edges you pick. Pick edges and set the radius." data-tip-note="Apply to all edges of a corner in one go. Rounding in several steps may result in bad geometry."><i data-lucide="square-round-corner"></i>Round<kbd class="key-hint">O</kbd></button>
-          <button data-modify="shell" role="menuitem"><i data-lucide="box"></i>Shell</button>
-          <button data-modify="gusset" role="menuitem"><i data-lucide="triangle-left"></i>Brace</button>
-          <button data-action="rotate90" role="menuitem"><i data-lucide="rotate-cw"></i>Rotate</button>
-          <button data-action="cross-section" role="menuitem"><i data-lucide="scan-line"></i>Section</button>
-          <button data-modify="soften" role="menuitem" data-tip-title="Soften" data-tip="Round all the outer edges of an object in one go, straight or curved (the rim of a cylinder too). A hollow box works too: only the outside is rounded."><i data-lucide="soften"></i>Soften</button>
-          <button data-modify="texture" role="menuitem" data-tip-title="Texture" data-tip="Cover a flat face, the wall of a cylinder, or all the outer faces with small bumps or dents for grip or looks. It prints without support."><i data-lucide="grid-3x3"></i>Texture</button>
+          <button data-action="split" class="narrow-only" role="menuitem" data-tip-title="Split" data-shortcut="S" data-tip="Cut the selected object in two with a plane. Choose which piece to keep."><i data-lucide="scissors-line-dashed"></i>Split</button>
+          <button data-action="extrude-down" class="narrow-only" role="menuitem" data-tip-title="Extrude down" data-shortcut="E" data-tip="Slices the object at a horizontal plane and extends its cross-section down to the build plate."><i data-lucide="arrow-down-from-line"></i>Extrude</button>
+          <button data-modify="pattern" class="narrow-only" role="menuitem" data-tip-title="Pattern" data-shortcut="P" data-tip="Repeat the selection in a row or around an axis."><i data-lucide="layout-grid"></i>Pattern</button>
+          <button data-modify="text" class="narrow-only" role="menuitem" data-tip-title="Text on a face" data-tip="Raise letters out of a face or cut them into it."><i data-lucide="type"></i>Text</button>
+          <button data-modify="chamfer" role="menuitem" data-tip-title="Bevel" data-shortcut="B" data-tip="Cuts the selected edges at an angle using the specified distance." data-tip-note="Apply to all edges of a corner in one go. Bevelling in several steps may result in bad geometry."><i data-lucide="bevel"></i>Bevel<kbd class="key-hint">B</kbd></button>
+          <button data-modify="fillet" role="menuitem" data-tip-title="Round" data-shortcut="O" data-tip="Rounds the selected edges using the specified radius." data-tip-note="Apply to all edges of a corner in one go. Rounding in several steps may result in bad geometry."><i data-lucide="square-round-corner"></i>Round<kbd class="key-hint">O</kbd></button>
+          <button data-modify="shell" role="menuitem" data-tip-title="Shell" data-tip="Creates a hollow interior while keeping walls at the specified thickness."><i data-lucide="box"></i>Shell</button>
+          <button data-modify="gusset" role="menuitem" data-tip-title="Brace" data-tip="Add a triangular brace in an inside corner where two walls meet."><i data-lucide="triangle-left"></i>Brace</button>
+          <button data-action="rotate90" role="menuitem" data-tip-title="Rotate" data-tip="Rotates the selection in 90° steps around the X, Y, or Z axis."><i data-lucide="rotate-cw"></i>Rotate</button>
+          <button data-action="cross-section" role="menuitem" data-tip-title="Section" data-tip="Cuts the view along the X, Y, or Z axis to reveal the interior. The model remains unchanged, and measurements work on the cut surface."><i data-lucide="scan-line"></i>Section</button>
+          <button data-modify="soften" role="menuitem" data-tip-title="Soften" data-tip="Rounds all outer edges of the object at once, including curved edges and cylinder rims. For hollow objects, only the outside edges are rounded."><i data-lucide="soften"></i>Soften</button>
+          <button data-modify="texture" role="menuitem" data-tip-title="Texture" data-tip="Adds small bumps or dents to flat faces, cylindrical walls, or all outer surfaces for improved grip or appearance. Prints without supports."><i data-lucide="grid-3x3"></i>Texture</button>
         </div>
       </div>
 
@@ -177,7 +177,7 @@
         <div id="cursor-xyz" class="mouse-only" hidden aria-hidden="true"><div class="x"></div><div class="y"></div><div class="z"></div></div>
         <div id="shortcuts-panel" hidden>
           <header><strong>Keyboard shortcuts</strong><button data-action="shortcuts" aria-label="Hide keyboard shortcuts" data-tip-title="Hide" data-tip="Hide this panel. Show it again from the Menu.">×</button></header>
-          <p class="shortcuts-off muted">Single-key shortcuts (D, M, F…) are off. Turn on “Enable shortcuts” in Settings.</p>
+          <p class="shortcuts-off muted">Single-key shortcuts (D, M, F…) are off. Turn on single-key shortcuts in Settings.</p>
           <dl>
             <dt>Ctrl+Z / Ctrl+Y</dt><dd>Undo / redo</dd>
             <dt>Ctrl+C / X / V</dt><dd>Copy / cut / paste</dd>
@@ -420,9 +420,11 @@
         </fieldset>
         <fieldset>
           <legend>Colours</legend>
-          <label><input type="radio" name="theme" value="system" /> Same as my system</label>
-          <label><input type="radio" name="theme" value="light" /> Light</label>
-          <label><input type="radio" name="theme" value="dark" /> Dark</label>
+          <div class="radio-grid">
+            <label><input type="radio" name="theme" value="system" /> System</label>
+            <label><input type="radio" name="theme" value="light" /> Light</label>
+            <label><input type="radio" name="theme" value="dark" /> Dark</label>
+          </div>
         </fieldset>
         <fieldset class="accent-picker">
           <legend>Accent colour</legend>
@@ -437,7 +439,7 @@
         </fieldset>
         <fieldset>
           <legend>Placing objects</legend>
-          <label><input type="checkbox" name="snapping" /> Snapping: move, size and turn in steps, and line faces up with the plate and other objects</label>
+          <label><input type="checkbox" name="snapping" /> Snapping: move, resize and rotate in steps, and align faces with the build plate and other objects</label>
           <div class="snap-steps">
             <label>Distance step <select name="snapDistance"></select></label>
             <label>Angle step <select name="snapAngle"><option value="1">1°</option><option value="5">5°</option><option value="10">10°</option></select></label>
@@ -446,14 +448,14 @@
         </fieldset>
         <fieldset>
           <legend>View</legend>
-          <label id="intersections-label"><input type="checkbox" name="internalIntersections" /> Show internal intersections: dashed lines where objects overlap <span class="muted note" hidden>Needs Edges on in View.</span></label>
+          <label id="intersections-label"><input type="checkbox" name="internalIntersections" /> Shows dashed lines where objects overlap. <span class="muted note" hidden>Needs Edges on in View.</span></label>
           <label id="internal-edges-label" style="margin-left: 1.6em"><input type="checkbox" name="internalEdges" /> Also show internal edges: dashed edges of an object where they run inside another object</label>
-          <label><input type="checkbox" name="smoothTurning" /> Smoother turning on slow computers: while you turn, pan or zoom the view, draw it at a lower resolution when the computer cannot keep up (sharp again a moment after you let go)</label>
+          <label><input type="checkbox" name="smoothTurning" /> Smooth Navigation: uses lower resolution while rotating, panning or zooming to keep the view responsive. Restores full quality when you stop</label>
         </fieldset>
         <fieldset>
           <legend>Keyboard</legend>
-          <label><input type="checkbox" name="shortcuts" /> Enable shortcuts: single keys like 1 2 3 4 to add shapes, D duplicate, M merge, S split… (Ctrl+Z, Ctrl+C and Esc always work)</label>
-          <label class="mouse-only"><input type="checkbox" name="hideClipboard" /> Hide Copy, Cut and Paste in the toolbar (Ctrl+C, Ctrl+X and Ctrl+V still work), for more room</label>
+          <label><input type="checkbox" name="shortcuts" /> Enables single-key shortcuts for common actions, such as adding shapes, duplicating, merging and splitting. System shortcuts always work (e.g. Ctrl+C).</label>
+          <label class="mouse-only"><input type="checkbox" name="hideClipboard" /> Hides Copy, Cut and Paste from the toolbar to save space. Keyboard shortcuts still work.</label>
         </fieldset>
         <fieldset>
           <legend>Panel order (untick to hide)</legend>
@@ -492,9 +494,9 @@
         <header><h2>Privacy</h2></header>
         <p>3D Open Builder runs entirely in your web browser.</p>
         <ul class="privacy-list">
-          <li><strong>Your files stay on your computer.</strong> Files you open are read by your browser and are never uploaded anywhere. Exporting creates the file on your computer.</li>
-          <li><strong>No tracking.</strong> There are no analytics, cookies, ads or accounts.</li>
-          <li><strong>Your work and settings stay in your browser.</strong> The autosaved drawing, the copied objects and your choices (units, colours, snapping, panel order) are kept in this browser's storage so they are there next time. Clearing your browser data removes them.</li>
+          <li><strong>Your files stay on your computer.</strong> Files you open are read locally and never uploaded. Exports are saved directly to your computer.</li>
+          <li><strong>No tracking.</strong> No analytics, cookies, ads or accounts.</li>
+          <li><strong>Your work and settings stay in your browser.</strong> Your autosaved drawings, copied objects and preferences (units, colours, snapping and panel order) are stored locally in this browser for next time. Clearing browser data removes them.</li>
         </ul>
         <p class="muted">
           The site is hosted on GitHub Pages. Like any web host, GitHub may log basic request
