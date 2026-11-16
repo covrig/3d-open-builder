@@ -66,17 +66,36 @@ function profileRadius(s: number, P: number, major: number): number {
 }
 
 /**
+ * The profile pushed outwards by `gap`, measured square to its surface (a disk of
+ * radius `gap` rolled along it): the largest value of profileRadius(s + k) +
+ * sqrt(gap² - k²) over |k| <= gap. Crests and roots move out by `gap`, the 60°
+ * flanks by `gap` square to themselves (twice that radially), so a bolt turns in
+ * the result with exactly `gap` of play everywhere. Moving the profile out
+ * radially by `gap` instead leaves only gap / 2 on the flanks, where a thread jams.
+ */
+function offsetProfileRadius(s: number, P: number, major: number, gap: number): number {
+  const n = 64;
+  let best = -Infinity;
+  for (let i = -n; i <= n; i++) {
+    const k = (i / n) * gap;
+    best = Math.max(best, profileRadius(s + k, P, major) + Math.sqrt(Math.max(0, gap * gap - k * k)));
+  }
+  return best;
+}
+
+/**
  * A right-hand threaded cylinder from z = 0 to `length`. At every height the
  * cross-section is the same outline turned by the helix angle, so extruding
  * that outline with 360° of twist per pitch gives an exact helical thread.
- * `grow` enlarges the profile (clearance for nuts and tapped holes).
+ * `grow` is the clearance for nuts and tapped holes: the gap all round, flanks
+ * included (see offsetProfileRadius).
  */
 function threadSolid(wasm: ManifoldToplevel, d: number, P: number, length: number, grow: number, steps: number): Manifold {
-  const major = d / 2 + grow;
   const outline: [number, number][] = [];
   for (let i = 0; i < steps; i++) {
     const phi = (i / steps) * Math.PI * 2;
-    const r = profileRadius((phi / (Math.PI * 2)) * P, P, major);
+    const s = (phi / (Math.PI * 2)) * P;
+    const r = grow > 0 ? offsetProfileRadius(s, P, d / 2, grow) : profileRadius(s, P, d / 2);
     outline.push([r * Math.cos(phi), r * Math.sin(phi)]);
   }
   const turns = length / P;

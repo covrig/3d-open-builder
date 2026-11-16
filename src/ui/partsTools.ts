@@ -155,7 +155,7 @@ export class PartsTools {
         }] : []),
         ...(kind === 'nut' || kind === 'rod' ? [{
           key: 'clearance', label: 'Clearance', type: 'number' as const, value: 0.2, min: 0, max: 1, step: 0.05, unit: 'mm',
-          tip: 'Extra room all round the thread so a bolt fits. About 0.2 mm suits most FDM printers.',
+          tip: 'The gap between the bolt and this thread, on the flanks as well as the tips. 0.2 mm suits a metal bolt; if the bolt is printed too, try 0.3 mm or more.',
           ...(kind === 'rod' ? { showIf: ['hole', 'true'] as [string, string] } : {}),
         }] : []),
         {
