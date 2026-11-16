@@ -848,7 +848,11 @@ body.clear-panel #sidebar {
   background: transparent; border-left: 0; box-shadow: none; pointer-events: none; scrollbar-width: none;
 }
 body.clear-panel #sidebar > * { pointer-events: auto; }
-body.clear-panel #sidebar section, body.clear-panel #sidebar details.panel {
+/* The see-through background and its blur sit on a pseudo-element behind each box: a blur (or any filter) on the
+   box itself would make it the anchor of its fixed-position menus (Align, Distribute) and displace them. */
+body.clear-panel #sidebar section, body.clear-panel #sidebar details.panel { position: relative; }
+body.clear-panel #sidebar section::before, body.clear-panel #sidebar details.panel::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
   background: color-mix(in srgb, var(--panel) 72%, transparent);
   backdrop-filter: blur(4px);
 }
