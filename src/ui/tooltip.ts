@@ -98,7 +98,8 @@ export function setupTooltips(): void {
     clearTimeout(pressTimer);
     if (e.pointerType !== 'touch') return;
     const el = (e.target as Element).closest<HTMLElement>('[data-tip]');
-    if (!el) return;
+    // A slider (Section, Split) is dragged, not pressed and held: its tooltip would only cover the view.
+    if (!el || el.querySelector('input[type="range"]')) return;
     pressTimer = window.setTimeout(() => {
       current = el;
       show(el);

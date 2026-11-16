@@ -71,6 +71,15 @@ export function setupLookSettings(): void {
   });
   applyClipboard();
 
+  // The side panel without a background: the model shows and can be worked on behind it (the stylesheet does the rest).
+  const clearPanel = input('clearPanel');
+  clearPanel.checked = settings.ui.clearPanel;
+  document.body.classList.toggle('clear-panel', settings.ui.clearPanel);
+  clearPanel.addEventListener('change', () => {
+    updateUi((ui) => (ui.clearPanel = clearPanel.checked));
+    document.body.classList.toggle('clear-panel', clearPanel.checked);
+  });
+
   // Lower resolution while the view moves, on slow computers (off by default; the viewport reads the setting).
   const smooth = input('smoothTurning');
   smooth.checked = settings.ui.smoothTurning;

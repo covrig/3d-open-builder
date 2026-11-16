@@ -6,7 +6,7 @@ import { bakeMesh, manifoldToMeshData, meshDataToManifold, type PlacedMesh } fro
 import { shellsOf } from './meshCheck';
 import type { V3 } from './edges';
 
-export type TexturePattern = 'pyramids' | 'dots' | 'ribs' | 'hexagons';
+export type TexturePattern = 'pyramids' | 'diamonds' | 'cones' | 'dots' | 'hexagons' | 'ribs' | 'waves' | 'scales' | 'dimples' | 'stipple';
 export type TextureFaces = 'one' | 'outer';
 
 export interface SurfaceTextureOptions {
@@ -141,23 +141,180 @@ function wallBehind(solid: Manifold, face: { centre: V3; normal: V3 }, reach: nu
   return hits.length === 0 ? Infinity : Math.min(...hits) + 1e-3;
 }
 
-/** One feature, standing on z = 0 (base), reaching up `depth`, wider at the bottom (it starts OVERLAP below z = 0) and narrowing at 45 degrees. */
-function tileOf(wasm: ManifoldToplevel, keep: <M extends { delete(): void }>(m: M) => M, o: SurfaceTextureOptions, length: number, overlap = OVERLAP): { tile: Manifold; triangles: number } {
+type Keep = <M extends { delete(): void }>(m: M) => M;
+/** A spot for a feature: its centre in the face plane and, for patterns with several sizes, which size. */
+type Spot = [number, number, number?];
+
+/** Patterns whose rows are staggered by half a step (the others sit in plain columns). */
+const STAGGERED: ReadonlySet<TexturePattern> = new Set<TexturePattern>(['dots', 'hexagons', 'cones', 'dimples', 'diamonds', 'scales']);
+/** Patterns that are one long bar per cell, running the whole length of the face. */
+const isBar = (p: TexturePattern) => p === 'ribs' || p === 'waves';
+/** The patterns added after the first four. On a round wall they never come closer than the cell (the column count is rounded down). */
+const isNewer = (p: TexturePattern) => p !== 'pyramids' && p !== 'dots' && p !== 'ribs' && p !== 'hexagons';
+
+/** Diamonds are taller than wide by this much. */
+const DIAMOND_RATIO = 1.6;
+/** Diagonals of the rhombus that tiles the plane edge to edge with its sides `cell` apart (a staggered lattice, centres at (i w, j h) and ((i + 1/2) w, (j + 1/2) h)). */
+function diamondDims(cell: number): { w: number; h: number } {
+  const q = Math.sqrt(1 + DIAMOND_RATIO * DIAMOND_RATIO);
+  return { w: (cell * q) / DIAMOND_RATIO, h: cell * q };
+}
+
+/** Distance between the middles of neighbouring features along a row, and the distance between rows. */
+const pitchX = (o: SurfaceTextureOptions) => (o.pattern === 'diamonds' ? diamondDims(o.cell).w : o.cell);
+function rowPitchOf(o: SurfaceTextureOptions): number {
+  switch (o.pattern) {
+    case 'dots': case 'hexagons': case 'cones': case 'dimples': return o.cell * (Math.sqrt(3) / 2);
+    case 'diamonds': return diamondDims(o.cell).h / 2;
+    case 'scales': return (o.cell - o.gap) / 2 + o.gap;
+    default: return o.cell;
+  }
+}
+
+/**
+ * The wave: a sine of wavelength 3 cells and amplitude a quarter cell, and the width of the ribbon that follows it.
+ * The ribbon is made narrower than the cell minus the gap where the line is slanted, so the space between neighbouring
+ * waves (measured square to them) is at least the gap everywhere. If that leaves it too thin, the amplitude is reduced.
+ */
+function waveDims(o: SurfaceTextureOptions): { amp: number; lambda: number; width: number } {
+  const b = o.cell - o.gap;
+  const lambda = 3 * o.cell;
+  const N = 240;
+  for (let step = 0; step <= 8; step++) {
+    const amp = (o.cell / 4) * (1 - step / 8);
+    let width = b;
+    if (amp > 0) {
+      let nearest = Infinity;
+      const xs = (y: number) => amp * Math.sin((2 * Math.PI * y) / lambda);
+      for (let i = 0; i < N; i++) {
+        const y = (i * lambda) / N, x = xs(y);
+        for (let j = 0; j < 3 * N; j++) {
+          const y2 = -lambda + (j * lambda) / N;
+          nearest = Math.min(nearest, Math.hypot(o.cell + xs(y2) - x, y2 - y));
+        }
+      }
+      width = Math.min(b, nearest - o.gap);
+    }
+    if (width >= Math.min(b, TEXTURE_LIMITS.minFeature) - 1e-9) return { amp, lambda, width };
+  }
+  return { amp: 0, lambda, width: b };
+}
+
+/** Scales: each is a half ring (a "U") of outer radius b / 2; the rows lie `gap` clear of each other, each row between the scales of the next. */
+function scaleDims(o: SurfaceTextureOptions): { outer: number; ridge: number } {
+  const b = o.cell - o.gap;
+  return { outer: b / 2, ridge: Math.min(b / 2, Math.max(TEXTURE_LIMITS.minFeature, b / 4)) };
+}
+
+/** Stipple: three sizes of dot, as a share of b. */
+const STIPPLE_SIZES = [0.6, 0.8, 1];
+const stippleDiameter = (o: SurfaceTextureOptions, cls: number) => {
+  const b = o.cell - o.gap;
+  return Math.min(b, Math.max(STIPPLE_SIZES[cls] * b, TEXTURE_LIMITS.minFeature));
+};
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/**
+ * The dot of the grid place (i, j): its size class and how far it sits off the middle of its place. It stays inside the
+ * square of side b round the middle, and neighbouring squares are a gap apart, so no two dots can touch. The seed comes only
+ * from the options (cell and gap) and the place, so the same options always give the same dots.
+ */
+function stippleDot(o: SurfaceTextureOptions, i: number, j: number): { dx: number; dy: number; cls: number } {
+  const seed = Math.imul(Math.round(o.cell * 1000), 0x9e3779b1) ^ Math.imul(Math.round(o.gap * 1000), 0x85ebca6b) ^ Math.imul(i, 0xc2b2ae35) ^ Math.imul(j, 0x27d4eb2f);
+  const rnd = mulberry32(seed);
+  rnd();
+  const cls = Math.min(2, Math.floor(rnd() * 3));
+  const room = (o.cell - o.gap - stippleDiameter(o, cls)) / 2;
+  return { cls, dx: (rnd() * 2 - 1) * room, dy: (rnd() * 2 - 1) * room };
+}
+
+/** A round post on z = 0 (radius `baseR` there), starting `overlap` below it and narrowing at 45 degrees up to the tip (never thinner than minTip). */
+function post(wasm: ManifoldToplevel, keep: Keep, baseR: number, o: SurfaceTextureOptions, overlap: number, segments: number, turn = 0): Manifold {
+  const R = baseR + overlap;
+  const k = Math.max(TEXTURE_LIMITS.minTip / 2, baseR - o.depth) / R;
+  let disc = keep(wasm.CrossSection.circle(R, segments));
+  if (turn) disc = keep(disc.rotate(turn));
+  return keep(keep(wasm.Manifold.extrude(disc, o.depth + overlap, 0, 0, [k, k])).translate(0, 0, -overlap));
+}
+
+/** A post carried along a path: the hull of each neighbouring pair, joined. Its flanks stay at 45 degrees all along. */
+function sweep(wasm: ManifoldToplevel, keep: Keep, path: [number, number][], p: Manifold): Manifold {
+  const posts = path.map(([x, y]) => keep(p.translate(x, y, 0)));
+  const parts: Manifold[] = [];
+  for (let i = 0; i + 1 < posts.length; i++) parts.push(keep(wasm.Manifold.hull([posts[i], posts[i + 1]])));
+  return keep(wasm.Manifold.union(parts));
+}
+
+/** The bowl of a dimple as a profile (radius, height): a wall at 45 degrees from the rim blended into a round floor, so no part is steeper. */
+function dimpleProfile(a: number, depth: number, overlap: number): [number, number][] {
+  const t = Math.tan(Math.PI / 8);
+  let wall = 0, rho = a, hc = depth;
+  if (depth > t * a) {
+    wall = (depth - t * a) / (1 - t);
+    rho = a - wall;
+    hc = t * rho;
+  }
+  const Rs = (rho * rho + hc * hc) / (2 * hc);
+  const zc = depth - Rs;
+  const pts: [number, number][] = [[0, -overlap]];
+  if (wall > 0) pts.push([a + overlap, -overlap], [a, 0], [rho, wall]);
+  else pts.push([Math.sqrt(Math.max(0, Rs * Rs - (-overlap - zc) ** 2)), -overlap], [a, 0]);
+  const psi0 = Math.asin(Math.min(1, rho / Rs));
+  const steps = 6;
+  for (let s = 1; s <= steps; s++) {
+    const psi = psi0 * (1 - s / steps);
+    pts.push([Rs * Math.sin(psi), zc + Rs * Math.cos(psi)]);
+  }
+  return pts;
+}
+
+/** Triangles of a tile above the surface: what it adds once the part below, inside the object, has been merged away. */
+const above = (keep: Keep, tile: Manifold) => keep(tile.trimByPlane([0, 0, 1], 0)).numTri();
+
+/** The turn of the pattern, and the turn upside down of a cut-in feature, applied to a tile. */
+function orientTile(keep: Keep, o: SurfaceTextureOptions, m: Manifold): Manifold {
+  const upright = o.mode === 'cut' ? keep(m.rotate([180, 0, 0])) : m;
+  return o.angle % 360 === 0 ? upright : keep(upright.rotate(0, 0, o.angle));
+}
+
+/** One feature, standing on z = 0 (base), reaching up `depth`, wider at the bottom (it starts OVERLAP below z = 0) and narrowing at 45 degrees. Stipple also gives its three sizes in `variants`. */
+function tileOf(wasm: ManifoldToplevel, keep: Keep, o: SurfaceTextureOptions, length: number, overlap = OVERLAP): { tile: Manifold; triangles: number; variants?: Manifold[] } {
   const { Manifold, CrossSection } = wasm;
   const b = o.cell - o.gap;
   const height = o.depth + overlap;
-  const bottom = b + 2 * overlap;
-  const top = Math.max(TEXTURE_LIMITS.minTip, b - 2 * o.depth);
-  const k = top / bottom;
+  let bottom = b + 2 * overlap;
+  let top = Math.max(TEXTURE_LIMITS.minTip, b - 2 * o.depth);
   let shape: CrossSection;
   let triangles: number;
-  // (Always a pair: Manifold's extrude takes a lone number wrongly, giving a different taper.)
-  let scale: [number, number] = [k, k];
   switch (o.pattern) {
     case 'pyramids':
       shape = keep(CrossSection.square([bottom, bottom], true));
       triangles = 12;
       break;
+    case 'diamonds': {
+      // A rhombus whose sides are all b / 2 from its middle, so it narrows at 45 degrees on every side.
+      const { w, h } = diamondDims(o.cell);
+      const f = bottom / o.cell;
+      shape = keep(new CrossSection([[[(f * w) / 2, 0], [0, (f * h) / 2], [(-f * w) / 2, 0], [0, (-f * h) / 2]]], 'NonZero'));
+      triangles = 12;
+      break;
+    }
+    case 'cones': {
+      // The 45 degree cone from a base of 2 * depth + minTip to a tip of minTip; a wider cell leaves room round it.
+      const base = Math.min(b, 2 * o.depth + TEXTURE_LIMITS.minTip);
+      bottom = base + 2 * overlap;
+      top = TEXTURE_LIMITS.minTip;
+      shape = keep(CrossSection.circle(bottom / 2, 16));
+      triangles = 16 * 2 + 14 * 2;
+      break;
+    }
     case 'dots':
       shape = keep(CrossSection.circle(bottom / 2, 16));
       triangles = 16 * 2 + 14 * 2;
@@ -169,18 +326,62 @@ function tileOf(wasm: ManifoldToplevel, keep: <M extends { delete(): void }>(m: 
       break;
     case 'ribs':
       shape = keep(CrossSection.square([bottom, length], true));
-      scale = [k, 1];
       triangles = 12;
       break;
+    case 'waves': {
+      // A bar along the face (like a rib) whose middle line is a sine: the swept post, cut off square at the ends.
+      const { amp, lambda, width } = waveDims(o);
+      const R = width / 2 + overlap;
+      const half = length / 2 + R;
+      const n = Math.max(2, Math.ceil((2 * half) / (lambda / 12)));
+      const path: [number, number][] = [];
+      for (let i = 0; i <= n; i++) {
+        const y = -half + (2 * half * i) / n;
+        path.push([amp * Math.sin((2 * Math.PI * y) / lambda), y]);
+      }
+      const bar = sweep(wasm, keep, path, post(wasm, keep, width / 2, o, overlap, 12));
+      const box = keep(Manifold.cube([2 * (amp + R) + 2, length, 2 * height + 2], true));
+      const tile = keep(bar.intersect(box));
+      return { tile, triangles: above(keep, tile) };
+    }
+    case 'scales': {
+      // A half ring (a U) swept from a post along the arc, with round tapered ends that stop at the middle line of the ring
+      // (so no end is a square wall); its middle is the middle of its box.
+      const { outer, ridge } = scaleDims(o);
+      const mid = outer - ridge / 2;
+      const end = Math.min(0.6, Math.asin(Math.min(1, ridge / 2 / mid)));
+      const path: [number, number][] = [];
+      const n = 10;
+      for (let i = 0; i <= n; i++) {
+        const phi = Math.PI + end + ((Math.PI - 2 * end) * i) / n;
+        path.push([mid * Math.cos(phi), mid * Math.sin(phi)]);
+      }
+      let tile = keep(sweep(wasm, keep, path, post(wasm, keep, ridge / 2, o, overlap, 10, 18)).translate(0, outer / 2, 0));
+      // A cut-in tile is turned over by the caller; mirror it first so the scales still stand as U's.
+      if (o.mode === 'cut') tile = keep(tile.mirror([0, 1, 0]));
+      return { tile, triangles: above(keep, tile) };
+    }
+    case 'dimples': {
+      const bowl = keep(new CrossSection([dimpleProfile(b / 2, o.depth, overlap)], 'NonZero'));
+      const tile = keep(Manifold.revolve(bowl, 16));
+      return { tile, triangles: above(keep, tile) };
+    }
+    case 'stipple': {
+      const variants = STIPPLE_SIZES.map((_, cls) => post(wasm, keep, stippleDiameter(o, cls) / 2, o, overlap, 16));
+      return { tile: variants[2], triangles: 16 * 2 + 14 * 2, variants };
+    }
   }
+  const k = top / bottom;
+  // (Always a pair: Manifold's extrude takes a lone number wrongly, giving a different taper.)
+  const scale: [number, number] = o.pattern === 'ribs' ? [k, 1] : [k, k];
   return { tile: keep(keep(Manifold.extrude(shape, height, 0, 0, scale)).translate(0, 0, -overlap)), triangles };
 }
 
 /** Centres of the features over a rectangle (|x| <= half[0], |y| <= half[1], before the pattern's turn). */
-function layout(o: SurfaceTextureOptions, half: [number, number]): [number, number][] {
+function layout(o: SurfaceTextureOptions, half: [number, number]): Spot[] {
   const s = o.cell;
-  const out: [number, number][] = [];
-  if (o.pattern === 'ribs') {
+  const out: Spot[] = [];
+  if (isBar(o.pattern)) {
     for (let x = -Math.floor(half[0] / s) * s; x <= half[0] + 1e-9; x += s) out.push([x, 0]);
     return out;
   }
@@ -188,12 +389,22 @@ function layout(o: SurfaceTextureOptions, half: [number, number]): [number, numb
     for (let i = -Math.floor(half[0] / s); i * s <= half[0]; i++) for (let j = -Math.floor(half[1] / s); j * s <= half[1]; j++) out.push([i * s, j * s]);
     return out;
   }
-  // Hexagonal packing: rows s * sqrt(3) / 2 apart, every other row shifted by half a cell.
-  const rowH = (s * Math.sqrt(3)) / 2;
+  if (o.pattern === 'stipple') {
+    for (let i = -Math.floor(half[0] / s); i * s <= half[0]; i++) {
+      for (let j = -Math.floor(half[1] / s); j * s <= half[1]; j++) {
+        const d = stippleDot(o, i, j);
+        out.push([i * s + d.dx, j * s + d.dy, d.cls]);
+      }
+    }
+    return out;
+  }
+  // Staggered rows (hexagonal packing for dots, hexagons, cones and dimples): every other row shifted by half a step.
+  const sx = pitchX(o);
+  const rowH = o.pattern === 'diamonds' || o.pattern === 'scales' ? rowPitchOf(o) : (s * Math.sqrt(3)) / 2;
   for (let j = -Math.floor(half[1] / rowH); j * rowH <= half[1]; j++) {
-    const shift = Math.abs(j) % 2 === 1 ? s / 2 : 0;
-    for (let i = -Math.floor(half[0] / s) - 1; i * s + shift <= half[0]; i++) {
-      const x = i * s + shift;
+    const shift = Math.abs(j) % 2 === 1 ? sx / 2 : 0;
+    for (let i = -Math.floor(half[0] / sx) - 1; i * sx + shift <= half[0]; i++) {
+      const x = i * sx + shift;
       if (x >= -half[0]) out.push([x, j * rowH]);
     }
   }
@@ -388,36 +599,42 @@ function wallFeatures(
 ): Manifold[] {
   const b = o.cell - o.gap;
   const r = wall.radius;
-  const columns = Math.round((2 * Math.PI * r) / o.cell);
+  // (The newer patterns round the column count down, so the features are never closer than the cell.)
+  const columns = isNewer(o.pattern) ? Math.floor((2 * Math.PI * r) / pitchX(o)) : Math.round((2 * Math.PI * r) / o.cell);
   if (columns < 4) throw new Error('The cylinder is too thin for this pattern. Use a smaller cell.');
-  const along = o.cell * (o.pattern === 'hexagons' || o.pattern === 'dots' ? Math.sqrt(3) / 2 : 1);
-  const half = (wall.vMax - wall.vMin) / 2 - o.margin - (o.pattern === 'ribs' ? 0 : b / 2);
+  const along = rowPitchOf(o);
+  const bars = isBar(o.pattern);
+  // How far a feature reaches along the axis from its middle, and how wide it is across it.
+  const reachY = o.pattern === 'diamonds' ? ((diamondDims(o.cell).h / 2) * b) / o.cell : o.pattern === 'scales' ? b / 4 : b / 2;
+  const across = o.pattern === 'diamonds' ? (diamondDims(o.cell).w * b) / o.cell : o.pattern === 'waves' ? b + waveDims(o).amp * 2 : b;
+  const half = (wall.vMax - wall.vMin) / 2 - o.margin - (bars ? 0 : reachY);
   const band = wall.vMax - wall.vMin - 2 * o.margin;
-  if (half < 0 || (o.pattern === 'ribs' && band < o.cell)) throw new Error('The margin leaves no room on this wall. Use a smaller margin.');
+  if (half < 0 || (bars && band < o.cell)) throw new Error('The margin leaves no room on this wall. Use a smaller margin.');
   const mid = (wall.vMin + wall.vMax) / 2;
   const reachRows = Math.floor(half / along);
-  const rows = o.pattern === 'ribs' ? [0] : Array.from({ length: 2 * reachRows + 1 }, (_, i) => i - reachRows);
+  const rows = bars ? [0] : Array.from({ length: 2 * reachRows + 1 }, (_, i) => i - reachRows);
   // Along a curve the flat base of a feature lifts off the surface by about b^2 / 8r at its corners: start it deeper in.
-  const overlap = Math.max(OVERLAP, (b * b) / (8 * r) + 0.1);
-  const { tile, triangles: perTile } = tileOf(wasm, keep, o, band, overlap);
+  const overlap = Math.max(OVERLAP, (across * across) / (8 * r) + 0.1);
+  const { tile, triangles: perTile, variants } = tileOf(wasm, keep, o, band, overlap);
   const total = rows.length * columns;
   count(total, total * perTile);
   if (total > TEXTURE_LIMITS.maxTiles || total * perTile > TEXTURE_LIMITS.maxTriangles) {
     throw new Error(`This pattern would have ${total.toLocaleString()} features: use a larger cell, or texture one face.`);
   }
-  const upright = o.mode === 'cut' ? keep(tile.rotate([180, 0, 0])) : tile;
-  const oriented = o.angle % 360 === 0 ? upright : keep(upright.rotate(0, 0, o.angle));
+  const orientedAll = (variants ?? [tile]).map((m) => orientTile(keep, o, m));
   const copies: Manifold[] = [];
   const step = (2 * Math.PI) / columns;
   for (const j of rows) {
-    const shift = o.pattern !== 'pyramids' && o.pattern !== 'ribs' && Math.abs(j) % 2 === 1 ? step / 2 : 0;
+    const shift = STAGGERED.has(o.pattern) && Math.abs(j) % 2 === 1 ? step / 2 : 0;
     for (let i = 0; i < columns; i++) {
-      const theta = i * step + shift;
+      const dot = o.pattern === 'stipple' ? stippleDot(o, i, j) : undefined;
+      const theta = i * step + shift + (dot ? dot.dx / r : 0);
       const c = Math.cos(theta), s = Math.sin(theta);
       const nrm: V3 = [0, 1, 2].map((k) => c * wall.u[k] + s * wall.w[k]) as V3;
       const tan: V3 = [0, 1, 2].map((k) => -s * wall.u[k] + c * wall.w[k]) as V3;
-      const v = mid + j * along;
+      const v = mid + j * along + (dot ? dot.dy : 0);
       const at: V3 = [0, 1, 2].map((k) => wall.origin[k] + r * nrm[k] + v * wall.axis[k]) as V3;
+      const oriented = orientedAll[dot ? dot.cls : orientedAll.length - 1];
       copies.push(keep(oriented.transform([tan[0], tan[1], tan[2], 0, wall.axis[0], wall.axis[1], wall.axis[2], 0, nrm[0], nrm[1], nrm[2], 0, at[0], at[1], at[2], 1])));
     }
   }
@@ -433,6 +650,11 @@ function check(o: SurfaceTextureOptions): void {
   if (o.gap < L.minGap) throw new Error(`The gap is too small to print: use at least ${L.minGap} mm.`);
   if (b < L.minFeature) throw new Error(`The features are too small to print: the cell minus the gap must be at least ${L.minFeature} mm.`);
   if (o.margin < 0) throw new Error('The margin cannot be negative.');
+  if (o.pattern === 'dimples') {
+    // A bowl no steeper than 45 degrees anywhere (a 45 degree wall and a round floor) can be at most this deep.
+    const deepest = b / 2 - (TEXTURE_LIMITS.minTip / 2) * (1 - Math.tan(Math.PI / 8));
+    if (o.depth > deepest) throw new Error(`The dimples are too small for this height: at most ${Math.floor(deepest * 100) / 100} mm with this cell and gap. Use a larger cell, or a smaller height.`);
+  }
 }
 
 /**
@@ -514,20 +736,19 @@ export function surfaceTexture(wasm: ManifoldToplevel, item: PlacedMesh, o: Surf
       const r = inset.bounds();
       const centre: [number, number] = [(r.min[0] + r.max[0]) / 2, (r.min[1] + r.max[1]) / 2];
       const reachHalf = Math.hypot(r.max[0] - r.min[0], r.max[1] - r.min[1]) / 2 + o.cell;
-      const { tile, triangles: perTile } = tileOf(wasm, keep, o, 2 * reachHalf);
+      const { tile, triangles: perTile, variants } = tileOf(wasm, keep, o, 2 * reachHalf);
       // Feature centres over a square that holds the face at any turn, kept where they land near the face's box.
       const a = (o.angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
-      const spots = layout(o, [reachHalf, reachHalf]).map(([x, y]) => [x * ca - y * sa + centre[0], x * sa + y * ca + centre[1]] as [number, number])
-        .filter(([x, y]) => o.pattern === 'ribs' || (x >= r.min[0] - o.cell && x <= r.max[0] + o.cell && y >= r.min[1] - o.cell && y <= r.max[1] + o.cell));
+      const spots = layout(o, [reachHalf, reachHalf]).map(([x, y, cls]) => [x * ca - y * sa + centre[0], x * sa + y * ca + centre[1], cls] as Spot)
+        .filter(([x, y]) => isBar(o.pattern) || (x >= r.min[0] - o.cell && x <= r.max[0] + o.cell && y >= r.min[1] - o.cell && y <= r.max[1] + o.cell));
       tiles += spots.length;
       triangles += spots.length * perTile;
       if (tiles > TEXTURE_LIMITS.maxTiles || triangles > TEXTURE_LIMITS.maxTriangles) {
         throw new Error(`This pattern would have ${tiles.toLocaleString()} features: use a larger cell, or texture one face.`);
       }
       // A cut-in feature is the raised one turned upside down; every feature turns with the pattern (ribs are one long bar each).
-      const upright = o.mode === 'cut' ? keep(tile.rotate([180, 0, 0])) : tile;
-      const oriented = o.angle % 360 === 0 ? upright : keep(upright.rotate(0, 0, o.angle));
-      const copies = spots.map(([x, y]) => keep(oriented.translate(x, y, 0)));
+      const orientedAll = (variants ?? [tile]).map((m) => orientTile(keep, o, m));
+      const copies = spots.map(([x, y, cls]) => keep(orientedAll[cls ?? 0].translate(x, y, 0)));
       if (copies.length === 0) continue;
       const all = keep(Manifold.compose(copies));
       const span = o.depth + OVERLAP + 1;

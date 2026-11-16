@@ -273,7 +273,7 @@ export class PartsTools {
       hint: 'Click the face for the texture (a flat face, or the outside wall of a cylinder) and set the pattern.',
       hintNote: 'Every bump narrows at 45° so it prints without support.',
       fields: [
-        { key: 'pattern', label: 'Pattern', type: 'select', value: 'pyramids', options: [['pyramids', 'Pyramids'], ['dots', 'Dots'], ['hexagons', 'Hexagons'], ['ribs', 'Ribs']], tip: 'Shape of the bumps or dents.' },
+        { key: 'pattern', label: 'Pattern', type: 'select', value: 'pyramids', options: [['pyramids', 'Pyramids'], ['diamonds', 'Diamonds'], ['cones', 'Cones'], ['dots', 'Dots'], ['hexagons', 'Hexagons'], ['ribs', 'Ribs'], ['waves', 'Waves'], ['scales', 'Scales'], ['dimples', 'Dimples'], ['stipple', 'Stipple']], tip: 'Shape of the bumps or dents.' },
         { key: 'mode', label: 'Type', type: 'select', value: 'raised', options: [['raised', 'Raised'], ['cut', 'Cut in']], tip: 'Raise the pattern out of the face or cut it into it.' },
         { key: 'cell', label: 'Cell', type: 'number', value: 4, min: 1.2, step: 0.5, unit: 'mm', tip: 'Distance between the middles of neighbouring bumps.' },
         { key: 'gap', label: 'Gap', type: 'number', value: 1, min: 0.4, step: 0.2, unit: 'mm', tip: 'Space between neighbouring bumps at their base (at least 0.4 mm to print).' },

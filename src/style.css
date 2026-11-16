@@ -342,7 +342,7 @@ svg.gizmo .corner { fill: #fff; stroke: rgba(0, 0, 0, 0.5); }
 #settings-dialog .snap-steps label { display: flex; align-items: center; gap: 8px; }
 #settings-dialog select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font: inherit; }
 #settings-dialog label .note { margin-left: 4px; }
-#sidebar h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--muted); }
+#sidebar h2 { font-size: 13px; font-weight: 600; margin: 0; color: var(--text); }
 .muted { color: var(--muted); font-size: 12px; }
 
 
@@ -520,6 +520,7 @@ button.primary:hover { filter: brightness(1.1); background: var(--accent); }
   gap: 8px;
   cursor: pointer;
   list-style: none;
+  color: var(--text);
 }
 #sidebar details.panel > summary::-webkit-details-marker { display: none; }
 #sidebar details.panel > summary::before { content: '▸'; color: var(--muted); transition: transform 0.15s; }
@@ -837,6 +838,22 @@ dialog footer { gap: 8px; }
 }
 
 /* --- Narrow screens and portrait ------------------------------------------ */
+
+/* Transparent side panel (Settings, off by default): the panel floats over the view. Its own background, border
+   and shadow go and clicks in the gaps between its boxes reach the model; the boxes stay a little see-through. */
+body.clear-panel .workspace { position: relative; }
+body.clear-panel #sidebar {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 20;
+  background: transparent; border-left: 0; box-shadow: none; pointer-events: none; scrollbar-width: none;
+}
+body.clear-panel #sidebar > * { pointer-events: auto; }
+body.clear-panel #sidebar section, body.clear-panel #sidebar details.panel {
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  backdrop-filter: blur(4px);
+}
+/* The view cube and the corner buttons keep clear of the open panel. */
+body.clear-panel:not(.panel-closed) #view-cube { right: calc(min(290px, 86vw) + 12px); }
+body.clear-panel:not(.panel-closed) #view-corner { right: calc(min(290px, 86vw) + 8px); }
 
 /* The toolbar scrolls sideways instead of stacking into many rows, and the
    side panel becomes a drawer over the view that the Panel button opens.

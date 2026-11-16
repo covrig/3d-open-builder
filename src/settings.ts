@@ -20,6 +20,8 @@ export interface UiState {
   accentCustom: string;
   /** Copy, Cut and Paste left out of the toolbar (mouse and keyboard screens only) */
   hideClipboard: boolean;
+  /** The side panel has no background of its own: the model can be worked on behind it (off by default) */
+  clearPanel: boolean;
   /** Thinnest wall (mm) the print check accepts */
   minWall: number;
   /** Order of the side panel sections (ids from PANELS) */
@@ -105,6 +107,7 @@ const DEFAULTS: Settings = {
     accent: 'teal',
     accentCustom: '#2fb3a1',
     hideClipboard: false,
+    clearPanel: false,
     minWall: 0.8,
     panelOrder: PANELS.map(([id]) => id),
     hiddenPanels: [],
@@ -212,6 +215,7 @@ function load(): Settings {
   s.ui.importSeparate = s.ui.importSeparate === true;
   s.ui.exportHidden = s.ui.exportHidden === true;
   s.ui.smoothTurning = s.ui.smoothTurning === true;
+  s.ui.clearPanel = s.ui.clearPanel === true;
   s.ui.internalIntersections = s.ui.internalIntersections !== false;
   s.ui.internalEdges = s.ui.internalEdges !== false;
   // Measuring always starts with snapping on (turning it off lasts for this visit only).
