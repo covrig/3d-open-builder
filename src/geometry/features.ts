@@ -143,6 +143,49 @@ function fallsAwayGently(solid: Manifold, p: V3, n: V3, leg: number, u: V3, leng
 }
 
 /**
+ * The rolling ball of a fillet at point q of edge s, resting on the surface that is
+ * really there at the leg ends. Next to a rim end a face can stop short of the leg
+ * and bend out (a leaning wall above an upright one): the solid there stands past
+ * the face's plane, and a ball touching that plane would leave a step beside the
+ * round. Where the surface stands out past a leg end (along the face's normal), the
+ * ball touches the plane of that surface instead, if that cuts less (a surface that
+ * falls away keeps the plain ball). The ball lies in the plane through q square to
+ * the edge. Null where neither face bends out.
+ */
+function restingBall(solid: Manifold, q: V3, s: EdgeSegment, f: ReturnType<typeof edgeFrame>, leg: number, r: number): { centre: V3; c1: V3; c2: V3 } | null {
+  /** r inside both planes (a point and the outward normal each), in the plane through q square to the edge */
+  const ballOf = ([p1, m1]: [V3, V3], [p2, m2]: [V3, V3]) => {
+    const det = dot3(m1, cross(m2, f.u));
+    if (Math.abs(det) < 1e-9) return null;
+    const d = [(dot3(m1, p1) - r) / det, (dot3(m2, p2) - r) / det, dot3(f.u, q) / det];
+    const centre = add(add(add([0, 0, 0], cross(m2, f.u), d[0]), cross(f.u, m1), d[1]), cross(m1, m2), d[2]);
+    return { centre, c1: add(centre, m1, r), c2: add(centre, m2, r) };
+  };
+  const planes: [V3, V3][] = [[q, s.n1], [q, s.n2]];
+  const plain = ballOf(planes[0], planes[1]);
+  if (!plain) return null;
+  let moved = false;
+  for (const k of [0, 1]) {
+    const n = k ? s.n2 : s.n1;
+    const end = add(q, k ? f.t2 : f.t1, leg);
+    const range = Math.max(0.5, leg);
+    const hits = solid.rayCast(add(end, n, range), add(end, n, -range));
+    if (hits.length === 0) continue;
+    const out = (h: (typeof hits)[number]) => dot3([h.position[0] - end[0], h.position[1] - end[1], h.position[2] - end[2]], n);
+    const h = hits.reduce((x, y) => (Math.abs(out(x)) <= Math.abs(out(y)) ? x : y));
+    if (out(h) <= 0.01 || out(h) > END_BEND * leg) continue;
+    const there: [V3, V3] = [h.position as V3, norm(h.normal as V3)];
+    const ball = k ? ballOf(planes[0], there) : ballOf(there, planes[1]);
+    // It cuts less if its centre lies further from the other face's leg.
+    const other = k ? f.t1 : f.t2;
+    if (!ball || dot3([ball.centre[0] - plain.centre[0], ball.centre[1] - plain.centre[1], ball.centre[2] - plain.centre[2]], other) >= 0) continue;
+    planes[k] = there;
+    moved = true;
+  }
+  return moved ? ballOf(planes[0], planes[1]) : null;
+}
+
+/**
  * Where a picked rim stops: end points where no picked segment carries on
  * smoothly (a rim that runs into a crease or a cut plane, or into other picked
  * edges at a corner). A face can pinch to nothing there (a slanted cut through
@@ -411,6 +454,12 @@ function treat(
   const segmentTools: (Manifold | null)[] = segments.map(() => null);
   /** How far each segment's tool runs past its end points (a, b) */
   const reachPast: { a: number; b: number }[] = segments.map(() => ({ a: 0, b: 0 }));
+  /**
+   * Fillet edges whose ball rests on a bent face (see restingBall): the ball's centre and the
+   * tool's three corners at stations along the edge (a first, b last), and those corners carried
+   * on past a and b as far as the tool reaches.
+   */
+  const resting: ({ centres: V3[]; corners: Vec3[][]; pastA: Vec3[]; pastB: Vec3[] } | null)[] = segments.map(() => null);
   /** Fillet edges handled as part of a chain */
   const inChain = new Set<number>();
   const probeCubes = (i: number) => Math.min(legOf(kind, size, frames[i].angle), 0.05);
@@ -524,6 +573,31 @@ function treat(
     let tool = keep(Manifold.hull(pts));
     prisms[i] = pts;
     reachPast[i] = { a: extA, b: extB };
+    // On a round the chamfer line carried on beside the ball leaves a flat strip where the
+    // face bends out (the solid standing past the face lies above that line). There the
+    // ball rests on the surface that is really there (see restingBall), so the round runs
+    // smoothly into it, and the tool's side, through the edge and where the ball touches,
+    // takes the step with it. Where that happens changes along the edge (the face stops
+    // short of the leg only near the end), so it is worked out at stations a quarter leg
+    // apart (at most 12). Only on curves: their tools are rebuilt per chain below.
+    if (kind === 'fillet' && bent.has(s) && (continues(i, s.a) || continues(i, s.b))) {
+      const n = Math.min(12, Math.ceil(f.length / (0.25 * leg)));
+      const bisector = norm(add(f.t1, f.t2));
+      const stations = Array.from({ length: n + 1 }, (_, k) => {
+        const q = add(s.a, f.u, (f.length * k) / n);
+        const ball = restingBall(solid, q, s, f, leg, size);
+        return { q, ball, ...(ball ?? { centre: add(q, bisector, size / Math.sin(f.angle / 2)), c1: add(q, f.t1, leg), c2: add(q, f.t2, leg) }) };
+      });
+      if (stations.some((x) => x.ball)) {
+        const corners = stations.map(({ q, c1, c2 }) => {
+          const side = norm([c1[0] - c2[0], c1[1] - c2[1], c1[2] - c2[2]]);
+          const [p1, p2] = [add(c1, side, EPS_OFFSET * 4), add(c2, side, -EPS_OFFSET * 4)];
+          return [ridge(q), carried(p1, s.n1, p2), carried(p2, s.n2, p1)] as Vec3[];
+        });
+        const past = (from: Vec3[], to: Vec3[], t: number) => from.map((p, k) => add(p as V3, [p[0] - to[k][0], p[1] - to[k][1], p[2] - to[k][2]], t / f.length) as Vec3);
+        resting[i] = { centres: stations.map((x) => x.centre), corners, pastA: past(corners[0], corners[n], extA), pastB: past(corners[n], corners[0], extB) };
+      }
+    }
     if (kind === 'fillet') {
       const bisector = norm(add(f.t1, f.t2));
       const centre = add(a, bisector, size / Math.sin(f.angle / 2));
@@ -548,6 +622,8 @@ function treat(
   /** Mitre discs of the rolling ball's path at each joint, by point key */
   const nodes = new Map<string, { centre: V3; normal: V3 }>();
   const axisPoint = (k: number, p: V3): V3 => {
+    const rest = resting[k];
+    if (rest) return key(segments[k].a) === key(p) ? rest.centres[0] : rest.centres[rest.centres.length - 1];
     const f = frames[k];
     return add(p, norm(add(f.t1, f.t2)), size / Math.sin(f.angle / 2));
   };
@@ -565,7 +641,9 @@ function treat(
     const atA = key(segments[k].a) === key(p);
     const d = into(k, p);
     const push = (atA ? reachPast[k].a : reachPast[k].b) + Math.min(frames[k].length, frames[other].length) * 0.05;
-    return (atA ? prisms[k]!.slice(0, 3) : prisms[k]!.slice(3, 6)).map((q) => add(q, d, push) as Vec3);
+    const rest = resting[k];
+    const ends = rest ? (atA ? rest.pastA : rest.pastB) : atA ? prisms[k]!.slice(0, 3) : prisms[k]!.slice(3, 6);
+    return ends.map((q) => add(q, d, push) as Vec3);
   };
   for (const [pk, list] of at) {
     if (list.length !== 2) continue;
@@ -602,16 +680,34 @@ function treat(
     // The chain's fillet: corner region minus the ball's sweep, mitred at the joints.
     const disc = (centre: V3, normal: V3) =>
       keep(keep(Manifold.cylinder(1e-3, size, size, 48)).transform(frameMatrix(normal, centre)));
-    const corner = keep(Manifold.union([...members.map((i) => keep(Manifold.hull(prisms[i]!))), ...joints]));
-    const pieces = members.map((i) => {
+    /** A row of cross-sections (tool corners or ball discs) joined up, each to the next */
+    const along = <T>(row: T[], hull: (x: T, y: T) => Manifold) => row.slice(1).map((y, k) => hull(row[k], y));
+    const corner = keep(Manifold.union([
+      ...members.flatMap((i) => {
+        const rest = resting[i];
+        if (!rest) return [keep(Manifold.hull(prisms[i]!))];
+        return along([rest.pastA, ...rest.corners, rest.pastB], (x, y) => keep(Manifold.hull([...x, ...y])));
+      }),
+      ...joints,
+    ]));
+    const pieces = members.flatMap((i) => {
       const s = segments[i];
+      const rest = resting[i];
       const end = (p: V3, sign: number) => {
         const node = nodes.get(key(p));
         if (node) return disc(node.centre, node.normal);
-        // A chain end: the ball stops square with the edge.
-        return disc(add(axisPoint(i, p), frames[i].u, sign * 1e-3), frames[i].u);
+        // A chain end: the ball runs on as far as the tool does (past a corner the tool
+        // runs on to end on the neighbouring face; a ball stopping square at the end
+        // would leave that run-on cutting a flat bevel), then stops square with the edge.
+        const run = 1e-3 + (sign < 0 ? reachPast[i].a : reachPast[i].b);
+        if (!rest) return disc(add(axisPoint(i, p), frames[i].u, sign * run), frames[i].u);
+        // A resting ball runs on along its centres, as the tool's corners do.
+        const [here, there] = sign < 0 ? [rest.centres[0], rest.centres[rest.centres.length - 1]] : [rest.centres[rest.centres.length - 1], rest.centres[0]];
+        return disc(add(here, norm([here[0] - there[0], here[1] - there[1], here[2] - there[2]]), run), frames[i].u);
       };
-      return keep(Manifold.hull([end(s.a, -1), end(s.b, 1)]));
+      if (!rest) return [keep(Manifold.hull([end(s.a, -1), end(s.b, 1)]))];
+      const discs = [end(s.a, -1), ...rest.centres.slice(1, -1).map((c) => disc(c, frames[i].u)), end(s.b, 1)];
+      return along(discs, (x, y) => keep(Manifold.hull([x, y])));
     });
     side.push(keep(corner.subtract(keep(Manifold.union(pieces)))));
     for (const i of members) inChain.add(i);

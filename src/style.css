@@ -743,7 +743,8 @@ body.edges-on svg.measure line, body.edges-on svg.measure path { stroke: #ffc94d
   width: min(360px, 60vw); font-size: 15px; font-weight: 600; padding: 5px 8px;
   border: 2px solid #f08a24; background: color-mix(in srgb, #f08a24 12%, var(--bg));
 }
-#feature-bar .feature-info { flex-basis: 100%; text-align: center; }
+/* Only ever holds why there is nothing to apply (a size too large, a curved surface): yellow, like the other warnings. */
+#feature-bar .feature-info { flex-basis: 100%; text-align: center; color: var(--note-text); }
 #feature-bar .feature-info:empty { display: none; }
 /* Wraps on narrow screens (Subtract and Intersect have five buttons here). */
 .top-bar .bar-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
