@@ -15,6 +15,8 @@ const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.
 
 const ARROW_LENGTH = 34; // px, double arrow for Move and Rotate
 const OFFSET = 14; // px between an object's face and its handle
+/** Size arrows: a turned-away face whose middle is this close (px) to the object's outline counts as seen edge-on, and keeps its arrow. */
+const EDGE_ON = 28;
 // Snapping steps (distance, angle) come from the Settings: settings.snapDistance (mm) and settings.snapAngle (degrees).
 const FACE_SNAP = 2; // mm: faces closer than this to another face line up
 const NEAR = 20; // mm: only objects within this distance count for face snapping
@@ -52,6 +54,36 @@ function doubleArrow(length: number): string {
 
 /** Two small triangles pointing along +x (Size handles). */
 const DOUBLE_TRIANGLE = 'M0,-6 L9,0 L0,6 Z M8,-6 L17,0 L8,6 Z';
+
+/** The outline of some screen points (their convex hull). */
+function convexHull(points: THREE.Vector2[]): THREE.Vector2[] {
+  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (list: THREE.Vector2[]) => {
+    const out: THREE.Vector2[] = [];
+    for (const q of list) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
+
+/** Is the screen point inside the outline (a convex polygon), at least `margin` px from its edge? */
+function insideHull(hull: THREE.Vector2[], at: THREE.Vector2, margin: number): boolean {
+  let side = 0;
+  for (let i = 0; i < hull.length; i++) {
+    const a = hull[i], b = hull[(i + 1) % hull.length];
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const c = ((b.x - a.x) * (at.y - a.y) - (b.y - a.y) * (at.x - a.x)) / length;
+    if (Math.abs(c) < margin) return false;
+    if (side === 0) side = Math.sign(c);
+    else if (Math.sign(c) !== side) return false;
+  }
+  return true;
+}
 
 /** World boxes of the objects a drag meets: everything except the dragged meshes and hidden objects. */
 export function otherBoxes(doc: SceneDocument, dragged: THREE.Object3D[]): THREE.Box3[] {
@@ -112,7 +144,7 @@ interface DragState {
  * keep the same small size in pixels at any zoom level:
  * - Move: one double arrow per axis next to the object
  * - Rotate: three thin rings with one arrow each
- * - Size: a frame with corner dots (keeps proportions) plus one arrow pair per axis
+ * - Size: a frame with corner dots (keeps proportions) plus an arrow on each of the six faces
  */
 export class Gizmo {
   private mode: GizmoMode = 'translate';
@@ -286,8 +318,8 @@ export class Gizmo {
         for (let i = 0; i < 4; i++) {
           this.addHandle('corner', i, 1, this.el('circle', { r: 5, class: 'handle corner' }));
         }
-        // Fixed sides, so the arrows don't hop around as the view turns: X both ways, Y at the front, Z on top.
-        for (const [axis, sign] of [[0, 1], [0, -1], [1, -1], [2, 1]]) {
+        // Fixed sides, so the arrows don't hop around as the view turns: every face has its own arrow.
+        for (const [axis, sign] of [[0, 1], [0, -1], [1, -1], [1, 1], [2, 1], [2, -1]]) {
           const tri = this.el('path', { d: DOUBLE_TRIANGLE, fill: AXIS_COLORS[axis], class: 'handle' });
           this.addHandle('scale', axis, sign, tri);
         }
@@ -418,6 +450,7 @@ export class Gizmo {
       Object.entries({ x: minX, y: minY, width: maxX - minX, height: maxY - minY })
         .forEach(([k, v]) => this.frame!.setAttribute(k, v.toFixed(1)));
       const rectCorners = [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]];
+      const outline = convexHull(corners);
       for (const h of this.handles) {
         if (h.kind === 'corner') {
           h.el.setAttribute('cx', rectCorners[h.axis][0].toFixed(1));
@@ -425,7 +458,17 @@ export class Gizmo {
           continue;
         }
         const { s0, u, pxPerMm } = measure(h.axis, h.sign);
-        place(h.el, s0.clone().addScaledVector(u, OFFSET * 0.6), u);
+        const at = s0.clone().addScaledVector(u, OFFSET * 0.6);
+        // An arrow is hidden (and cannot be grabbed) when it would sit behind the object: its face is turned away
+        // from the camera and its middle lies well inside the object's outline. A face seen edge-on has its arrow at the
+        // outline, so it stays. An axis pointing (almost) at the camera has no direction on screen and no
+        // usable drag distance, so its arrow is hidden too. While a drag is on, nothing appears or disappears.
+        if (!this.drag) {
+          const away = h.sign > 0 ? cam.getComponent(h.axis) <= box.max.getComponent(h.axis) : cam.getComponent(h.axis) >= box.min.getComponent(h.axis);
+          const hide = pxPerMm * ref < 12 || (away && insideHull(outline, s0, EDGE_ON));
+          for (const e of [h.el, h.touch]) if (e) e.style.display = hide ? 'none' : '';
+        }
+        place(h.el, at, u);
         Object.assign(h, { u, pxPerMm });
       }
     }
@@ -484,7 +527,10 @@ export class Gizmo {
       this.svg.classList.remove('dragging');
       const d = this.drag;
       this.drag = undefined;
-      if (d) this.finishStretch(d, cancelled);
+      if (d) {
+        this.finishStretch(d, cancelled);
+        if (!cancelled) this.restOnPlate(d);
+      }
       this.changed();
     };
     const up = () => end(false);
@@ -492,6 +538,17 @@ export class Gizmo {
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', cancel);
+  }
+
+  /**
+   * Pulling the bottom face down sinks the object into the plate: when the drag ends, lift it so its lowest
+   * point rests on the plate again (the same undo step as the resize). Pushing the bottom up is left alone.
+   */
+  private restOnPlate(d: DragState): void {
+    if (!d.checkpointed || d.handle.kind !== 'scale' || d.handle.axis !== 2 || d.handle.sign > 0) return;
+    for (const o of d.targets) o.updateMatrixWorld(true);
+    const lift = -this.targetBox().min.z;
+    if (lift > 1e-6) for (const o of d.targets) o.position.z += lift;
   }
 
   /**
