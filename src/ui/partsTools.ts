@@ -5,7 +5,7 @@ import type { MeshData } from '../geometry/meshData';
 import { flatFaceCentre } from '../geometry/faceRegion';
 import type { SurfaceTextureOptions } from '../geometry/surfaceTexture';
 import { FONTS, loadFont, missingCharacters, textOutlines, type FontName } from '../geometry/text';
-import { ISO_THREADS, threadLabel, type ThreadKind, type ThreadQuality, type ThreadSize } from '../geometry/threads';
+import { ISO_THREADS, threadLabel, type BoltDrive, type BoltHead, type ThreadKind, type ThreadQuality, type ThreadSize } from '../geometry/threads';
 import { runOp } from '../geometry/workerClient';
 import { buildGeometry, type SceneDocument, type SceneObject } from '../scene/document';
 import type { Viewport } from '../scene/viewport';
@@ -137,17 +137,31 @@ export class PartsTools {
     /** A thread can be made as a cutter for a hole ("For a hole"): it is then built as kind 'tap', with clearance. */
     const forHole = (v: Values) => kind === 'rod' && v.hole === true;
     const clearanceOf = (v: Values) => (kind === 'nut' || forHole(v) ? Number(v.clearance ?? 0) : 0);
+    /** A bolt or rod (an external thread) can be made thinner, so it fits a metal nut. */
+    /** Head and drive only exist on a bolt (the hex head with no drive is the plain bolt). */
+    const headOf = (v: Values) => (kind === 'bolt' ? (v.head as BoltHead) : undefined);
+    const driveOf = (v: Values) => (kind === 'bolt' ? (v.drive as BoltDrive) : undefined);
+    const allowanceOf = (v: Values) => (kind === 'bolt' || (kind === 'rod' && !forHole(v)) ? Number(v.allowance ?? 0) : 0);
     this.bar.open<Piece>({
       focusFirst: true,
       title: `Add ${KIND_NAMES[kind]}`,
       hint: kind === 'rod'
         ? 'Choose the size and length. To make a threaded hole, tick "For a hole", move thread to location, use Subtract.'
-        : `Choose the size${kind === 'nut' ? '' : ' and length'}.`,
+        : `Choose the size${kind === 'nut' ? '' : ' and length'}${kind === 'bolt' ? ', head and drive' : ''}.`,
       fields: [
         { key: 'size', label: 'Size', type: 'select', value: 'M6', options: SIZES, tip: 'Metric (M6 = 6 mm) or imperial UNC (1/4″-20 = ¼ inch, 20 threads per inch).' },
         ...(kind !== 'nut' ? [{
           key: 'length', label: 'Length', type: 'number' as const, value: 20, min: 1, step: 1, unit: 'mm',
           tip: kind === 'bolt' ? 'Length of the threaded part under the head.' : 'Length of the thread.',
+        }] : []),
+        ...(kind === 'bolt' ? [{
+          key: 'head', label: 'Head', type: 'select' as const, value: 'hex',
+          options: [['hex', 'Hex'], ['round', 'Round'], ['dome', 'Dome'], ['knurled', 'Knurled'], ['countersunk', 'Countersunk']] as [string, string][],
+          tip: 'Shape of the bolt head. Dome, Round and Knurled are printed head-down; the dome has a flat foot so it prints without support.',
+        }, {
+          key: 'drive', label: 'Drive', type: 'select' as const, value: 'none',
+          options: [['none', 'None'], ['slot', 'Slot'], ['phillips', 'Phillips'], ['hex-socket', 'Internal hex']] as [string, string][],
+          tip: 'The shape cut into the head for a screwdriver or key. Phillips detail is limited by the 0.4 mm nozzle at M5 and smaller.',
         }] : []),
         ...(kind === 'rod' ? [{
           key: 'hole', label: 'For a hole', type: 'checkbox' as const, value: false,
@@ -158,6 +172,11 @@ export class PartsTools {
           tip: 'The gap between the bolt and this thread, on the flanks as well as the tips. 0.2 mm suits a metal bolt; if the bolt is printed too, try 0.3 mm or more.',
           ...(kind === 'rod' ? { showIf: ['hole', 'true'] as [string, string] } : {}),
         }] : []),
+        ...(kind === 'bolt' || kind === 'rod' ? [{
+          key: 'allowance', label: 'Allowance', type: 'number' as const, value: 0, min: 0, max: 0.5, step: 0.05, unit: 'mm',
+          tip: 'Makes the thread thinner by this much all round, flanks included, so it fits a metal nut. 0 keeps the exact size. For a printed bolt in a metal nut try 0.1 mm.',
+          ...(kind === 'rod' ? { showIf: ['hole', 'false'] as [string, string] } : {}),
+        }] : []),
         {
           key: 'quality', label: 'Quality', type: 'select', value: 'normal',
           options: [['draft', 'Draft'], ['normal', 'Normal'], ['fine', 'Fine']],
@@ -166,7 +185,7 @@ export class PartsTools {
       ],
       compute: (v, signal) => runOp('threaded', {
         kind: forHole(v) ? 'tap' : kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v),
-        quality: v.quality as ThreadQuality,
+        allowance: allowanceOf(v), head: headOf(v), drive: driveOf(v), quality: v.quality as ThreadQuality,
       }, { signal }),
       show: (p) => [previewMesh(p.mesh, place(p))],
       apply: (p, v) => {
@@ -176,7 +195,7 @@ export class PartsTools {
           // Remember how it was made, so Shell can hollow it from a plain stand-in.
           // (A thread for a hole is only a cutter, not a solid to hollow, so it gets none.)
           if (!forHole(v)) {
-            obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v), origin: p.center };
+            obj.thread = { kind, size: v.size as ThreadSize, length: Number(v.length ?? 0), clearance: clearanceOf(v), allowance: allowanceOf(v), head: headOf(v), drive: driveOf(v), origin: p.center };
           }
           obj.mesh.position.set(...place(p));
           this.doc.setSelection([obj]);

@@ -84,18 +84,36 @@ function offsetProfileRadius(s: number, P: number, major: number, gap: number): 
 }
 
 /**
+ * The profile pushed inwards by `gap`, measured square to its surface: the mirror of
+ * offsetProfileRadius (a disk of radius `gap` rolled along the inside), the smallest value of
+ * profileRadius(s + k) - sqrt(gap² - k²) over |k| <= gap. A bolt made this thin has `gap` of
+ * play on every surface in a nut of the exact nominal size (a metal nut), where a bolt of the
+ * exact size would have none and a printed bolt, always a little fat, would jam.
+ */
+function shrinkProfileRadius(s: number, P: number, major: number, gap: number): number {
+  const n = 64;
+  let best = Infinity;
+  for (let i = -n; i <= n; i++) {
+    const k = (i / n) * gap;
+    best = Math.min(best, profileRadius(s + k, P, major) - Math.sqrt(Math.max(0, gap * gap - k * k)));
+  }
+  return best;
+}
+
+/**
  * A right-hand threaded cylinder from z = 0 to `length`. At every height the
  * cross-section is the same outline turned by the helix angle, so extruding
  * that outline with 360° of twist per pitch gives an exact helical thread.
  * `grow` is the clearance for nuts and tapped holes: the gap all round, flanks
- * included (see offsetProfileRadius).
+ * included (see offsetProfileRadius). `shrink` makes an external thread thinner
+ * by that much all round (see shrinkProfileRadius); 0 leaves the exact size.
  */
-function threadSolid(wasm: ManifoldToplevel, d: number, P: number, length: number, grow: number, steps: number): Manifold {
+function threadSolid(wasm: ManifoldToplevel, d: number, P: number, length: number, grow: number, steps: number, shrink = 0): Manifold {
   const outline: [number, number][] = [];
   for (let i = 0; i < steps; i++) {
     const phi = (i / steps) * Math.PI * 2;
     const s = (phi / (Math.PI * 2)) * P;
-    const r = grow > 0 ? offsetProfileRadius(s, P, d / 2, grow) : profileRadius(s, P, d / 2);
+    const r = grow > 0 ? offsetProfileRadius(s, P, d / 2, grow) : shrink > 0 ? shrinkProfileRadius(s, P, d / 2, shrink) : profileRadius(s, P, d / 2);
     outline.push([r * Math.cos(phi), r * Math.sin(phi)]);
   }
   const turns = length / P;
@@ -108,6 +126,169 @@ function hexPrism(wasm: ManifoldToplevel, af: number, height: number): Manifold 
   return wasm.Manifold.cylinder(height, r, r, 6);
 }
 
+/** Shape of a bolt head. Hex is the ISO head from ISO_THREADS; the others are proportioned from the thread diameter d. */
+export type BoltHead = 'hex' | 'round' | 'dome' | 'knurled' | 'countersunk';
+/** The recess cut into the head's outer face for a screwdriver or key. */
+export type BoltDrive = 'none' | 'slot' | 'phillips' | 'hex-socket';
+
+const HEAD_SEGMENTS = 64;
+/** Depth of the knurl ribs (mm) */
+const RIB_DEPTH = 0.6;
+/** The least material (mm) a recess leaves beside it, above it, and the shallowest recess worth cutting */
+const RECESS_WALL = 0.5;
+const RECESS_ROOF = 1;
+const RECESS_MIN_DEPTH = 0.8;
+const TOO_SMALL = 'The head is too small or too thin for this drive. Use a larger size, another head or no drive.';
+
+/** Across-flats (mm) of the internal hex key for the metric sizes; imperial and the rest use 0.75 d. */
+const HEX_KEY: Record<string, number> = { M2: 1.5, 'M2.5': 2, M3: 2.5, M4: 3, M5: 4, M6: 5, M8: 6, M10: 8, M12: 10, M16: 14, M20: 17 };
+/** Corner radius of the internal hex socket: the key's across-flats plus 0.2 mm of play. */
+function socketRadius(size: ThreadSize): number {
+  return ((HEX_KEY[size] ?? 0.75 * ISO_THREADS[size].d) + 0.2) / Math.sqrt(3);
+}
+
+/**
+ * Size of a head built on the plate (outer face z = 0, thread on the top face z = h):
+ * its height, its nominal diameter, the radius it surely fills at height z (where a recess must
+ * stay inside) and the radius of a plain cylinder that lies inside it at every height.
+ */
+function headDims(size: ThreadSize, head: BoltHead): { h: number; dia: number; radiusAt: (z: number) => number; inner: number } {
+  const t = ISO_THREADS[size];
+  const d = t.d;
+  switch (head) {
+    case 'hex':
+      return { h: t.k, dia: t.af, radiusAt: () => t.af / 2, inner: t.af / 2 };
+    case 'round':
+      return { h: d, dia: 1.5 * d, radiusAt: () => 0.75 * d, inner: 0.75 * d };
+    case 'dome': {
+      const h = 0.55 * d, R = 0.875 * d, rf = 0.6 * d;
+      return { h, dia: 2 * R, radiusAt: (z) => R - (R - rf) * (1 - z / h) ** 2, inner: rf };
+    }
+    case 'knurled':
+      return { h: 0.8 * d, dia: 2 * d, radiusAt: () => d - RIB_DEPTH, inner: d - RIB_DEPTH };
+    case 'countersunk':
+      // 90° cone: the radius shrinks by 1 mm per mm of height, from d down to d / 2 under the thread.
+      return { h: d / 2, dia: 2 * d, radiusAt: (z) => d - z, inner: d / 2 };
+  }
+}
+
+/** How deep (mm) a drive's recess goes, or an error when it does not fit the head. */
+function driveDepth(size: ThreadSize, head: BoltHead, drive: BoltDrive): number {
+  const d = ISO_THREADS[size].d;
+  const { h, dia, radiusAt } = headDims(size, head);
+  const room = h - RECESS_ROOF; // the deepest a recess may go, leaving a roof of material
+  let depth: number, reach: number; // reach: how far from the axis the recess extends
+  switch (drive) {
+    case 'slot':
+      depth = Math.min(Math.max(0.3 * h, 0.8), room);
+      reach = Math.max(0.8, 0.2 * d) / 2;
+      break;
+    case 'hex-socket':
+      depth = Math.min(0.5 * d, room);
+      reach = socketRadius(size);
+      break;
+    case 'phillips':
+      depth = Math.min(0.45 * d, room);
+      reach = 0.25 * dia;
+      break;
+    default:
+      return 0;
+  }
+  // The recess must stay inside the head at the plate and at its bottom (the head is narrowest at one of them).
+  const wall = Math.min(radiusAt(0), radiusAt(depth));
+  if (depth < RECESS_MIN_DEPTH || reach + RECESS_WALL > wall) throw new Error(TOO_SMALL);
+  return depth;
+}
+
+/** The solid to cut from a head (already tracked by `keep`): the recess from z = 0 up to `depth`, sticking out under the plate for a clean cut. */
+function driveCutter(wasm: ManifoldToplevel, size: ThreadSize, head: BoltHead, drive: BoltDrive, depth: number, keep: <M extends Manifold>(m: M) => M): Manifold {
+  const d = ISO_THREADS[size].d;
+  const { h, dia } = headDims(size, head);
+  const below = 1;
+  const box = (x: number, y: number, z: number) => keep(keep(wasm.Manifold.cube([x, y, z], true)).translate([0, 0, z / 2 - below]));
+  switch (drive) {
+    case 'slot':
+      // Across the whole head, through the middle.
+      return box(2 * dia, Math.max(0.8, 0.2 * d), depth + below);
+    case 'hex-socket': {
+      const r = socketRadius(size);
+      return keep(keep(wasm.Manifold.cylinder(depth + below, r, r, 6)).translate([0, 0, -below]));
+    }
+    case 'phillips': {
+      const w = Math.max(0.8, 0.15 * d), span = 0.5 * dia;
+      const wing = box(span, w, depth + below);
+      const cross = box(w, span, depth + below);
+      // A tapered centre, deeper than the wings (but under the roof), so a driver finds the middle:
+      // 0.9 w across at the plate, narrowing upwards, so there is no flat roof to print.
+      const tip = Math.min(depth + 0.25 * d, h - RECESS_ROOF);
+      const rb = 0.9 * w, slope = (rb - 0.1) / tip;
+      const cone = keep(wasm.Manifold.cylinder(tip + below, rb + slope * below, 0.1, 16)).translate([0, 0, -below]);
+      return keep(keep(wing.add(cross)).add(cone));
+    }
+    default:
+      throw new Error('No drive');
+  }
+}
+
+/** A cylinder with straight vertical ribs round its edge: outer radius r, rib depth RIB_DEPTH, count from the circumference. */
+function knurledCylinder(wasm: ManifoldToplevel, r: number, height: number): Manifold {
+  // About 2 mm of circumference per rib (so the outer flat of a rib, 0.4 of that, is 0.8 mm), at least 16.
+  const n = Math.max(16, Math.floor((2 * Math.PI * r) / 2));
+  const root = r - RIB_DEPTH;
+  const step = (Math.PI * 2) / n;
+  const outline: [number, number][] = [];
+  // Per rib: root flat, flank up, outer flat (0.4 of the pitch), flank down.
+  for (let i = 0; i < n; i++) {
+    for (const [f, rad] of [[0.1, root], [0.25, r], [0.65, r], [0.8, root]] as const) {
+      const a = (i + f) * step;
+      outline.push([rad * Math.cos(a), rad * Math.sin(a)]);
+    }
+  }
+  return wasm.Manifold.extrude(outline, height);
+}
+
+/** The head of a bolt from z = 0 to its height, recess cut but no thread yet. */
+function boltHead(wasm: ManifoldToplevel, size: ThreadSize, head: BoltHead, drive: BoltDrive, keep: <M extends Manifold>(m: M) => M): { solid: Manifold; h: number } {
+  const t = ISO_THREADS[size];
+  const d = t.d;
+  const { h, radiusAt } = headDims(size, head);
+  let solid: Manifold;
+  switch (head) {
+    case 'hex':
+      solid = keep(hexPrism(wasm, t.af, t.k));
+      break;
+    case 'round':
+      solid = keep(wasm.Manifold.cylinder(h, 0.75 * d, 0.75 * d, HEAD_SEGMENTS));
+      break;
+    case 'dome': {
+      // A parabola, r(z) = R - (R - rf)(1 - z/h)², is 45° at the flat foot and level at the top,
+      // so nothing on the outside overhangs more than 45° when the head prints on the plate.
+      const steps = 12;
+      const prof: [number, number][] = [[0, 0]];
+      for (let i = 0; i <= steps; i++) prof.push([radiusAt((i / steps) * h), (i / steps) * h]);
+      prof.push([0, h]);
+      const section = new wasm.CrossSection([prof], 'NonZero');
+      try {
+        solid = keep(wasm.Manifold.revolve(section, HEAD_SEGMENTS));
+      } finally {
+        section.delete();
+      }
+      break;
+    }
+    case 'knurled':
+      solid = keep(knurledCylinder(wasm, d, h));
+      break;
+    case 'countersunk':
+      solid = keep(wasm.Manifold.cylinder(h, d, d / 2, HEAD_SEGMENTS));
+      break;
+  }
+  if (drive !== 'none') {
+    const depth = driveDepth(size, head, drive); // throws when it does not fit
+    solid = keep(solid.subtract(driveCutter(wasm, size, head, drive, depth, keep)));
+  }
+  return { solid, h };
+}
+
 /**
  * What a bolt, nut or rod was made from, kept on the object so tools can use
  * a plain stand-in for it. `origin` is the point of the built shape that sits
@@ -118,6 +299,12 @@ export interface ThreadInfo {
   size: ThreadSize;
   length: number;
   clearance: number;
+  /** How much thinner an external thread (bolt, rod) was made, all round (mm); absent or 0 = the exact size */
+  allowance?: number;
+  /** Bolt head shape; absent = hex */
+  head?: BoltHead;
+  /** Recess cut in a bolt head; absent = none */
+  drive?: BoltDrive;
   origin: [number, number, number];
 }
 
@@ -130,7 +317,8 @@ export interface ThreadInfo {
  */
 export function threadStandIn(wasm: ManifoldToplevel, info: ThreadInfo): Manifold {
   const t = ISO_THREADS[info.size];
-  const root = t.d / 2 - 0.625 * 0.8660254 * t.P;
+  // A thread made thinner (allowance) has its root that much deeper.
+  const root = t.d / 2 - 0.625 * 0.8660254 * t.P - (info.allowance ?? 0);
   const segs = 64;
   const owned: Manifold[] = [];
   const keep = <M extends Manifold>(m: M) => (owned.push(m), m);
@@ -141,8 +329,14 @@ export function threadStandIn(wasm: ManifoldToplevel, info: ThreadInfo): Manifol
         shape = keep(wasm.Manifold.cylinder(info.length, root, root, segs));
         break;
       case 'bolt': {
-        const head = keep(hexPrism(wasm, t.af, t.k));
-        const shaft = keep(keep(wasm.Manifold.cylinder(info.length + 0.1, root, root, segs)).translate([0, 0, t.k - 0.1]));
+        const kind = info.head ?? 'hex', drive = info.drive ?? 'none';
+        const { h, inner } = headDims(info.size, kind);
+        // With a drive, start above the recess (plus a margin), so the stand-in never reaches into it.
+        const z0 = drive === 'none' ? 0 : driveDepth(info.size, kind, drive) + 0.2;
+        // Hex keeps its own prism; the other heads get a plain cylinder a little inside them (ribs, curves, cone).
+        const head0 = keep(kind === 'hex' ? hexPrism(wasm, t.af, h - z0) : wasm.Manifold.cylinder(h - z0, inner - 0.05, inner - 0.05, segs));
+        const head = z0 === 0 ? head0 : keep(head0.translate([0, 0, z0]));
+        const shaft = keep(keep(wasm.Manifold.cylinder(info.length + 0.1, root, root, segs)).translate([0, 0, h - 0.1]));
         shape = keep(head.add(shaft));
         break;
       }
@@ -163,11 +357,12 @@ export function threadStandIn(wasm: ManifoldToplevel, info: ThreadInfo): Manifol
 /**
  * Bolts, nuts, threaded rods and thread cutters (subtract a cutter from a
  * part to make a tapped hole). Internal threads get `clearance` (mm) all
- * round so a printed or bought bolt actually fits.
+ * round so a printed or bought bolt actually fits. External threads (bolt, rod)
+ * can be made `allowance` (mm) thinner all round, so a printed bolt fits a metal nut.
  */
 export function makeThreaded(
   wasm: ManifoldToplevel,
-  o: { kind: ThreadKind; size: ThreadSize; length: number; clearance: number; quality?: ThreadQuality },
+  o: { kind: ThreadKind; size: ThreadSize; length: number; clearance: number; allowance?: number; head?: BoltHead; drive?: BoltDrive; quality?: ThreadQuality },
 ): Piece {
   const t = ISO_THREADS[o.size];
   const steps = THREAD_STEPS[o.quality ?? 'normal'];
@@ -177,12 +372,12 @@ export function makeThreaded(
     let shape: Manifold;
     switch (o.kind) {
       case 'rod':
-        shape = keep(threadSolid(wasm, t.d, t.P, o.length, 0, steps));
+        shape = keep(threadSolid(wasm, t.d, t.P, o.length, 0, steps, o.allowance ?? 0));
         break;
       case 'bolt': {
-        // Hex head at the bottom, thread standing on it (slightly sunk in so they fuse).
-        const head = keep(hexPrism(wasm, t.af, t.k));
-        const thread = keep(keep(threadSolid(wasm, t.d, t.P, o.length + 0.1, 0, steps)).translate([0, 0, t.k - 0.1]));
+        // Head at the bottom (hex unless asked otherwise), thread standing on it (slightly sunk in so they fuse).
+        const { solid: head, h } = boltHead(wasm, o.size, o.head ?? 'hex', o.drive ?? 'none', keep);
+        const thread = keep(keep(threadSolid(wasm, t.d, t.P, o.length + 0.1, 0, steps, o.allowance ?? 0)).translate([0, 0, h - 0.1]));
         shape = keep(head.add(thread));
         break;
       }
