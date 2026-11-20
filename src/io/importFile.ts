@@ -1,4 +1,4 @@
-import { unzipSync } from 'fflate';
+import { unzipSync, zipSync } from 'fflate';
 import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 import { nestShells, shellsOf } from '../geometry/meshCheck';
 import type { MeshData } from '../geometry/meshData';
@@ -86,9 +86,36 @@ export function threeMfUnitScale(bytes: Uint8Array): number {
   return (unit && THREE_MF_UNITS[unit]) || 1;
 }
 
+/** The namespace of the 3MF production extension, the one the prefix "p" stands for (p:path, p:UUID). */
+const PRODUCTION_NS = 'http://schemas.microsoft.com/3dmanufacturing/production/2015/06';
+
+/**
+ * Some exporters (Creality Print) write p:path in the model without declaring xmlns:p. That is not valid
+ * XML, so a strict parser (Firefox) rejects the whole file ("can't access property "attributes", s is
+ * null") and Chrome keeps only what came before the mistake. This declares the prefix on the root of every
+ * small model file that uses it undeclared, and leaves every other file as it was. The big mesh files and the
+ * slicer's own extras (Metadata: G-code, previews) are not needed to read the shapes, so a repaired file
+ * drops the extras and stays small. Returns the bytes unchanged when nothing needs repair.
+ */
+export function repair3mfNamespaces(bytes: Uint8Array): Uint8Array {
+  const small = unzipSync(bytes, { filter: (f) => f.name.toLowerCase().endsWith('.model') && f.originalSize <= 1 << 20 });
+  const broken: Record<string, Uint8Array> = {};
+  for (const [name, data] of Object.entries(small)) {
+    const text = new TextDecoder().decode(data);
+    const root = /<model\b[^>]*>/.exec(text);
+    if (!root || /\bxmlns:p\s*=/.test(root[0]) || !/\bp:[A-Za-z]+\s*=/.test(text)) continue;
+    broken[name] = new TextEncoder().encode(text.replace(root[0], root[0].replace(/<model\b/, `<model xmlns:p="${PRODUCTION_NS}"`)));
+  }
+  if (Object.keys(broken).length === 0) return bytes;
+  const all = unzipSync(bytes, { filter: (f) => !f.name.startsWith('Metadata/') });
+  return zipSync({ ...all, ...broken }, { level: 0 });
+}
+
 async function import3mf(buffer: ArrayBuffer, name: string): Promise<ImportedPart[]> {
   const scale = threeMfUnitScale(new Uint8Array(buffer));
-  const parts = checkParts(partsFromGroup(new ThreeMFLoader().parse(buffer), name));
+  const original = new Uint8Array(buffer);
+  const repaired = repair3mfNamespaces(original);
+  const parts = checkParts(partsFromGroup(new ThreeMFLoader().parse(repaired === original ? buffer : repaired.slice().buffer), name));
   if (scale !== 1) {
     for (const p of parts) {
       const pos = p.data.positions;
